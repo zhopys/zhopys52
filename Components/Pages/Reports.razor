@@ -10,6 +10,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IReportService ReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
 @attribute [Authorize]
 
 <PageTitle>Отчеты - MiniFinance</PageTitle>
@@ -37,6 +38,12 @@
                         <button class="btn btn-primary me-2" @onclick="LoadReports">
                             <span class="bi bi-search"></span> Применить
                         </button>
+                        <button class="btn btn-outline-primary me-2" @onclick="ExportCsv">
+                            <span class="bi bi-file-earmark-spreadsheet"></span> Экспорт CSV
+                        </button>
+                        <button class="btn btn-outline-primary me-2" @onclick="ExportExcel">
+                            <span class="bi bi-file-earmark-excel"></span> Экспорт Excel
+                        </button>
                         <button class="btn btn-outline-secondary me-2" @onclick="SetLastMonth">
                             Последний месяц
                         </button>
@@ -59,6 +66,78 @@
                 </div>
             </div>
         }
+
+            <!-- Отчёт по проектам -->
+            @if (projectReport.Any())
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0"><span class="bi bi-folder2-open"></span> Отчёт по проектам</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Проект</th>
+                                        <th class="text-end">Доходы</th>
+                                        <th class="text-end">Расходы</th>
+                                        <th class="text-end">Прибыль</th>
+                                        <th class="text-center">Транзакций</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in projectReport)
+                                    {
+                                        <tr>
+                                            <td class="fw-bold">@p.Project</td>
+                                            <td class="text-end text-success">+@p.Income.ToString("N0") ₽</td>
+                                            <td class="text-end text-danger">@p.Expense.ToString("N0") ₽</td>
+                                            <td class="text-end @(p.Profit >= 0 ? "text-success" : "text-danger") fw-bold">@(p.Profit >= 0 ? "+" : "")@p.Profit.ToString("N0") ₽</td>
+                                            <td class="text-center"><span class="badge bg-primary">@p.Transactions</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Отчёт о движении денег (cashflow) -->
+            @if (cashflow.Any())
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0"><span class="bi bi-arrow-left-right"></span> Движение денег</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Дата</th>
+                                        <th class="text-end">Доходы</th>
+                                        <th class="text-end">Расходы</th>
+                                        <th class="text-end">Накопительный баланс</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in cashflow)
+                                    {
+                                        <tr>
+                                            <td>@c.Date.ToString("dd.MM.yyyy")</td>
+                                            <td class="text-end text-success">+@c.Income.ToString("N0") ₽</td>
+                                            <td class="text-end text-danger">@c.Expense.ToString("N0") ₽</td>
+                                            <td class="text-end fw-bold @(c.Balance >= 0 ? "text-success" : "text-danger")">@(c.Balance >= 0 ? "+" : "")@c.Balance.ToString("N0") ₽</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
         else
         {
             <!-- Общая сводка -->
@@ -374,6 +453,8 @@
     private CategoryReport? report;
     private List<MonthlyTrend> monthlyTrends = new();
     private List<Transaction> topExpenses = new();
+    private List<ProjectSummary> projectReport = new();
+    private List<CashflowEntry> cashflow = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -393,6 +474,8 @@
             report = ReportService.GetCategoryBreakdown(transactions);
             monthlyTrends = ReportService.GetMonthlyTrends(transactions);
             topExpenses = ReportService.GetTopTransactions(transactions, 10, expenses: true);
+                projectReport = ReportService.GetProjectReport(transactions);
+                cashflow = ReportService.GetCashflow(transactions);
         }
     }
 
@@ -415,5 +498,17 @@
         startDate = DateTime.Today.AddYears(-1);
         endDate = DateTime.Today;
         await LoadReports();
+    }
+
+    private void ExportCsv()
+    {
+        var url = $"/reports/export/csv?start={startDate:yyyy-MM-dd}&end={endDate:yyyy-MM-dd}";
+        NavigationManager.NavigateTo(url, true);
+    }
+
+    private void ExportExcel()
+    {
+        var url = $"/reports/export/excel?start={startDate:yyyy-MM-dd}&end={endDate:yyyy-MM-dd}";
+        NavigationManager.NavigateTo(url, true);
     }
 }
