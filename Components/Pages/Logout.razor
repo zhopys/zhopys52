@@ -1,0 +1,19 @@
+@page "/logout"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+
+<PageTitle>Выход</PageTitle>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Выполняем выход из системы
+        await SignInManager.SignOutAsync();
+
+        // Перенаправляем на страницу входа
+        NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+    }
+}

@@ -1,0 +1,419 @@
+@page "/reports"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject IReportService ReportService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Отчеты - MiniFinance</PageTitle>
+
+<AuthorizeView Context="authContext">
+    <Authorized>
+        <div class="mb-4">
+            <h1>📊 Финансовые отчеты</h1>
+            <p class="text-muted">Детальная аналитика ваших финансов</p>
+        </div>
+
+        <!-- Фильтры по датам -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Период с:</label>
+                        <input type="date" class="form-control" @bind="startDate" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Период по:</label>
+                        <input type="date" class="form-control" @bind="endDate" />
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-primary me-2" @onclick="LoadReports">
+                            <span class="bi bi-search"></span> Применить
+                        </button>
+                        <button class="btn btn-outline-secondary me-2" @onclick="SetLastMonth">
+                            Последний месяц
+                        </button>
+                        <button class="btn btn-outline-secondary me-2" @onclick="SetLastQuarter">
+                            Последний квартал
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="SetLastYear">
+                            Последний год
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (report == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Общая сводка -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-success h-100">
+                        <div class="card-body text-center">
+                            <div class="bg-success bg-opacity-10 p-3 rounded-circle d-inline-block mb-2">
+                                <span class="bi bi-arrow-up-circle fs-1 text-success"></span>
+                            </div>
+                            <h6 class="text-muted">Доходы</h6>
+                            <h2 class="text-success mb-0">+@report.TotalIncome.ToString("N0") ₽</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-danger h-100">
+                        <div class="card-body text-center">
+                            <div class="bg-danger bg-opacity-10 p-3 rounded-circle d-inline-block mb-2">
+                                <span class="bi bi-arrow-down-circle fs-1 text-danger"></span>
+                            </div>
+                            <h6 class="text-muted">Расходы</h6>
+                            <h2 class="text-danger mb-0">@Math.Abs(report.TotalExpense).ToString("N0") ₽</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card @(report.Balance >= 0 ? "border-info" : "border-warning") h-100">
+                        <div class="card-body text-center">
+                            <div class="@(report.Balance >= 0 ? "bg-info" : "bg-warning") bg-opacity-10 p-3 rounded-circle d-inline-block mb-2">
+                                <span class="bi bi-wallet2 fs-1 @(report.Balance >= 0 ? "text-info" : "text-warning")"></span>
+                            </div>
+                            <h6 class="text-muted">Баланс</h6>
+                            <h2 class="@(report.Balance >= 0 ? "text-info" : "text-warning") mb-0">
+                                @(report.Balance >= 0 ? "+" : "")@report.Balance.ToString("N0") ₽
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Расходы и доходы по категориям -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-danger bg-opacity-10">
+                            <h5 class="mb-0 text-danger">
+                                <span class="bi bi-pie-chart-fill"></span> Расходы по категориям
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            @if (report.ExpenseByCategory.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Категория</th>
+                                                <th class="text-end">Сумма</th>
+                                                <th class="text-center">Кол-во</th>
+                                                <th style="width: 30%">Доля</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var cat in report.ExpenseByCategory)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <span class="badge bg-secondary">@cat.Category</span>
+                                                    </td>
+                                                    <td class="text-end text-danger fw-bold">
+                                                        @cat.Amount.ToString("N0") ₽
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge bg-light text-dark">@cat.Count</span>
+                                                    </td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="progress flex-grow-1" style="height: 20px;">
+                                                                <div class="progress-bar bg-danger" role="progressbar"
+                                                                     style="width: @cat.Percentage%">
+                                                                </div>
+                                                            </div>
+                                                            <span class="ms-2 small">@cat.Percentage.ToString("F1")%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot class="table-light">
+                                            <tr>
+                                                <td class="fw-bold">Итого:</td>
+                                                <td class="text-end fw-bold text-danger">
+                                                    @Math.Abs(report.TotalExpense).ToString("N0") ₽
+                                                </td>
+                                                <td class="text-center fw-bold">
+                                                    @report.ExpenseByCategory.Sum(c => c.Count)
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center py-4 text-muted">
+                                    <span class="bi bi-inbox fs-1 d-block mb-2"></span>
+                                    Нет данных о расходах
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-success bg-opacity-10">
+                            <h5 class="mb-0 text-success">
+                                <span class="bi bi-pie-chart-fill"></span> Доходы по категориям
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            @if (report.IncomeByCategory.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Категория</th>
+                                                <th class="text-end">Сумма</th>
+                                                <th class="text-center">Кол-во</th>
+                                                <th style="width: 30%">Доля</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var cat in report.IncomeByCategory)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <span class="badge bg-secondary">@cat.Category</span>
+                                                    </td>
+                                                    <td class="text-end text-success fw-bold">
+                                                        +@cat.Amount.ToString("N0") ₽
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge bg-light text-dark">@cat.Count</span>
+                                                    </td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="progress flex-grow-1" style="height: 20px;">
+                                                                <div class="progress-bar bg-success" role="progressbar"
+                                                                     style="width: @cat.Percentage%">
+                                                                </div>
+                                                            </div>
+                                                            <span class="ms-2 small">@cat.Percentage.ToString("F1")%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot class="table-light">
+                                            <tr>
+                                                <td class="fw-bold">Итого:</td>
+                                                <td class="text-end fw-bold text-success">
+                                                    +@report.TotalIncome.ToString("N0") ₽
+                                                </td>
+                                                <td class="text-center fw-bold">
+                                                    @report.IncomeByCategory.Sum(c => c.Count)
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center py-4 text-muted">
+                                    <span class="bi bi-inbox fs-1 d-block mb-2"></span>
+                                    Нет данных о доходах
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Динамика по месяцам -->
+            @if (monthlyTrends.Any())
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <span class="bi bi-graph-up"></span> Динамика по месяцам
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Месяц</th>
+                                        <th class="text-end">Доходы</th>
+                                        <th class="text-end">Расходы</th>
+                                        <th class="text-end">Баланс</th>
+                                        <th class="text-center">Транзакций</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var trend in monthlyTrends)
+                                    {
+                                        <tr>
+                                            <td class="fw-bold">@trend.MonthName</td>
+                                            <td class="text-end text-success">+@trend.Income.ToString("N0") ₽</td>
+                                            <td class="text-end text-danger">@trend.Expense.ToString("N0") ₽</td>
+                                            <td class="text-end @(trend.Balance >= 0 ? "text-success" : "text-danger") fw-bold">
+                                                @(trend.Balance >= 0 ? "+" : "")@trend.Balance.ToString("N0") ₽
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-primary">@trend.TransactionCount</span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr>
+                                        <td class="fw-bold">Итого:</td>
+                                        <td class="text-end fw-bold text-success">
+                                            +@monthlyTrends.Sum(t => t.Income).ToString("N0") ₽
+                                        </td>
+                                        <td class="text-end fw-bold text-danger">
+                                            @monthlyTrends.Sum(t => t.Expense).ToString("N0") ₽
+                                        </td>
+                                        <td class="text-end fw-bold @(monthlyTrends.Sum(t => t.Balance) >= 0 ? "text-success" : "text-danger")">
+                                            @(monthlyTrends.Sum(t => t.Balance) >= 0 ? "+" : "")@monthlyTrends.Sum(t => t.Balance).ToString("N0") ₽
+                                        </td>
+                                        <td class="text-center fw-bold">
+                                            <span class="badge bg-primary">@monthlyTrends.Sum(t => t.TransactionCount)</span>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Топ расходов -->
+            @if (topExpenses.Any())
+            {
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <span class="bi bi-trophy-fill"></span> Топ-10 крупнейших расходов
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 50px">#</th>
+                                        <th>Дата</th>
+                                        <th>Описание</th>
+                                        <th>Категория</th>
+                                        <th class="text-end">Сумма</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        int rank = 1;
+                                    }
+                                    @foreach (var t in topExpenses)
+                                    {
+                                        <tr>
+                                            <td class="text-center">
+                                                @if (rank <= 3)
+                                                {
+                                                    <span class="badge @(rank == 1 ? "bg-warning" : rank == 2 ? "bg-secondary" : "bg-danger")">
+                                                        @rank
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">@rank</span>
+                                                }
+                                            </td>
+                                            <td>@t.Date.ToString("dd.MM.yyyy")</td>
+                                            <td>@t.Description</td>
+                                            <td>
+                                                <span class="badge bg-secondary">@t.Category</span>
+                                            </td>
+                                            <td class="text-end text-danger fw-bold">
+                                                @t.Amount.ToString("N2") ₽
+                                            </td>
+                                        </tr>
+                                        rank++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private DateTime startDate = DateTime.Today.AddMonths(-1);
+    private DateTime endDate = DateTime.Today;
+    private CategoryReport? report;
+    private List<MonthlyTrend> monthlyTrends = new();
+    private List<Transaction> topExpenses = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReports();
+    }
+
+    private async Task LoadReports()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user != null)
+        {
+            var transactions = await DbContext.Transactions
+                .Where(t => t.UserId == user.Id && t.Date >= startDate && t.Date <= endDate)
+                .ToListAsync();
+
+            report = ReportService.GetCategoryBreakdown(transactions);
+            monthlyTrends = ReportService.GetMonthlyTrends(transactions);
+            topExpenses = ReportService.GetTopTransactions(transactions, 10, expenses: true);
+        }
+    }
+
+    private async Task SetLastMonth()
+    {
+        startDate = DateTime.Today.AddMonths(-1);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private async Task SetLastQuarter()
+    {
+        startDate = DateTime.Today.AddMonths(-3);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+
+    private async Task SetLastYear()
+    {
+        startDate = DateTime.Today.AddYears(-1);
+        endDate = DateTime.Today;
+        await LoadReports();
+    }
+}

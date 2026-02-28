@@ -1,13 +1,16 @@
 @page "/import"
+@rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
 @using MiniFinance.Data.Models
 @using MiniFinance.Services
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject ApplicationDbContext DbContext
 @inject ICsvParser CsvParser
 @inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
 <PageTitle>Импорт CSV - MiniFinance</PageTitle>
@@ -80,7 +83,8 @@
 
         try
         {
-            var user = await UserManager.GetUserAsync(context.User);
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
             if (user == null)
             {
                 message = "Ошибка авторизации";

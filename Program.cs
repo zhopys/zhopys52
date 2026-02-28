@@ -25,6 +25,11 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     .AddDefaultTokenProviders();
 
 builder.Services.AddScoped<ICsvParser, CsvParser>();
+builder.Services.AddScoped<ICategorizationService, CategorizationService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IForecastingService, ForecastingService>();
+builder.Services.AddScoped<MiniFinance.Components.Account.IdentityRedirectManager>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, MiniFinance.Components.Account.IdentityNoOpEmailSender>();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
@@ -34,17 +39,19 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapRazorComponents<MiniFinance.Components.App>()
+    .AddInteractiveServerRenderMode()
+    .DisableAntiforgery();
+
+app.MapAdditionalIdentityEndpoints();
 
 using (var scope = app.Services.CreateScope())
 {

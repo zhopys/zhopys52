@@ -1,95 +1,280 @@
-﻿@page "/"
+@page "/"
+@rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
+@using MiniFinance.Services
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
+@inject IForecastingService ForecastingService
+@inject IReportService ReportService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
 <PageTitle>Главная - MiniFinance</PageTitle>
 
 <AuthorizeView Context="authContext">
     <Authorized>
-        <h1>Добро пожаловать, @authContext.User.Identity?.Name!</h1>
+        <div class="mb-4">
+            <h1>👋 Добро пожаловать, @authContext.User.Identity?.Name!</h1>
+            <p class="text-muted">Обзор вашего финансового состояния</p>
+        </div>
 
         @if (transactions == null)
         {
-            <p>Загрузка данных...</p>
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+            </div>
         }
         else if (!transactions.Any())
         {
             <div class="alert alert-info">
-                У вас пока нет транзакций. 
-                <a href="import">Импортируйте CSV</a> или 
-                <a href="transactions">добавьте вручную</a>.
+                <h4>🎯 Начните учет финансов</h4>
+                <p>У вас пока нет транзакций. Начните с одного из вариантов:</p>
+                <div class="d-flex gap-2 mt-3">
+                    <a href="transactions" class="btn btn-primary">
+                        <span class="bi bi-plus-circle"></span> Добавить транзакцию
+                    </a>
+                    <a href="import" class="btn btn-outline-primary">
+                        <span class="bi bi-upload"></span> Импортировать CSV
+                    </a>
+                </div>
             </div>
         }
         else
         {
-            <div class="row mt-4">
-                <div class="col-md-4">
-                    <div class="card text-white bg-primary mb-3">
-                        <div class="card-header">Всего транзакций</div>
+            <!-- Основные метрики -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card border-primary h-100">
                         <div class="card-body">
-                            <h5 class="card-title">@transactions.Count()</h5>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="text-muted mb-1">Всего транзакций</h6>
+                                    <h3 class="mb-0">@transactions.Count</h3>
+                                </div>
+                                <div class="bg-primary bg-opacity-10 p-2 rounded">
+                                    <span class="bi bi-receipt fs-4 text-primary"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card text-white bg-success mb-3">
-                        <div class="card-header">Доходы</div>
+                <div class="col-md-3">
+                    <div class="card border-success h-100">
                         <div class="card-body">
-                            <h5 class="card-title">@totalIncome.ToString("C2")</h5>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="text-muted mb-1">Доходы</h6>
+                                    <h3 class="mb-0 text-success">+@totalIncome.ToString("N0") ₽</h3>
+                                </div>
+                                <div class="bg-success bg-opacity-10 p-2 rounded">
+                                    <span class="bi bi-arrow-up-circle fs-4 text-success"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card text-white bg-danger mb-3">
-                        <div class="card-header">Расходы</div>
+                <div class="col-md-3">
+                    <div class="card border-danger h-100">
                         <div class="card-body">
-                            <h5 class="card-title">@totalExpense.ToString("C2")</h5>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="text-muted mb-1">Расходы</h6>
+                                    <h3 class="mb-0 text-danger">@Math.Abs(totalExpense).ToString("N0") ₽</h3>
+                                </div>
+                                <div class="bg-danger bg-opacity-10 p-2 rounded">
+                                    <span class="bi bi-arrow-down-circle fs-4 text-danger"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card @(balance >= 0 ? "border-info" : "border-warning") h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="text-muted mb-1">Баланс</h6>
+                                    <h3 class="mb-0 @(balance >= 0 ? "text-info" : "text-warning")">
+                                        @(balance >= 0 ? "+" : "")@balance.ToString("N0") ₽
+                                    </h3>
+                                </div>
+                                <div class="@(balance >= 0 ? "bg-info" : "bg-warning") bg-opacity-10 p-2 rounded">
+                                    <span class="bi bi-wallet2 fs-4 @(balance >= 0 ? "text-info" : "text-warning")"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- Прогноз на 30 дней -->
+            @if (forecast != null && forecast.Confidence > 0)
+            {
+                <div class="card mb-4 @(forecast.PredictedBalance < 0 ? "border-danger" : "border-success")">
+                    <div class="card-header @(forecast.PredictedBalance < 0 ? "bg-danger" : "bg-success") bg-opacity-10">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <span class="bi bi-graph-up-arrow"></span> Прогноз на следующие 30 дней
+                            </h5>
+                            <span class="badge @(forecast.PredictedBalance < 0 ? "bg-danger" : "bg-success")">
+                                Уверенность: @forecast.Confidence%
+                            </span>
+                        </div>
+                        <small class="text-muted">На основе данных за @forecast.BasedOnMonths мес.</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="text-center p-3 bg-success bg-opacity-10 rounded">
+                                    <p class="mb-1 text-muted">Ожидаемые доходы</p>
+                                    <h4 class="text-success mb-0">+@forecast.PredictedIncome.ToString("N0") ₽</h4>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-3 bg-danger bg-opacity-10 rounded">
+                                    <p class="mb-1 text-muted">Ожидаемые расходы</p>
+                                    <h4 class="text-danger mb-0">@Math.Abs(forecast.PredictedExpense).ToString("N0") ₽</h4>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-3 @(forecast.PredictedBalance >= 0 ? "bg-info" : "bg-warning") bg-opacity-10 rounded">
+                                    <p class="mb-1 text-muted">Прогнозируемый баланс</p>
+                                    <h4 class="@(forecast.PredictedBalance >= 0 ? "text-info" : "text-warning") mb-0">
+                                        @(forecast.PredictedBalance >= 0 ? "+" : "")@forecast.PredictedBalance.ToString("N0") ₽
+                                    </h4>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (forecast.PredictedBalance < 0)
+                        {
+                            <div class="alert alert-danger mt-3 mb-0">
+                                <strong>⚠️ Внимание!</strong> Прогнозируется отрицательный баланс.
+                                Рекомендуется сократить расходы или увеличить доходы.
+                            </div>
+                        }
+                        else if (forecast.PredictedBalance < 5000)
+                        {
+                            <div class="alert alert-warning mt-3 mb-0">
+                                <strong>⚡ Предупреждение:</strong> Прогнозируется низкий остаток средств.
+                                Следите за расходами.
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">Баланс</div>
+                <!-- Топ категорий расходов -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <span class="bi bi-pie-chart"></span> Топ категорий расходов
+                            </h5>
+                        </div>
                         <div class="card-body">
-                            <h3 class="@((totalIncome + totalExpense) >= 0 ? "text-success" : "text-danger")">
-                                @((totalIncome + totalExpense).ToString("C2"))
-                            </h3>
+                            @if (report != null && report.ExpenseByCategory.Any())
+                            {
+                                @foreach (var cat in report.ExpenseByCategory.Take(5))
+                                {
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="fw-bold">@cat.Category</span>
+                                            <span class="text-danger fw-bold">@cat.Amount.ToString("N0") ₽</span>
+                                        </div>
+                                        <div class="progress" style="height: 25px;">
+                                            <div class="progress-bar bg-danger" role="progressbar"
+                                                 style="width: @cat.Percentage%">
+                                                @cat.Percentage.ToString("F1")% (@cat.Count шт.)
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                                <a href="/reports" class="btn btn-sm btn-outline-primary w-100 mt-2">
+                                    Подробные отчеты →
+                                </a>
+                            }
+                            else
+                            {
+                                <p class="text-muted text-center py-3">Нет данных о расходах</p>
+                            }
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">Последние транзакции</div>
+
+                <!-- Последние транзакции -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <span class="bi bi-clock-history"></span> Последние транзакции
+                            </h5>
+                        </div>
                         <div class="card-body">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Дата</th>
-                                        <th>Описание</th>
-                                        <th>Сумма</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(5))
-                                    {
-                                        <tr>
-                                            <td>@t.Date.ToShortDateString()</td>
-                                            <td>@t.Description</td>
-                                            <td class="@(t.Amount >= 0 ? "text-success" : "text-danger")">
-                                                @t.Amount.ToString("C2")
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                            <div class="list-group list-group-flush">
+                                @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(7))
+                                {
+                                    <div class="list-group-item px-0">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div class="flex-grow-1">
+                                                <div class="fw-bold">@t.Description</div>
+                                                <small class="text-muted">
+                                                    @t.Date.ToString("dd.MM.yyyy") •
+                                                    <span class="badge bg-secondary">@t.Category</span>
+                                                </small>
+                                            </div>
+                                            <div class="text-end ms-2">
+                                                <span class="@(t.Amount >= 0 ? "text-success" : "text-danger") fw-bold">
+                                                    @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N0") ₽
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <a href="/transactions" class="btn btn-sm btn-outline-primary w-100 mt-2">
+                                Все транзакции →
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Быстрые действия -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <span class="bi bi-lightning-fill"></span> Быстрые действия
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <a href="/transactions" class="btn btn-primary w-100">
+                                <span class="bi bi-plus-circle"></span> Добавить транзакцию
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="/import" class="btn btn-outline-primary w-100">
+                                <span class="bi bi-upload"></span> Импорт CSV
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="/reports" class="btn btn-outline-primary w-100">
+                                <span class="bi bi-graph-up"></span> Отчеты
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-outline-secondary w-100" @onclick="RefreshData">
+                                <span class="bi bi-arrow-clockwise"></span> Обновить данные
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -100,17 +285,39 @@
 
 @code {
     private List<Transaction> transactions = new();
+    private ForecastResult? forecast;
+    private CategoryReport? report;
     private decimal totalIncome => transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
     private decimal totalExpense => transactions.Where(t => t.Amount < 0).Sum(t => t.Amount);
+    private decimal balance => totalIncome + totalExpense;
 
     protected override async Task OnInitializedAsync()
     {
-        var user = await UserManager.GetUserAsync(context.User);
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
         if (user != null)
         {
             transactions = await DbContext.Transactions
                 .Where(t => t.UserId == user.Id)
                 .ToListAsync();
+
+            // Генерируем прогноз и отчеты
+            if (transactions.Any())
+            {
+                forecast = ForecastingService.PredictNextMonth(transactions);
+                report = ReportService.GetCategoryBreakdown(transactions);
+            }
         }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadData();
+        StateHasChanged();
     }
 }

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(dotnet:*)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(netstat:*)",
+      "Bash(powershell:*)",
+      "Bash(curl:*)",
+      "Bash(start:*)",
+      "Bash(echo.:*)",
+      "Bash(timeout 3 do sleep:*)"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 ﻿<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">MiniFinance</a>
+        <a class="navbar-brand" href="">💰 MiniFinance</a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -9,39 +9,53 @@
 
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
-        <div class="nav-item px-3">
-            <AuthorizeView>
-                <Authorized>
-                    <a class="nav-link" href="">
-                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Главная
-                    </a>
-                </Authorized>
-                <NotAuthorized>
-                    <a class="nav-link" href="login">
-                        <span class="bi bi-box-arrow-in-right" aria-hidden="true"></span> Войти
-                    </a>
-                </NotAuthorized>
-            </AuthorizeView>
-        </div>
-        
         <AuthorizeView>
             <Authorized>
+                <!-- Информация о пользователе -->
+                <div class="nav-item px-3 py-2 border-bottom">
+                    <div class="text-white-50 small">Пользователь:</div>
+                    <div class="text-white fw-bold">@context.User.Identity?.Name</div>
+                </div>
+
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="">
+                        <span class="bi bi-house-door-fill" aria-hidden="true"></span> Главная
+                    </a>
+                </div>
                 <div class="nav-item px-3">
                     <a class="nav-link" href="transactions">
-                        <span class="bi bi-list-task" aria-hidden="true"></span> Все транзакции
+                        <span class="bi bi-list-task" aria-hidden="true"></span> Транзакции
+                    </a>
+                </div>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="reports">
+                        <span class="bi bi-graph-up" aria-hidden="true"></span> Отчеты
                     </a>
                 </div>
                 <div class="nav-item px-3">
                     <a class="nav-link" href="import">
-                        <span class="bi bi-upload" aria-hidden="true"></span> Импорт из CSV
+                        <span class="bi bi-upload" aria-hidden="true"></span> Импорт CSV
                     </a>
                 </div>
-                <div class="nav-item px-3">
-                    <a class="nav-link" href="Identity/Account/Logout">
+
+                <div class="nav-item px-3 mt-3 border-top pt-3">
+                    <a class="nav-link text-danger" href="logout">
                         <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Выйти
                     </a>
                 </div>
             </Authorized>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="Account/Login">
+                        <span class="bi bi-box-arrow-in-right" aria-hidden="true"></span> Войти
+                    </a>
+                </div>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="Account/Register">
+                        <span class="bi bi-person-plus" aria-hidden="true"></span> Регистрация
+                    </a>
+                </div>
+            </NotAuthorized>
         </AuthorizeView>
     </nav>
 </div>
