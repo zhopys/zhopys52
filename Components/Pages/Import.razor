@@ -1,0 +1,119 @@
+@page "/import"
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@inject ApplicationDbContext DbContext
+@inject ICsvParser CsvParser
+@inject UserManager<ApplicationUser> UserManager
+@attribute [Authorize]
+
+<PageTitle>Импорт CSV - MiniFinance</PageTitle>
+
+<AuthorizeView Context="authContext">
+    <Authorized>
+        <h1>Импорт транзакций из CSV</h1>
+
+        <div class="alert alert-info">
+            <h5>Формат CSV файла:</h5>
+            <p>Дата,Сумма,Описание,Категория</p>
+            <p>Пример: 2024-01-15,-1500.00,Аренда офиса,Аренда</p>
+            <p>Сумма: положительная - доход, отрицательная - расход</p>
+            <p>
+                <a href="/sample-uploads/transactions_example.csv" download>Скачать пример CSV</a>
+            </p>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <EditForm Model="@uploadModel" OnValidSubmit="@HandleImport">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Выберите CSV файл:</label>
+                        <InputFile id="file" class="form-control" OnChange="@OnFileSelected" accept=".csv" />
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(message))
+                    {
+                        <div class="alert @(isError ? "alert-danger" : "alert-success")">
+                            @message
+                        </div>
+                    }
+
+                    <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
+                        @(isProcessing ? "Импорт..." : "Импортировать")
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private class UploadModel { }
+    private UploadModel uploadModel = new();
+
+    private IBrowserFile? selectedFile;
+    private string message = string.Empty;
+    private bool isError = false;
+    private bool isProcessing = false;
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        message = $"Выбран файл: {selectedFile.Name} ({selectedFile.Size} байт)";
+        isError = false;
+    }
+
+    private async Task HandleImport()
+    {
+        if (selectedFile == null)
+        {
+            message = "Пожалуйста, выберите файл";
+            isError = true;
+            return;
+        }
+
+        isProcessing = true;
+        message = "Импорт...";
+
+        try
+        {
+            var user = await UserManager.GetUserAsync(context.User);
+            if (user == null)
+            {
+                message = "Ошибка авторизации";
+                isError = true;
+                return;
+            }
+
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB max
+            var transactions = CsvParser.Parse(stream, user.Id);
+
+            if (!transactions.Any())
+            {
+                message = "Не найдено транзакций в файле. Проверьте формат.";
+                isError = true;
+                return;
+            }
+
+            // Сохраняем транзакции в БД
+            await DbContext.Transactions.AddRangeAsync(transactions);
+            await DbContext.SaveChangesAsync();
+
+            message = $"Успешно импортировано {transactions.Count} транзакций!";
+            isError = false;
+            selectedFile = null;
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка при импорте: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+}

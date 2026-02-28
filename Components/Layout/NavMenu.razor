@@ -1,0 +1,57 @@
+﻿<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">MiniFinance</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <AuthorizeView>
+                <Authorized>
+                    <a class="nav-link" href="">
+                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Главная
+                    </a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="nav-link" href="login">
+                        <span class="bi bi-box-arrow-in-right" aria-hidden="true"></span> Войти
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+        
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="transactions">
+                        <span class="bi bi-list-task" aria-hidden="true"></span> Все транзакции
+                    </a>
+                </div>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="import">
+                        <span class="bi bi-upload" aria-hidden="true"></span> Импорт из CSV
+                    </a>
+                </div>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="Identity/Account/Logout">
+                        <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Выйти
+                    </a>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+}

@@ -1,0 +1,116 @@
+﻿@page "/"
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@attribute [Authorize]
+
+<PageTitle>Главная - MiniFinance</PageTitle>
+
+<AuthorizeView Context="authContext">
+    <Authorized>
+        <h1>Добро пожаловать, @authContext.User.Identity?.Name!</h1>
+
+        @if (transactions == null)
+        {
+            <p>Загрузка данных...</p>
+        }
+        else if (!transactions.Any())
+        {
+            <div class="alert alert-info">
+                У вас пока нет транзакций. 
+                <a href="import">Импортируйте CSV</a> или 
+                <a href="transactions">добавьте вручную</a>.
+            </div>
+        }
+        else
+        {
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card text-white bg-primary mb-3">
+                        <div class="card-header">Всего транзакций</div>
+                        <div class="card-body">
+                            <h5 class="card-title">@transactions.Count()</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-white bg-success mb-3">
+                        <div class="card-header">Доходы</div>
+                        <div class="card-body">
+                            <h5 class="card-title">@totalIncome.ToString("C2")</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-white bg-danger mb-3">
+                        <div class="card-header">Расходы</div>
+                        <div class="card-body">
+                            <h5 class="card-title">@totalExpense.ToString("C2")</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">Баланс</div>
+                        <div class="card-body">
+                            <h3 class="@((totalIncome + totalExpense) >= 0 ? "text-success" : "text-danger")">
+                                @((totalIncome + totalExpense).ToString("C2"))
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">Последние транзакции</div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Дата</th>
+                                        <th>Описание</th>
+                                        <th>Сумма</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(5))
+                                    {
+                                        <tr>
+                                            <td>@t.Date.ToShortDateString()</td>
+                                            <td>@t.Description</td>
+                                            <td class="@(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                                @t.Amount.ToString("C2")
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<Transaction> transactions = new();
+    private decimal totalIncome => transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
+    private decimal totalExpense => transactions.Where(t => t.Amount < 0).Sum(t => t.Amount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await UserManager.GetUserAsync(context.User);
+        if (user != null)
+        {
+            transactions = await DbContext.Transactions
+                .Where(t => t.UserId == user.Id)
+                .ToListAsync();
+        }
+    }
+}
