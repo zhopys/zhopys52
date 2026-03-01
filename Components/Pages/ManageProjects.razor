@@ -1,0 +1,267 @@
+@page "/manage-projects"
+@rendermode InteractiveServer
+@using MiniFinance.Data.Models
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JS
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Управление проектами - MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Проекты</h1>
+        <div class="meta text-muted">Управление проектами/отделами — статистика по доходам и расходам. Создавайте проекты и отслеживайте их эффективность.</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" @onclick="ToggleCreateForm">+ Создать проект</button>
+        <button class="btn btn-outline" @onclick="LoadProjects">⟳ Обновить</button>
+    </div>
+</div>
+
+@if (showMessage)
+{
+    <div class="alert alert-success" role="status">@message</div>
+}
+@if (showError)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+@if (showCreateForm)
+{
+    <div class="card mb-3">
+        <div class="card-header">@(editId == 0 ? "Создать проект" : "Редактировать проект")</div>
+        <div class="card-body">
+            <div class="row" style="gap:.5rem;align-items:end">
+                <div style="flex:1">
+                    <label class="label">Название <span class="text-danger">*</span></label>
+                    <input class="input" @bind="newName" placeholder="Например: Маркетинговая кампания 2026" aria-label="Название проекта" />
+                    @if (showError && string.IsNullOrWhiteSpace(newName)) { <div class="small text-danger">Название обязательно</div> }
+                </div>
+                <div style="flex:2">
+                    <label class="label">Описание</label>
+                    <input class="input" @bind="newDescription" placeholder="Краткое описание проекта" aria-label="Описание проекта" />
+                </div>
+                <div style="min-width:200px;display:flex;gap:.5rem">
+                    <button class="btn btn-primary" @onclick="SaveProject" title="Сохранить проект">@(editId == 0 ? "Создать проект" : "Сохранить проект")</button>
+                    <button class="btn btn-outline" @onclick="CancelForm" title="Отменить">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-header">Список проектов <span class="text-muted">— Всего: @(projects?.Count ?? 0)</span></div>
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <div class="center py-4">Загрузка...</div>
+        }
+        else if (projects == null || !projects.Any())
+        {
+            <div class="empty-state">Проектов пока нет. Создайте первый проект.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Описание</th>
+                            <th class="text-end">Доходы</th>
+                            <th class="text-end">Расходы</th>
+                            <th class="text-end">Прибыль</th>
+                            <th class="text-center">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in projects)
+                        {
+                            var s = stats.ContainsKey(p.Id) ? stats[p.Id] : new ProjectStat();
+                            <tr>
+                                <td>@p.Name</td>
+                                <td>@p.Description</td>
+                                <td class="text-end text-success">+@s.TotalIncome.ToString("N2") ₽</td>
+                                <td class="text-end text-danger">@s.TotalExpense.ToString("N2") ₽</td>
+                                <td class="text-end fw-bold" style="color:@(s.Profit>=0 ? "var(--success)" : "var(--danger)")">@(s.Profit>=0? "+" : "")@s.Profit.ToString("N2") ₽</td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(p)" title="Редактировать проект">Редактировать</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p.Id)" title="Удалить проект">Удалить</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Project>? projects;
+    private bool isLoading = true;
+    private bool showCreateForm = false;
+    private bool showMessage = false;
+    private string message = string.Empty;
+    private bool showError = false;
+    private string errorMessage = string.Empty;
+
+    private string newName = string.Empty;
+    private string? newDescription;
+    private int editId = 0;
+
+    private Dictionary<int, ProjectStat> stats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProjects();
+    }
+
+    private async Task LoadProjects()
+    {
+        isLoading = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) return;
+
+            projects = await DbContext.Projects.OrderBy(p => p.Name).ToListAsync();
+
+            // compute stats per project for current user
+            var tx = await DbContext.Transactions
+                .Where(t => t.UserId == user.Id && t.ProjectId != null)
+                .ToListAsync();
+
+            stats = tx
+                .GroupBy(t => t.ProjectId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new ProjectStat
+                    {
+                        TotalIncome = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                        TotalExpense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount))
+                    }
+                );
+
+            // fill Profit
+            foreach (var k in stats.Keys.ToList()) stats[k].Profit = stats[k].TotalIncome - stats[k].TotalExpense;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ToggleCreateForm()
+    {
+        showCreateForm = !showCreateForm;
+        if (!showCreateForm) CancelForm();
+    }
+
+    private void CancelForm()
+    {
+        newName = string.Empty;
+        newDescription = string.Empty;
+        editId = 0;
+        showCreateForm = false;
+        showError = false;
+        errorMessage = string.Empty;
+    }
+
+    private async Task SaveProject()
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            errorMessage = "Введите название проекта";
+            showError = true;
+            return;
+        }
+
+        showError = false;
+        showMessage = false;
+
+        if (editId == 0)
+        {
+            if (await DbContext.Projects.AnyAsync(p => p.Name == newName.Trim()))
+            {
+                errorMessage = "Проект с таким названием уже существует";
+                showError = true;
+                return;
+            }
+
+            DbContext.Projects.Add(new Project { Name = newName.Trim(), Description = newDescription });
+            message = "✅ Проект создан";
+        }
+        else
+        {
+            var proj = await DbContext.Projects.FindAsync(editId);
+            if (proj == null)
+            {
+                errorMessage = "Проект не найден";
+                showError = true;
+                return;
+            }
+            proj.Name = newName.Trim();
+            proj.Description = newDescription;
+            message = "✅ Проект обновлён";
+        }
+
+        await DbContext.SaveChangesAsync();
+        showMessage = true;
+        CancelForm();
+        await LoadProjects();
+    }
+
+    private void StartEdit(Project p)
+    {
+        editId = p.Id;
+        newName = p.Name;
+        newDescription = p.Description;
+        showCreateForm = true;
+    }
+
+    private async Task ConfirmDelete(int id)
+    {
+        // Check if transactions exist for this project (any user or current user?) — check any transactions referencing project.
+        var hasTx = await DbContext.Transactions.AnyAsync(t => t.ProjectId == id);
+        if (hasTx)
+        {
+            errorMessage = "Нельзя удалить проект — к нему привязаны транзакции.";
+            showError = true;
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить проект? Это действие нельзя отменить.");
+        if (!ok) return;
+
+        await DeleteProject(id);
+    }
+
+    private async Task DeleteProject(int id)
+    {
+        var proj = await DbContext.Projects.FindAsync(id);
+        if (proj == null) return;
+        DbContext.Projects.Remove(proj);
+        await DbContext.SaveChangesAsync();
+        message = "✅ Проект удалён";
+        showMessage = true;
+        await LoadProjects();
+    }
+
+    private class ProjectStat
+    {
+        public decimal TotalIncome { get; set; }
+        public decimal TotalExpense { get; set; }
+        public decimal Profit { get; set; }
+    }
+}

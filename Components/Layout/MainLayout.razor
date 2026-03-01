@@ -1,18 +1,76 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
+<div class="app-shell">
+    <!-- Top header (GitHub-like) -->
+    <header class="header container" role="banner">
+        <div class="brand" aria-label="MiniFinance home">
+            <!-- compact logo placeholder -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M7 14h10M7 10h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span style="margin-left:.5rem">MiniFinance</span>
         </div>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
+        <!-- central quick search (GitHub-style) -->
+        <div class="center-search" style="flex:1;display:flex;justify-content:center;padding:0 .75rem">
+            <form role="search" onsubmit="return false" style="width:100%;max-width:520px">
+                <input class="input" type="search" placeholder="Search transactions, categories, projects..." aria-label="Search" />
+            </form>
+        </div>
+
+        <!-- actions: theme toggle, account -->
+        <div class="actions" role="navigation" aria-label="Header actions">
+            <button class="btn btn-ghost" onclick="window.toggleTheme && window.toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 3v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 19v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+
+            <a class="btn btn-outline" href="/account" title="Profile" aria-label="Profile">
+                <span class="sr-only">Profile</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4 20c0-4 3.5-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main shell with left sidebar and content like GitHub repo view -->
+    <div class="container content" role="main">
+        <aside class="sidebar" role="complementary" aria-label="Primary navigation">
+            <div class="card" style="padding:0">
+                <div class="card-body" style="padding:.6rem">
+                    <strong class="small">Navigation</strong>
+                </div>
+                <NavMenu />
+            </div>
+        </aside>
+
+        <main class="main">
+            <!-- page header similar to GitHub's repo header: title + actions -->
+            <div class="card" style="margin-bottom:1rem">
+                <div class="card-body" style="display:flex;align-items:center;gap:1rem;justify-content:space-between">
+                    <div style="display:flex;align-items:center;gap:.75rem">
+                        <h1 class="mb-0">Dashboard</h1>
+                        <span class="text-muted">Overview &amp; quick actions</span>
+                    </div>
+                    <div style="display:flex;gap:.5rem;align-items:center">
+                        <a class="btn btn-outline" href="/reports">Reports</a>
+                        <a class="btn btn-primary" href="/transactions/new">New Transaction</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- main content area where pages render -->
+            <article class="content-body">
+                @Body
+            </article>
+        </main>
+    </div>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>

@@ -10,201 +10,132 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject ICategorizationService CategorizationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 <PageTitle>Транзакции - MiniFinance</PageTitle>
 
 <AuthorizeView Context="authContext">
     <Authorized>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h1>💳 Транзакции</h1>
-            <button class="btn btn-primary" @onclick="ToggleQuickEntry">
-                <span class="bi bi-lightning-fill"></span> Быстрый ввод
-            </button>
+        <div class="page-header">
+            <div class="title">
+                <h1>Транзакции</h1>
+                <div class="meta text-muted">Управление операциями и быстрый ввод</div>
+            </div>
+            <div class="page-actions">
+                <button class="btn btn-outline" @onclick="ToggleQuickEntry">⚡ Быстрый ввод</button>
+                <a class="btn btn-primary" href="/transactions/new">+ Новая</a>
+            </div>
         </div>
 
         @if (showMessage)
         {
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                @message
-                <button type="button" class="btn-close" @onclick="() => showMessage = false"></button>
-            </div>
+            <div class="alert alert-success" role="status" aria-live="polite">@message</div>
         }
 
-        <!-- Быстрый ввод расходов -->
         @if (showQuickEntry)
         {
-            <div class="card mb-3 border-primary">
-                <div class="card-header bg-primary text-white">
-                    <h5>⚡ Быстрый ввод расхода</h5>
-                </div>
+            <div class="card mb-3">
+                <div class="card-header">Быстрый ввод</div>
                 <div class="card-body">
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Аренда офиса", 1500, "Аренда")'>
-                                🏢 Аренда<br/><small>1500₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Интернет и связь", 850, "Связь")'>
-                                📡 Связь<br/><small>850₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Бензин", 1200, "Транспорт")'>
-                                ⛽ Бензин<br/><small>1200₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Канцелярия", 500, "Офис")'>
-                                📝 Канцелярия<br/><small>500₽</small>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Реклама", 3000, "Реклама")'>
-                                📢 Реклама<br/><small>3000₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-danger w-100" @onclick='() => QuickAddExpense("Комиссия банка", 200, "Банк")'>
-                                🏦 Банк<br/><small>200₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-success w-100" @onclick='() => QuickAddIncome("Оплата от клиента", 10000, "Продажи")'>
-                                💰 Продажа<br/><small>10000₽</small>
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-success w-100" @onclick='() => QuickAddIncome("Оказание услуг", 5000, "Услуги")'>
-                                🛠️ Услуга<br/><small>5000₽</small>
-                            </button>
-                        </div>
+                    <div class="row" style="gap:.5rem">
+                        <button class="btn btn-outline-danger" @onclick='() => QuickAddExpense("Аренда офиса", 1500, "Аренда")'>🏢 Аренда — 1500₽</button>
+                        <button class="btn btn-outline-danger" @onclick='() => QuickAddExpense("Интернет и связь", 850, "Связь")'>📡 Связь — 850₽</button>
+                        <button class="btn btn-outline-success" @onclick='() => QuickAddIncome("Оплата от клиента", 10000, "Продажи")'>💰 Продажа — 10000₽</button>
+                        <button class="btn btn-outline" @onclick="ToggleQuickEntry">Закрыть</button>
                     </div>
                 </div>
             </div>
         }
 
-        <!-- Форма добавления новой транзакции -->
         <div class="card mb-3">
-            <div class="card-header">
-                <h5>➕ Добавить транзакцию</h5>
-            </div>
+            <div class="card-header">Добавить транзакцию</div>
             <div class="card-body">
                 <EditForm Model="@newTransaction" OnValidSubmit="@AddTransaction">
                     <DataAnnotationsValidator />
                     <ValidationSummary class="text-danger" />
 
-                    <div class="row g-3">
-                        <div class="col-md-2">
-                            <label for="date" class="form-label">Дата:</label>
-                            <InputDate id="date" class="form-control" @bind-Value="newTransaction.Date" />
+                    <div class="row" style="gap:.5rem;align-items:end">
+                        <div style="min-width:160px">
+                            <label class="label">Дата</label>
+                            <InputDate id="date" class="input" @bind-Value="newTransaction.Date" />
                         </div>
-                        <div class="col-md-2">
-                            <label for="amount" class="form-label">Сумма:</label>
-                            <InputNumber id="amount" class="form-control" @bind-Value="newTransaction.Amount"
-                                         @bind-Value:after="OnAmountChanged" placeholder="0.00" />
-                            <small class="text-muted">- для расхода</small>
+                        <div style="min-width:140px">
+                            <label class="label">Сумма</label>
+                            <InputNumber id="amount" class="input" @bind-Value="newTransaction.Amount" @bind-Value:after="OnAmountChanged" />
+                            <div class="small text-muted">- для расхода</div>
                         </div>
-                        <div class="col-md-5">
-                            <label for="description" class="form-label">Описание:</label>
-                            <InputText id="description" class="form-control" @bind-Value="newTransaction.Description"
-                                       @bind-Value:after="OnDescriptionChanged" placeholder="Описание транзакции" />
+                        <div style="flex:1">
+                            <label class="label">Описание</label>
+                            <InputText id="description" class="input" @bind-Value="newTransaction.Description" @bind-Value:after="OnDescriptionChanged" />
                         </div>
-                        <div class="col-md-3">
-                            <label for="category" class="form-label">Категория:</label>
-                            <InputText id="category" class="form-control" @bind-Value="newTransaction.Category"
-                                       placeholder="Автоопределение" />
-                            @if (!string.IsNullOrEmpty(suggestedCategory))
-                            {
-                                <small class="text-primary">💡 @suggestedCategory</small>
-                            }
+                        <div style="min-width:180px">
+                            <label class="label">Категория</label>
+                            <input id="category" list="categoryList" class="input" @bind="newTransaction.Category" aria-label="Категория" placeholder="Выберите или введите категорию" />
+                            <datalist id="categoryList">
+                                @foreach (var c in GetUniqueCategories()) { <option value="@c"></option> }
+                            </datalist>
+                            @if (!string.IsNullOrEmpty(suggestedCategory)) { <div class="small text-muted">💡 Рекомендация: @suggestedCategory</div> }
                         </div>
                     </div>
-                    <div class="mt-3">
-                        <button type="submit" class="btn btn-primary">
-                            <span class="bi bi-plus-circle"></span> Добавить транзакцию
-                        </button>
-                        <button type="button" class="btn btn-secondary ms-2" @onclick="ClearForm">
-                            <span class="bi bi-x-circle"></span> Очистить
-                        </button>
+
+                    <div style="margin-top:1rem;display:flex;gap:.5rem">
+                        <button type="submit" class="btn btn-primary">Добавить</button>
+                        <button type="button" class="btn btn-outline" @onclick="ClearForm">Очистить</button>
                     </div>
                 </EditForm>
             </div>
         </div>
 
-        <!-- Фильтры и поиск -->
         <div class="card mb-3">
             <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <input type="text" class="form-control" placeholder="🔍 Поиск по описанию..."
-                               @bind="searchQuery" @bind:event="oninput" />
+                <div class="row" style="gap:.5rem;align-items:center">
+                        <div style="flex:1;min-width:220px">
+                        <input type="text" class="input" placeholder="Поиск по описанию..." @bind="searchQuery" @bind:event="oninput" aria-label="Поиск по описанию" />
                     </div>
-                    <div class="col-md-3">
-                        <select class="form-select" @bind="filterCategory">
+                    <div style="min-width:180px">
+                        <select class="input" @bind="filterCategory">
                             <option value="">Все категории</option>
-                            @foreach (var cat in GetUniqueCategories())
-                            {
-                                <option value="@cat">@cat</option>
-                            }
+                            @foreach (var cat in GetUniqueCategories()) { <option value="@cat">@cat</option> }
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <select class="form-select" @bind="filterType">
+                    <div style="min-width:120px">
+                        <select class="input" @bind="filterType">
                             <option value="all">Все</option>
                             <option value="income">Доходы</option>
                             <option value="expense">Расходы</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">
-                            <span class="bi bi-x"></span> Сбросить фильтры
-                        </button>
+                    <div style="min-width:140px">
+                        <button class="btn btn-outline" @onclick="ClearFilters">Сбросить</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Таблица транзакций -->
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5>📋 Список транзакций</h5>
-                <span class="badge bg-primary">Всего: @GetFilteredTransactions().Count()</span>
-            </div>
+            <div class="card-header">Список транзакций <span class="text-muted">— Всего: @GetFilteredTransactions().Count()</span></div>
             <div class="card-body">
                 @if (transactions == null)
                 {
-                    <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Загрузка...</span>
-                        </div>
-                    </div>
+                    <div class="center py-4">Загрузка...</div>
                 }
                 else if (!transactions.Any())
                 {
-                    <div class="alert alert-info">
-                        <h5>📭 Нет транзакций</h5>
-                        <p>Добавьте первую транзакцию используя форму выше или быстрый ввод.</p>
-                    </div>
+                    <div class="empty-state">Нет транзакций. Добавьте первую операцию.</div>
                 }
                 else
                 {
                     var filtered = GetFilteredTransactions().ToList();
-
                     @if (!filtered.Any())
                     {
-                        <div class="alert alert-warning">
-                            Нет транзакций, соответствующих фильтрам.
-                        </div>
+                        <div class="alert">Нет транзакций, соответствующих фильтрам.</div>
                     }
                     else
                     {
                         <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead class="table-light">
+                            <table class="table">
+                                <thead>
                                     <tr>
                                         <th>Дата</th>
                                         <th>Описание</th>
@@ -217,75 +148,50 @@
                                     @foreach (var t in filtered)
                                     {
                                         <tr>
+                                            <td><div class="muted">@t.Date.ToString("dd.MM.yyyy")</div></td>
                                             <td>
-                                                <span class="text-muted">@t.Date.ToString("dd.MM.yyyy")</span>
+                                                @if (editingId == t.Id)
+                                                {
+                                                    <input type="text" class="input" @bind="editDescription" />
+                                                }
+                                                else { @t.Description }
                                             </td>
                                             <td>
                                                 @if (editingId == t.Id)
                                                 {
-                                                    <input type="text" class="form-control form-control-sm"
-                                                           @bind="editDescription" />
+                                                    <input type="text" class="input" @bind="editCategory" />
                                                 }
-                                                else
-                                                {
-                                                    @t.Description
-                                                }
-                                            </td>
-                                            <td>
-                                                @if (editingId == t.Id)
-                                                {
-                                                    <input type="text" class="form-control form-control-sm"
-                                                           @bind="editCategory" />
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-secondary">@t.Category</span>
-                                                }
+                                                else { <span class="badge">@t.Category</span> }
                                             </td>
                                             <td class="text-end">
                                                 @if (editingId == t.Id)
                                                 {
-                                                    <input type="number" step="0.01" class="form-control form-control-sm"
-                                                           @bind="editAmount" style="width: 120px; display: inline-block;" />
+                                                    <input type="number" step="0.01" class="input" @bind="editAmount" style="width:120px" />
                                                 }
                                                 else
                                                 {
-                                                    <span class="@(t.Amount >= 0 ? "text-success" : "text-danger") fw-bold">
-                                                        @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") ₽
-                                                    </span>
+                                                    <span class="fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">@(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") ₽</span>
                                                 }
                                             </td>
                                             <td class="text-center">
                                                 @if (editingId == t.Id)
                                                 {
-                                                    <button class="btn btn-sm btn-success me-1" @onclick="() => SaveEdit(t.Id)">
-                                                        <span class="bi bi-check"></span>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">
-                                                        <span class="bi bi-x"></span>
-                                                    </button>
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => SaveEdit(t.Id)" title="Сохранить изменения">Сохранить</button>
+                                                    <button class="btn btn-sm btn-outline" @onclick="CancelEdit" title="Отменить редактирование">Отмена</button>
                                                 }
                                                 else
                                                 {
-                                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => StartEdit(t)">
-                                                        <span class="bi bi-pencil"></span>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTransaction(t.Id)">
-                                                        <span class="bi bi-trash"></span>
-                                                    </button>
+                                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(t)" title="Редактировать транзакцию">Редактировать</button>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteTransaction(t.Id)" title="Удалить транзакцию">Удалить</button>
                                                 }
                                             </td>
                                         </tr>
                                     }
                                 </tbody>
-                                <tfoot class="table-light">
+                                <tfoot>
                                     <tr>
                                         <td colspan="3" class="text-end fw-bold">Итого:</td>
-                                        <td class="text-end fw-bold">
-                                            <span class="@(filtered.Sum(t => t.Amount) >= 0 ? "text-success" : "text-danger")">
-                                                @filtered.Sum(t => t.Amount).ToString("N2") ₽
-                                            </span>
-                                        </td>
+                                        <td class="text-end fw-bold"> <span class="@(filtered.Sum(t => t.Amount) >= 0 ? "text-success" : "text-danger")">@filtered.Sum(t => t.Amount).ToString("N2") ₽</span></td>
                                         <td></td>
                                     </tr>
                                 </tfoot>
@@ -374,7 +280,7 @@
             DbContext.Transactions.Add(newTransaction);
             await DbContext.SaveChangesAsync();
 
-            ShowMessage($"✅ Транзакция добавлена: {newTransaction.Description}");
+            await ShowMessageAsync($"✅ Транзакция добавлена: {newTransaction.Description}");
 
             newTransaction = new Transaction { Date = DateTime.Today };
             suggestedCategory = string.Empty;
@@ -400,7 +306,7 @@
             DbContext.Transactions.Add(transaction);
             await DbContext.SaveChangesAsync();
 
-            ShowMessage($"✅ Расход добавлен: {description} (-{amount}₽)");
+            await ShowMessageAsync($"✅ Расход добавлен: {description} (-{amount}₽)");
             await LoadTransactions();
         }
     }
@@ -423,7 +329,7 @@
             DbContext.Transactions.Add(transaction);
             await DbContext.SaveChangesAsync();
 
-            ShowMessage($"✅ Доход добавлен: {description} (+{amount}₽)");
+            await ShowMessageAsync($"✅ Доход добавлен: {description} (+{amount}₽)");
             await LoadTransactions();
         }
     }
@@ -446,7 +352,7 @@
             transaction.Amount = editAmount;
 
             await DbContext.SaveChangesAsync();
-            ShowMessage("✅ Транзакция обновлена");
+            await ShowMessageAsync("✅ Транзакция обновлена");
 
             editingId = null;
             await LoadTransactions();
@@ -466,7 +372,7 @@
             DbContext.Transactions.Remove(transaction);
             await DbContext.SaveChangesAsync();
 
-            ShowMessage("🗑️ Транзакция удалена");
+            await ShowMessageAsync("🗑️ Транзакция удалена");
             await LoadTransactions();
         }
     }
@@ -486,6 +392,27 @@
     {
         message = msg;
         showMessage = true;
+    }
+
+    private async Task ShowMessageAsync(string msg, int autoHideMs = 4000)
+    {
+        message = msg;
+        showMessage = true;
+        StateHasChanged();
+        try
+        {
+            await Task.Delay(autoHideMs);
+        }
+        catch { }
+        showMessage = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmDeleteTransaction(int id)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить транзакцию? Это действие нельзя отменить.");
+        if (!ok) return;
+        await DeleteTransaction(id);
     }
 
     private IEnumerable<Transaction> GetFilteredTransactions()

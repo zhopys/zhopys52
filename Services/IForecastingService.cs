@@ -6,5 +6,6 @@ namespace MiniFinance.Services
     {
         ForecastResult PredictNextMonth(List<Transaction> transactions);
         List<CategoryForecast> PredictByCategory(List<Transaction> transactions);
+        List<CashForecastPoint> PredictCashflowNextDays(List<Transaction> transactions, List<MiniFinance.Data.Models.Reminder> reminders, int days = 30);
     }
 }

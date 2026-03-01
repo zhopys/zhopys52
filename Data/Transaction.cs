@@ -27,5 +27,9 @@ namespace MiniFinance.Data.Models
         
         // Навигационное свойство
         public ApplicationUser? User { get; set; }
+        
+        // Проект (необязательный)
+        public int? ProjectId { get; set; }
+        public Project? Project { get; set; }
     }
 }

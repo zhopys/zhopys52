@@ -9,5 +9,6 @@ namespace MiniFinance.Services
         List<Transaction> GetTopTransactions(List<Transaction> transactions, int count, bool expenses = true);
         List<CashflowEntry> GetCashflow(List<Transaction> transactions);
         List<ProjectSummary> GetProjectReport(List<Transaction> transactions);
+        List<ForecastPoint> GetForecast(List<MonthlyTrend> monthlyTrends, int monthsAhead = 6);
     }
 }

@@ -17,265 +17,258 @@
 
 <AuthorizeView Context="authContext">
     <Authorized>
-        <div class="mb-4">
-            <h1>👋 Добро пожаловать, @authContext.User.Identity?.Name!</h1>
-            <p class="text-muted">Обзор вашего финансового состояния</p>
+        <div class="page-header">
+            <div class="title">
+                <h1>Добро пожаловать, @authContext.User.Identity?.Name!</h1>
+                <div class="meta text-muted">Обзор вашего финансового состояния</div>
+            </div>
+            <div class="page-actions">
+                <a class="btn btn-outline" href="/transactions">Транзакции</a>
+                <a class="btn btn-outline" href="/import">Импорт CSV</a>
+                <a class="btn btn-primary" href="/transactions/new">+ Новая транзакция</a>
+            </div>
         </div>
 
         @if (transactions == null)
         {
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Загрузка...</span>
-                </div>
+            <div class="center py-5">
+                <div class="spinner-border" role="status" aria-hidden="true"></div>
             </div>
         }
         else if (!transactions.Any())
         {
-            <div class="alert alert-info">
-                <h4>🎯 Начните учет финансов</h4>
-                <p>У вас пока нет транзакций. Начните с одного из вариантов:</p>
-                <div class="d-flex gap-2 mt-3">
-                    <a href="transactions" class="btn btn-primary">
-                        <span class="bi bi-plus-circle"></span> Добавить транзакцию
-                    </a>
-                    <a href="import" class="btn btn-outline-primary">
-                        <span class="bi bi-upload"></span> Импортировать CSV
-                    </a>
+            <div class="empty-state">
+                <h3 class="lead">Начните учёт финансов</h3>
+                <p class="text-muted">У вас пока нет транзакций. Добавьте первую транзакцию или импортируйте выписку.</p>
+                <div class="row" style="justify-content:center;margin-top:1rem;gap:.5rem">
+                    <a class="btn btn-primary" href="/transactions">Добавить транзакцию</a>
+                    <a class="btn btn-outline" href="/import">Импортировать CSV</a>
                 </div>
             </div>
         }
         else
         {
-            <!-- Основные метрики -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-3">
-                    <div class="card border-primary h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="text-muted mb-1">Всего транзакций</h6>
-                                    <h3 class="mb-0">@transactions.Count</h3>
-                                </div>
-                                <div class="bg-primary bg-opacity-10 p-2 rounded">
-                                    <span class="bi bi-receipt fs-4 text-primary"></span>
-                                </div>
-                            </div>
-                        </div>
+            <!-- KPI cards -->
+            <div class="card-grid mb-4">
+                <div class="card">
+                    <div class="card-body kpi">
+                        <div class="label">Всего транзакций</div>
+                        <div class="value">@transactions.Count</div>
+                        <div class="small text-muted">Всего операций</div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card border-success h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="text-muted mb-1">Доходы</h6>
-                                    <h3 class="mb-0 text-success">+@totalIncome.ToString("N0") ₽</h3>
-                                </div>
-                                <div class="bg-success bg-opacity-10 p-2 rounded">
-                                    <span class="bi bi-arrow-up-circle fs-4 text-success"></span>
-                                </div>
-                            </div>
-                        </div>
+                <div class="card">
+                    <div class="card-body kpi">
+                        <div class="label">Доходы</div>
+                        <div class="value text-success">+@totalIncome.ToString("N0") ₽</div>
+                        <div class="small text-muted">За выбранный период</div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card border-danger h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="text-muted mb-1">Расходы</h6>
-                                    <h3 class="mb-0 text-danger">@Math.Abs(totalExpense).ToString("N0") ₽</h3>
-                                </div>
-                                <div class="bg-danger bg-opacity-10 p-2 rounded">
-                                    <span class="bi bi-arrow-down-circle fs-4 text-danger"></span>
-                                </div>
-                            </div>
-                        </div>
+                <div class="card">
+                    <div class="card-body kpi">
+                        <div class="label">Расходы</div>
+                        <div class="value text-danger">@Math.Abs(totalExpense).ToString("N0") ₽</div>
+                        <div class="small text-muted">Удержания и платежи</div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card @(balance >= 0 ? "border-info" : "border-warning") h-100">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="text-muted mb-1">Баланс</h6>
-                                    <h3 class="mb-0 @(balance >= 0 ? "text-info" : "text-warning")">
-                                        @(balance >= 0 ? "+" : "")@balance.ToString("N0") ₽
-                                    </h3>
-                                </div>
-                                <div class="@(balance >= 0 ? "bg-info" : "bg-warning") bg-opacity-10 p-2 rounded">
-                                    <span class="bi bi-wallet2 fs-4 @(balance >= 0 ? "text-info" : "text-warning")"></span>
-                                </div>
-                            </div>
-                        </div>
+                <div class="card">
+                    <div class="card-body kpi">
+                        <div class="label">Баланс</div>
+                        <div class="value">@(balance >= 0 ? "+" : "")@balance.ToString("N0") ₽</div>
+                        <div class="small text-muted">Текущий остаток</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Прогноз на 30 дней -->
-            @if (forecast != null && forecast.Confidence > 0)
+            <!-- Forecast and charts -->
+            @if (forecast != null)
             {
-                <div class="card mb-4 @(forecast.PredictedBalance < 0 ? "border-danger" : "border-success")">
-                    <div class="card-header @(forecast.PredictedBalance < 0 ? "bg-danger" : "bg-success") bg-opacity-10">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <span class="bi bi-graph-up-arrow"></span> Прогноз на следующие 30 дней
-                            </h5>
-                            <span class="badge @(forecast.PredictedBalance < 0 ? "bg-danger" : "bg-success")">
-                                Уверенность: @forecast.Confidence%
-                            </span>
-                        </div>
-                        <small class="text-muted">На основе данных за @forecast.BasedOnMonths мес.</small>
-                    </div>
+                <div class="card mb-4">
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="text-center p-3 bg-success bg-opacity-10 rounded">
-                                    <p class="mb-1 text-muted">Ожидаемые доходы</p>
-                                    <h4 class="text-success mb-0">+@forecast.PredictedIncome.ToString("N0") ₽</h4>
-                                </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+                            <div>
+                                <h3 class="mb-0">Прогноз на 30 дней</h3>
+                                <div class="small text-muted">На основе последних данных</div>
                             </div>
-                            <div class="col-md-4">
-                                <div class="text-center p-3 bg-danger bg-opacity-10 rounded">
-                                    <p class="mb-1 text-muted">Ожидаемые расходы</p>
-                                    <h4 class="text-danger mb-0">@Math.Abs(forecast.PredictedExpense).ToString("N0") ₽</h4>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="text-center p-3 @(forecast.PredictedBalance >= 0 ? "bg-info" : "bg-warning") bg-opacity-10 rounded">
-                                    <p class="mb-1 text-muted">Прогнозируемый баланс</p>
-                                    <h4 class="@(forecast.PredictedBalance >= 0 ? "text-info" : "text-warning") mb-0">
-                                        @(forecast.PredictedBalance >= 0 ? "+" : "")@forecast.PredictedBalance.ToString("N0") ₽
-                                    </h4>
-                                </div>
+                            <div class="kpi" style="text-align:right">
+                                <div class="small text-muted">Уверенность</div>
+                                <div class="value">@forecast.Confidence% </div>
                             </div>
                         </div>
 
-                        @if (forecast.PredictedBalance < 0)
+                        @if (forecastPoints != null && forecastPoints.Any())
                         {
-                            <div class="alert alert-danger mt-3 mb-0">
-                                <strong>⚠️ Внимание!</strong> Прогнозируется отрицательный баланс.
-                                Рекомендуется сократить расходы или увеличить доходы.
-                            </div>
-                        }
-                        else if (forecast.PredictedBalance < 5000)
-                        {
-                            <div class="alert alert-warning mt-3 mb-0">
-                                <strong>⚡ Предупреждение:</strong> Прогнозируется низкий остаток средств.
-                                Следите за расходами.
+                            <div style="margin-top:1rem">
+                                <svg viewBox="0 0 600 200" width="100%" height="220" preserveAspectRatio="none" aria-label="Прогноз остатков на 30 дней">
+                                    @{
+                                        // prepare points
+                                        var pts = new List<string>();
+                                        var balances = forecastPoints.Select(p => p.Balance).ToList();
+                                        decimal min = balances.Min();
+                                        decimal max = balances.Max();
+                                        // include zero baseline to center
+                                        min = Math.Min(min, 0);
+                                        max = Math.Max(max, 0);
+                                        if (min == max) { min -= 1; max += 1; }
+
+                                        for (int i = 0; i < forecastPoints.Count; i++)
+                                        {
+                                            double x = 20 + i * ((560.0) / Math.Max(1, forecastPoints.Count - 1));
+                                            double norm = (double)((forecastPoints[i].Balance - min) / (max - min));
+                                            double y = 180 - norm * 160; // pad
+                                            pts.Add($"{x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                                        }
+
+                                        var polylinePoints = string.Join(" ", pts);
+
+                                        // draw baseline for zero
+                                        double zeroNorm = (double)((0 - min) / (max - min));
+                                        double zeroY = 180 - zeroNorm * 160;
+
+                                        // draw negative area polygons (segments under zero)
+                                        var negPolys = new List<string>();
+                                        // build arrays of points with Date and Balance
+                                        var ptsList = forecastPoints.Select((p, idx) => new { idx, p.Date, p.Balance }).ToList();
+
+                                        int idx0 = 0;
+                                        while (idx0 < ptsList.Count)
+                                        {
+                                            // find next segment where balance < 0
+                                            while (idx0 < ptsList.Count && ptsList[idx0].Balance >= 0) idx0++;
+                                            if (idx0 >= ptsList.Count) break;
+                                            int start = idx0;
+                                            // find end of negative run
+                                            while (idx0 < ptsList.Count && ptsList[idx0].Balance < 0) idx0++;
+                                            int end = idx0 - 1;
+
+                                            // compute polygon points including intersections at start-1/start and end/end+1 to close to baseline
+                                            var polyPts = new List<string>();
+
+                                            // left intersection
+                                            int leftIdx = Math.Max(0, start - 1);
+                                            double xLeft = 20 + leftIdx * ((560.0) / Math.Max(1, ptsList.Count - 1));
+                                            double bLeft = (double)ptsList[leftIdx].Balance;
+                                            double xStart = 20 + start * ((560.0) / Math.Max(1, ptsList.Count - 1));
+                                            double bStart = (double)ptsList[start].Balance;
+                                            double xi = xLeft;
+                                            if (bLeft >= 0 && bStart < 0)
+                                            {
+                                                // interpolate crossing between leftIdx and start
+                                                double t = (double)(bLeft) / (double)(bLeft - bStart);
+                                                xi = xLeft + t * (xStart - xLeft);
+                                            }
+                                            double yi = zeroY;
+                                            polyPts.Add($"{xi.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yi.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+                                            // negative points
+                                            for (int k = start; k <= end; k++)
+                                            {
+                                                double xk = 20 + k * ((560.0) / Math.Max(1, ptsList.Count - 1));
+                                                double normk = (double)((ptsList[k].Balance - min) / (max - min));
+                                                double yk = 180 - normk * 160;
+                                                polyPts.Add($"{xk.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yk.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                                            }
+
+                                            // right intersection
+                                            int rightIdx = Math.Min(ptsList.Count - 1, end + 1);
+                                            double xRight = 20 + rightIdx * ((560.0) / Math.Max(1, ptsList.Count - 1));
+                                            double bRight = (double)ptsList[rightIdx].Balance;
+                                            double xEnd = 20 + end * ((560.0) / Math.Max(1, ptsList.Count - 1));
+                                            double bEnd = (double)ptsList[end].Balance;
+                                            double xj = xRight;
+                                            if (bEnd < 0 && bRight >= 0)
+                                            {
+                                                double t2 = (double)(-bEnd) / (double)(bRight - bEnd);
+                                                xj = xEnd + t2 * (xRight - xEnd);
+                                            }
+                                            polyPts.Add($"{xj.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yi.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+                                            // close polygon by adding left intersection again
+                                            polyPts.Add(polyPts[0]);
+
+                                            negPolys.Add(string.Join(" ", polyPts));
+                                        }
+                                    }
+
+                                    <rect x="0" y="0" width="100%" height="100%" fill="transparent" />
+                                    <polyline points="@polylinePoints" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+                                    @foreach (var poly in negPolys)
+                                    {
+                                        <polygon points="@poly" fill="#fdecea" stroke="none"></polygon>
+                                    }
+                                    <line x1="0" x2="600" y1="@zeroY" y2="@zeroY" stroke="#999" stroke-dasharray="3,3" />
+                                </svg>
+
+                                @if (forecastPoints.Any(p => p.Balance < 0))
+                                {
+                                    <div class="alert alert-danger mt-3">Риск кассового разрыва: прогноз уходит в минус</div>
+                                }
                             </div>
                         }
                     </div>
                 </div>
             }
 
-            <div class="row">
-                <!-- Топ категорий расходов -->
-                <div class="col-md-6 mb-4">
-                    <div class="card h-100">
-                        <div class="card-header bg-light">
-                            <h5 class="mb-0">
-                                <span class="bi bi-pie-chart"></span> Топ категорий расходов
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            @if (report != null && report.ExpenseByCategory.Any())
-                            {
-                                @foreach (var cat in report.ExpenseByCategory.Take(5))
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-header">Топ категорий расходов</div>
+                    <div class="card-body">
+                        @if (report != null && report.ExpenseByCategory.Any())
+                        {
+                            <ul class="list">
+                                @foreach (var cat in report.ExpenseByCategory.Take(6))
                                 {
-                                    <div class="mb-3">
-                                        <div class="d-flex justify-content-between mb-1">
-                                            <span class="fw-bold">@cat.Category</span>
-                                            <span class="text-danger fw-bold">@cat.Amount.ToString("N0") ₽</span>
+                                    <li class="list-item">
+                                        <div class="left">
+                                            <div class="fw-bold">@cat.Category</div>
+                                            <div class="muted small">@cat.Count транзакций</div>
                                         </div>
-                                        <div class="progress" style="height: 25px;">
-                                            <div class="progress-bar bg-danger" role="progressbar"
-                                                 style="width: @cat.Percentage%">
-                                                @cat.Percentage.ToString("F1")% (@cat.Count шт.)
-                                            </div>
+                                        <div class="text-end">
+                                            <div class="fw-bold text-danger">@cat.Amount.ToString("N0") ₽</div>
+                                            <div class="small text-muted">@cat.Percentage.ToString("F1")%</div>
                                         </div>
-                                    </div>
+                                    </li>
                                 }
-                                <a href="/reports" class="btn btn-sm btn-outline-primary w-100 mt-2">
-                                    Подробные отчеты →
-                                </a>
-                            }
-                            else
-                            {
-                                <p class="text-muted text-center py-3">Нет данных о расходах</p>
-                            }
-                        </div>
+                            </ul>
+                            <a class="btn btn-outline w-100 mt-2" href="/reports">Подробные отчёты →</a>
+                        }
+                        else
+                        {
+                            <div class="text-muted">Нет данных о расходах</div>
+                        }
                     </div>
                 </div>
 
-                <!-- Последние транзакции -->
-                <div class="col-md-6 mb-4">
-                    <div class="card h-100">
-                        <div class="card-header bg-light">
-                            <h5 class="mb-0">
-                                <span class="bi bi-clock-history"></span> Последние транзакции
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="list-group list-group-flush">
-                                @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(7))
-                                {
-                                    <div class="list-group-item px-0">
-                                        <div class="d-flex justify-content-between align-items-start">
-                                            <div class="flex-grow-1">
-                                                <div class="fw-bold">@t.Description</div>
-                                                <small class="text-muted">
-                                                    @t.Date.ToString("dd.MM.yyyy") •
-                                                    <span class="badge bg-secondary">@t.Category</span>
-                                                </small>
-                                            </div>
-                                            <div class="text-end ms-2">
-                                                <span class="@(t.Amount >= 0 ? "text-success" : "text-danger") fw-bold">
-                                                    @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N0") ₽
-                                                </span>
-                                            </div>
-                                        </div>
+                <div class="card">
+                    <div class="card-header">Последние транзакции</div>
+                    <div class="card-body">
+                        <ul class="list">
+                            @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(8))
+                            {
+                                <li class="list-item">
+                                    <div class="left">
+                                        <div class="fw-bold">@t.Description</div>
+                                        <div class="muted small">@t.Date.ToString("dd.MM.yyyy") • @t.Category</div>
                                     </div>
-                                }
-                            </div>
-                            <a href="/transactions" class="btn btn-sm btn-outline-primary w-100 mt-2">
-                                Все транзакции →
-                            </a>
-                        </div>
+                                    <div class="text-end">
+                                        <div class="fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">@(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N0") ₽</div>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                        <a class="btn btn-outline w-100 mt-2" href="/transactions">Открыть все транзакции →</a>
                     </div>
                 </div>
             </div>
 
-            <!-- Быстрые действия -->
-            <div class="card">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0">
-                        <span class="bi bi-lightning-fill"></span> Быстрые действия
-                    </h5>
-                </div>
+            <div class="card mt-4">
                 <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-md-3">
-                            <a href="/transactions" class="btn btn-primary w-100">
-                                <span class="bi bi-plus-circle"></span> Добавить транзакцию
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a href="/import" class="btn btn-outline-primary w-100">
-                                <span class="bi bi-upload"></span> Импорт CSV
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a href="/reports" class="btn btn-outline-primary w-100">
-                                <span class="bi bi-graph-up"></span> Отчеты
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-outline-secondary w-100" @onclick="RefreshData">
-                                <span class="bi bi-arrow-clockwise"></span> Обновить данные
-                            </button>
-                        </div>
+                    <h3 class="mb-2">Быстрые действия</h3>
+                    <div class="row" style="gap:.5rem">
+                        <a class="btn btn-primary" href="/transactions">Добавить транзакцию</a>
+                        <a class="btn btn-outline" href="/import">Импорт CSV</a>
+                        <a class="btn btn-outline" href="/reports">Отчёты</a>
+                        <button class="btn btn-outline" @onclick="RefreshData">Обновить данные</button>
                     </div>
                 </div>
             </div>
@@ -286,7 +279,9 @@
 @code {
     private List<Transaction> transactions = new();
     private ForecastResult? forecast;
+    private List<CashForecastPoint> forecastPoints = new();
     private CategoryReport? report;
+    private List<MiniFinance.Data.Models.Reminder> upcomingReminders = new();
     private decimal totalIncome => transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
     private decimal totalExpense => transactions.Where(t => t.Amount < 0).Sum(t => t.Amount);
     private decimal balance => totalIncome + totalExpense;
@@ -311,6 +306,15 @@
             {
                 forecast = ForecastingService.PredictNextMonth(transactions);
                 report = ReportService.GetCategoryBreakdown(transactions);
+
+                // load reminders for forecasting and upcoming list
+                var today = DateTime.Today;
+                var rems = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
+                upcomingReminders = rems.Where(r => !r.IsPaid && r.Date >= today && r.Date <= today.AddDays(7)).OrderBy(r => r.Date).ToList();
+
+                // forecast 30 days points
+                var remForForecast = rems.Where(r => !r.IsPaid && r.Date >= today && r.Date <= today.AddDays(30)).ToList();
+                forecastPoints = ForecastingService.PredictCashflowNextDays(transactions, remForForecast, 30);
             }
         }
     }
@@ -319,5 +323,45 @@
     {
         await LoadData();
         StateHasChanged();
+    }
+
+    private async Task MarkReminderPaid(int id)
+    {
+        var r = await DbContext.Reminders.FindAsync(id);
+        if (r == null) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        // create expense transaction
+        var tx = new Transaction
+        {
+            Date = r.Date,
+            Amount = -Math.Abs(r.Amount),
+            Description = $"Оплата: {r.Name}",
+            Category = r.Category ?? string.Empty,
+            UserId = user.Id,
+            ProjectId = null
+        };
+
+        DbContext.Transactions.Add(tx);
+
+        if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.OneTime)
+        {
+            r.IsPaid = true;
+            r.PaidDate = DateTime.Now;
+        }
+        else if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.Monthly)
+        {
+            r.Date = r.Date.AddMonths(1);
+        }
+        else if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.Yearly)
+        {
+            r.Date = r.Date.AddYears(1);
+        }
+
+        await DbContext.SaveChangesAsync();
+        await LoadData();
     }
 }

@@ -1,0 +1,259 @@
+@page "/categories"
+@rendermode InteractiveServer
+@using MiniFinance.Data.Models
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JS
+@attribute [Authorize]
+
+<PageTitle>Категории - MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Категории</h1>
+        <div class="meta text-muted">Создавайте и управляйте категориями расходов и доходов.</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" @onclick="() => showAddForm = true" title="Добавить новую категорию">Добавить категорию</button>
+        <button class="btn btn-outline" @onclick="LoadDefaults" title="Заполнить список стандартными категориями">Загрузить по умолчанию</button>
+    </div>
+</div>
+
+@if (showAddForm)
+{
+    <div class="card mb-4">
+        <div class="card-header">Добавить категорию</div>
+        <div class="card-body">
+            <div class="row" style="gap:.5rem;align-items:end">
+                <div style="flex:1">
+                    <label class="label">Название <span class="text-danger">*</span></label>
+                    <input class="input" placeholder="Новая категория (например: Аренда)" @bind="newName" aria-label="Название категории" />
+                </div>
+                <div style="min-width:160px">
+                    <label class="label">Тип</label>
+                    <select class="input" @bind="newType">
+                        <option value="Expense">Расход</option>
+                        <option value="Income">Доход</option>
+                    </select>
+                </div>
+                <div style="min-width:200px">
+                    <label class="label">Описание</label>
+                    <input class="input" placeholder="Краткое описание (необязательно)" @bind="newDescription" aria-label="Описание категории" />
+                </div>
+            </div>
+            <div style="margin-top:1rem;display:flex;gap:.5rem">
+                <button class="btn btn-primary" @onclick="CreateCategory" title="Сохранить категорию">Добавить категорию</button>
+                <button class="btn btn-outline" @onclick="() => showAddForm = false" title="Закрыть форму">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-header">Список категорий</div>
+    <div class="card-body">
+        @if (categories == null)
+        {
+            <div class="center text-muted">Загрузка...</div>
+        }
+        else if (!categories.Any())
+        {
+            <div class="empty-state">Категории не найдены.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Тип</th>
+                            <th>Описание</th>
+                            <th>Флаг</th>
+                            <th class="text-center">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in categories)
+                        {
+                            <tr>
+                                <td>
+                                    @if (editId == cat.Id)
+                                    {
+                                        <input class="input" @bind="editName" />
+                                    }
+                                    else
+                                    {
+                                        @cat.Name
+                                    }
+                                </td>
+                                <td>
+                                    @if (editId == cat.Id)
+                                    {
+                                        <select class="input" @bind="editType">
+                                            <option value="Expense">Расход</option>
+                                            <option value="Income">Доход</option>
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        @((cat.Type == CategoryType.Income) ? "Доход" : "Расход")
+                                    }
+                                </td>
+                                <td>
+                                    @if (editId == cat.Id)
+                                    {
+                                        <input class="input" @bind="editDescription" />
+                                    }
+                                    else
+                                    {
+                                        <div class="muted small">@cat.Description</div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (cat.IsDefault) { <span class="small muted">(по умолчанию)</span> }
+                                </td>
+                                <td class="text-center">
+                                    @if (editId == cat.Id)
+                                    {
+                                        <button class="btn btn-sm btn-primary" @onclick="() => SaveEdit(cat.Id)">Сохранить</button>
+                                        <button class="btn btn-sm btn-outline" @onclick="CancelEdit">Отмена</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(cat)">Изменить</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(cat.Id)">Удалить</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Category>? categories;
+    private string newName = string.Empty;
+    private string? newDescription;
+    private CategoryType newType = CategoryType.Expense;
+    private bool showAddForm = false;
+
+    private int editId = 0;
+    private string editName = string.Empty;
+    private string? editDescription;
+    private CategoryType editType = CategoryType.Expense;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        categories = await DbContext.Categories.OrderBy(c => c.Name).ToListAsync();
+        StateHasChanged();
+    }
+
+    private async Task CreateCategory()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        var exists = await DbContext.Categories.AnyAsync(c => c.Name == newName);
+        if (exists)
+        {
+            await JS.InvokeVoidAsync("alert", "Категория с таким именем уже существует");
+            return;
+        }
+
+        var cat = new Category { Name = newName.Trim(), Description = newDescription, Type = newType };
+        DbContext.Categories.Add(cat);
+        await DbContext.SaveChangesAsync();
+        newName = string.Empty;
+        newDescription = string.Empty;
+        newType = CategoryType.Expense;
+        await LoadCategories();
+        showAddForm = false;
+    }
+
+    private void StartEdit(Category c)
+    {
+        editId = c.Id;
+        editName = c.Name;
+        editDescription = c.Description;
+        editType = c.Type;
+    }
+
+    private void CancelEdit()
+    {
+        editId = 0;
+        editName = string.Empty;
+        editDescription = string.Empty;
+    }
+
+    private async Task SaveEdit(int id)
+    {
+        var cat = await DbContext.Categories.FindAsync(id);
+        if (cat == null) return;
+        if (string.IsNullOrWhiteSpace(editName)) return;
+        cat.Name = editName.Trim();
+        cat.Description = editDescription;
+        cat.Type = editType;
+        await DbContext.SaveChangesAsync();
+        CancelEdit();
+        await LoadCategories();
+    }
+
+    private async Task ConfirmDelete(int id)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить категорию? Это действие нельзя отменить.");
+        if (!ok) return;
+        await DeleteCategory(id);
+    }
+
+    private async Task DeleteCategory(int id)
+    {
+        var cat = await DbContext.Categories.FindAsync(id);
+        if (cat == null) return;
+
+        // Check if any transactions reference this category
+        var used = await DbContext.Transactions.AnyAsync(t => t.Category == cat.Name);
+        if (used)
+        {
+            await JS.InvokeVoidAsync("alert", "Нельзя удалить категорию — к ней привязаны транзакции.");
+            return;
+        }
+
+        DbContext.Categories.Remove(cat);
+        await DbContext.SaveChangesAsync();
+        await LoadCategories();
+    }
+
+    private async Task LoadDefaults()
+    {
+        var defaults = new[]
+        {
+            new { Name = "Налоги", Type = CategoryType.Expense },
+            new { Name = "Аренда", Type = CategoryType.Expense },
+            new { Name = "Зарплата", Type = CategoryType.Income },
+            new { Name = "Реклама", Type = CategoryType.Expense },
+            new { Name = "Продукты", Type = CategoryType.Expense },
+            new { Name = "Канцелярия", Type = CategoryType.Expense },
+            new { Name = "Транспорт", Type = CategoryType.Expense },
+            new { Name = "Интернет", Type = CategoryType.Expense },
+            new { Name = "Связь", Type = CategoryType.Expense }
+        };
+
+        foreach (var d in defaults)
+        {
+            if (!await DbContext.Categories.AnyAsync(c => c.Name == d.Name))
+            {
+                DbContext.Categories.Add(new Category { Name = d.Name, IsDefault = true, Type = d.Type });
+            }
+        }
+        await DbContext.SaveChangesAsync();
+        await LoadCategories();
+    }
+}

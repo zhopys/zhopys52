@@ -1,0 +1,356 @@
+@page "/account"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+@inject ApplicationDbContext DbContext
+@attribute [Authorize]
+
+<PageTitle>Профиль - MiniFinance</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div class="title">
+                <h1>Профиль</h1>
+                <div class="meta text-muted">Управление учётной записью и параметрами</div>
+            </div>
+        </div>
+
+        @if (showMessage)
+        {
+            <div class="alert alert-success">@message</div>
+        }
+
+        @if (showError)
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        <div class="card-grid" style="grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+            <!-- Profile Info Card -->
+            <div class="card">
+                <div class="card-header">Информация о профиле</div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:1rem">
+                        <div>
+                            <div class="label">Имя пользователя</div>
+                            <div class="value">@currentUser?.UserName</div>
+                        </div>
+                        <div>
+                            <div class="label">Email</div>
+                            <div class="value">@userEmail</div>
+                        </div>
+                        <div>
+                            <div class="label">Регистрация</div>
+                            <div class="value text-muted small">@(userCreatedDate?.ToString("dd.MM.yyyy HH:mm") ?? "Неизвестно") UTC</div>
+                        </div>
+                        <div style="padding-top:.5rem;border-top:1px solid var(--border)">
+                            <button class="btn btn-outline" @onclick="ToggleEditProfile">✎ Редактировать профиль</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats Card -->
+            <div class="card">
+                <div class="card-header">Статистика</div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:1rem">
+                        <div>
+                            <div class="label">Всего транзакций</div>
+                            <div class="value">@totalTransactions</div>
+                        </div>
+                        <div>
+                            <div class="label">Последняя активность</div>
+                            <div class="value text-muted small">@(lastActivityDate?.ToString("dd.MM.yyyy HH:mm") ?? "Нет данных") UTC</div>
+                        </div>
+                        <div style="padding-top:.5rem;border-top:1px solid var(--border)">
+                            <a class="btn btn-outline" href="/reports">Подробная статистика</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Profile Section -->
+        @if (isEditingProfile)
+        {
+            <div class="card mb-4">
+                <div class="card-header">Редактирование профиля</div>
+                <div class="card-body">
+                    <EditForm Model="@editModel" OnValidSubmit="@SaveProfileChanges" Context="editFormContext">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+                            <div>
+                                <label class="label">Имя пользователя</label>
+                                <InputText class="input" @bind-Value="editModel.UserName" disabled />
+                                <div class="small text-muted">Не может быть изменено</div>
+                            </div>
+                            <div>
+                                <label class="label">Email</label>
+                                <InputText type="email" class="input" @bind-Value="editModel.Email" />
+                            </div>
+                        </div>
+
+                        <div style="display:flex;gap:.5rem">
+                            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                            <button type="button" class="btn btn-outline" @onclick="CancelEditProfile">Отмена</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        }
+
+        <!-- Security Card -->
+        <div class="card mb-4">
+            <div class="card-header">Безопасность</div>
+            <div class="card-body">
+                <div style="display:flex;flex-direction:column;gap:1rem">
+                    <div>
+                        <div style="display:flex;align-items:center;justify-content:space-between">
+                            <div>
+                                <strong>Пароль</strong>
+                                <div class="small text-muted">Последнее изменение: неизвестно</div>
+                            </div>
+                            <button class="btn btn-outline" @onclick="ToggleChangePassword">Изменить пароль</button>
+                        </div>
+                    </div>
+
+                    @if (isChangingPassword)
+                    {
+                        <div style="padding-top:1rem;border-top:1px solid var(--border)">
+                            <div style="background:var(--muted-surface);padding:1rem;border-radius:8px">
+                                <EditForm Model="@passwordModel" OnValidSubmit="@ChangePassword" Context="pwFormContext">
+                                    <DataAnnotationsValidator />
+                                    <ValidationSummary class="text-danger" />
+
+                                    <div style="display:flex;flex-direction:column;gap:1rem">
+                                        <div>
+                                            <label class="label">Текущий пароль</label>
+                                            <InputText type="password" class="input" @bind-Value="passwordModel.OldPassword" />
+                                        </div>
+                                        <div>
+                                            <label class="label">Новый пароль</label>
+                                            <InputText type="password" class="input" @bind-Value="passwordModel.NewPassword" />
+                                        </div>
+                                        <div>
+                                            <label class="label">Подтверждение пароля</label>
+                                            <InputText type="password" class="input" @bind-Value="passwordModel.ConfirmPassword" />
+                                        </div>
+
+                                        <div style="display:flex;gap:.5rem">
+                                            <button type="submit" class="btn btn-primary">Изменить пароль</button>
+                                            <button type="button" class="btn btn-outline" @onclick="CancelChangePassword">Отмена</button>
+                                        </div>
+                                    </div>
+                                </EditForm>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card" style="border-color:var(--danger);border-width:2px">
+            <div class="card-header" style="color:var(--danger)">⚠️ Зона опасности</div>
+            <div class="card-body">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <strong>Выход из системы</strong>
+                        <div class="small text-muted">Завершить текущую сессию</div>
+                    </div>
+                    <button class="btn btn-outline-danger" @onclick="Logout">Выход</button>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="center py-5">
+            <h2>Доступ запрещён</h2>
+            <p class="text-muted">Вы должны войти в систему, чтобы просмотреть профиль.</p>
+            <a class="btn btn-primary" href="/account/login">Вход в систему</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private ApplicationUser? currentUser;
+    private string userEmail = string.Empty;
+    private DateTime? userCreatedDate;
+    private int totalTransactions = 0;
+    private DateTime? lastActivityDate;
+
+    private bool isEditingProfile = false;
+    private bool isChangingPassword = false;
+
+    private bool showMessage = false;
+    private string message = string.Empty;
+    private bool showError = false;
+    private string errorMessage = string.Empty;
+
+    private EditProfileModel editModel = new();
+    private ChangePasswordModel passwordModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUser = await UserManager.GetUserAsync(authState.User);
+
+        if (currentUser != null)
+        {
+            userEmail = currentUser.Email ?? string.Empty;
+
+            totalTransactions = await DbContext.Transactions
+                .Where(t => t.UserId == currentUser.Id)
+                .CountAsync();
+
+            lastActivityDate = await DbContext.Transactions
+                .Where(t => t.UserId == currentUser.Id)
+                .OrderByDescending(t => t.Date)
+                .Select(t => (DateTime?)t.Date)
+                .FirstOrDefaultAsync();
+
+            editModel.UserName = currentUser.UserName ?? string.Empty;
+            editModel.Email = currentUser.Email ?? string.Empty;
+        }
+    }
+
+    private void ToggleEditProfile()
+    {
+        isEditingProfile = !isEditingProfile;
+    }
+
+    private void CancelEditProfile()
+    {
+        isEditingProfile = false;
+        if (currentUser != null)
+        {
+            editModel.Email = currentUser.Email ?? string.Empty;
+        }
+    }
+
+    private async Task SaveProfileChanges()
+    {
+        showError = false;
+        showMessage = false;
+
+        if (currentUser == null)
+        {
+            errorMessage = "Пользователь не найден.";
+            showError = true;
+            return;
+        }
+
+        try
+        {
+            currentUser.Email = editModel.Email;
+            var result = await UserManager.UpdateAsync(currentUser);
+
+            if (result.Succeeded)
+            {
+                message = "✅ Профиль успешно обновлён.";
+                showMessage = true;
+                isEditingProfile = false;
+                userEmail = editModel.Email;
+            }
+            else
+            {
+                errorMessage = "Ошибка при обновлении профиля: " + string.Join(", ", result.Errors.Select(e => e.Description));
+                showError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+        }
+    }
+
+    private void ToggleChangePassword()
+    {
+        isChangingPassword = !isChangingPassword;
+    }
+
+    private void CancelChangePassword()
+    {
+        isChangingPassword = false;
+        passwordModel = new();
+    }
+
+    private async Task ChangePassword()
+    {
+        showError = false;
+        showMessage = false;
+
+        if (currentUser == null)
+        {
+            errorMessage = "Пользователь не найден.";
+            showError = true;
+            return;
+        }
+
+        try
+        {
+            var result = await UserManager.ChangePasswordAsync(currentUser, passwordModel.OldPassword, passwordModel.NewPassword);
+
+            if (result.Succeeded)
+            {
+                message = "✅ Пароль успешно изменён.";
+                showMessage = true;
+                isChangingPassword = false;
+                passwordModel = new();
+            }
+            else
+            {
+                errorMessage = "Ошибка при изменении пароля: " + string.Join(", ", result.Errors.Select(e => e.Description));
+                showError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+        }
+    }
+
+    private async Task Logout()
+    {
+        await SignInManager.SignOutAsync();
+        NavigationManager.NavigateTo("/login", forceLoad: true);
+    }
+
+    // Models
+    public class EditProfileModel
+    {
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email обязателен")]
+        [EmailAddress(ErrorMessage = "Некорректный email")]
+        public string Email { get; set; } = string.Empty;
+    }
+
+    public class ChangePasswordModel
+    {
+        [Required(ErrorMessage = "Текущий пароль обязателен")]
+        public string OldPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Новый пароль обязателен")]
+        [StringLength(100, ErrorMessage = "Пароль должен быть от {2} до {1} символов", MinimumLength = 6)]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Подтверждение пароля обязательно")]
+        [Compare("NewPassword", ErrorMessage = "Пароли не совпадают")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

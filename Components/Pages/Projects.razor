@@ -1,0 +1,410 @@
+@page "/projects"
+@rendermode InteractiveServer
+@using MiniFinance.Data.Models
+@using MiniFinance.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JS
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Проекты - MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Проекты</h1>
+        <div class="meta text-muted">Управление проектами, отслеживание рентабельности и статистика</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline" @onclick="LoadProjects">⟳ Обновить</button>
+        <button class="btn btn-primary" @onclick="ToggleCreateForm">+ Новый проект</button>
+    </div>
+</div>
+
+@if (showMessage)
+{
+    <div class="alert alert-success">@message</div>
+}
+
+@if (showError)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<!-- Create/Edit Project Form -->
+@if (showCreateForm)
+{
+    <div class="card mb-4">
+        <div class="card-header">@(editId == 0 ? "Создание проекта" : "Редактирование проекта")</div>
+        <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:1rem">
+                <div>
+                    <label class="label">Название проекта</label>
+                    <input class="input" placeholder="Введите название проекта" @bind="newName" />
+                </div>
+                <div>
+                    <label class="label">Описание (необязательно)</label>
+                    <textarea class="input" placeholder="Описание проекта" @bind="newDescription" style="min-height:80px;resize:vertical"></textarea>
+                </div>
+                <div style="display:flex;gap:.5rem">
+                    <button class="btn btn-primary" @onclick="SaveProject">@(editId == 0 ? "Создать" : "Сохранить")</button>
+                    <button class="btn btn-outline" @onclick="CancelForm">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-header">Список проектов <span class="text-muted">— Всего: @(projects?.Count ?? 0)</span></div>
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <div class="center py-4"><div class="spinner-border" role="status" aria-hidden="true"></div></div>
+        }
+        else if (projects == null || !projects.Any())
+        {
+            <div class="empty-state">
+                <p class="text-muted">Нет проектов. Создайте первый проект для организации ваших операций.</p>
+                <button class="btn btn-primary mt-3" @onclick="ToggleCreateForm">+ Создать проект</button>
+            </div>
+        }
+        else
+        {
+            <div style="display:flex;flex-direction:column;gap:1.5rem">
+                @foreach (var proj in projects)
+                {
+                    var stats = projectStats.FirstOrDefault(s => s.ProjectId == proj.Id);
+                    var profitability = stats != null && stats.TotalIncome > 0 
+                        ? ((stats.Profit / stats.TotalIncome) * 100) 
+                        : 0;
+
+                    <div class="project-card">
+                        <div style="display:flex;justify-content:space-between;align-items:start;gap:1rem">
+                            <div style="flex:1">
+                                <div class="project-name">@proj.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(proj.Description))
+                                {
+                                    <div class="project-description">@proj.Description</div>
+                                }
+
+                                @if (stats != null)
+                                {
+                                    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-top:1rem">
+                                        <div class="stat-item">
+                                            <div class="stat-label">Операций</div>
+                                            <div class="stat-value">@stats.TransactionCount</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">Доходы</div>
+                                            <div class="stat-value text-success">+@stats.TotalIncome.ToString("N0") ₽</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">Расходы</div>
+                                            <div class="stat-value text-danger">@stats.TotalExpense.ToString("N0") ₽</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">Прибыль</div>
+                                            <div class="stat-value" style="@(stats.Profit >= 0 ? "color:var(--success)" : "color:var(--danger)")">
+                                                @(stats.Profit >= 0 ? "+" : "")@stats.Profit.ToString("N0") ₽
+                                            </div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">Рентабельность</div>
+                                            <div class="stat-value" style="@(profitability >= 0 ? "color:var(--success)" : "color:var(--danger)")">
+                                                @profitability.ToString("F1")%
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:.5rem;min-width:auto">
+                                <button class="btn btn-sm btn-outline" @onclick="() => ExpandProject(proj.Id)">
+                                    @(expandedProjectId == proj.Id ? "▼ Скрыть" : "▶ Детали")
+                                </button>
+                                <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(proj)">✎ Редактировать</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(proj.Id)">🗑 Удалить</button>
+                            </div>
+                        </div>
+
+                        @if (expandedProjectId == proj.Id && stats != null)
+                        {
+                            <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+                                <h4 style="margin-bottom:1rem">Детальная статистика</h4>
+                                <div class="card-grid" style="grid-template-columns:repeat(3,1fr)">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="label">Средняя операция</div>
+                                            <div class="value">@(stats.TransactionCount > 0 ? (stats.TotalIncome + Math.Abs(stats.TotalExpense)) / stats.TransactionCount : 0).ToString("N0") ₽</div>
+                                        </div>
+                                    </div>
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="label">ROI (Возврат инвест.)</div>
+                                            <div class="value" style="@(stats.TotalExpense > 0 ? (stats.TotalIncome / stats.TotalExpense >= 1 ? "color:var(--success)" : "color:var(--danger)") : "")">
+                                                @(stats.TotalExpense > 0 ? (stats.TotalIncome / stats.TotalExpense).ToString("F2") : "N/A")x
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="label">Маржа</div>
+                                            <div class="value" style="@(stats.TotalIncome > 0 ? (stats.Profit / stats.TotalIncome >= 0 ? "color:var(--success)" : "color:var(--danger)") : "")">
+                                                @(stats.TotalIncome > 0 ? (Math.Abs(stats.Profit) / stats.TotalIncome * 100).ToString("F1") : "0")%
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if (transactionsByCategory.ContainsKey(proj.Id))
+                                {
+                                    <div style="margin-top:1.5rem">
+                                        <h5 style="margin-bottom:1rem">Операции по категориям</h5>
+                                        <div style="display:flex;flex-direction:column;gap:.5rem">
+                                            @foreach (var cat in transactionsByCategory[proj.Id].Take(10))
+                                            {
+                                                <div style="display:flex;justify-content:space-between;align-items:center;padding:.75rem;background:var(--muted-surface);border-radius:6px">
+                                                    <div>
+                                                        <strong>@cat.Category</strong>
+                                                        <div class="small text-muted">@cat.Count операций</div>
+                                                    </div>
+                                                    <div style="text-align:right">
+                                                        <div class="fw-bold @(cat.Amount >= 0 ? "text-success" : "text-danger")">
+                                                            @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") ₽
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Project>? projects;
+    private bool isLoading = true;
+    private bool showCreateForm = false;
+    private bool showMessage = false;
+    private string message = string.Empty;
+    private bool showError = false;
+    private string errorMessage = string.Empty;
+
+    private string newName = string.Empty;
+    private string? newDescription;
+
+    private int editId = 0;
+    private int? expandedProjectId = null;
+
+    private List<ProjectStats> projectStats = new();
+    private Dictionary<int, List<CategoryTransaction>> transactionsByCategory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProjects();
+    }
+
+    private async Task LoadProjects()
+    {
+        isLoading = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+
+            if (user == null) return;
+
+            projects = await DbContext.Projects.OrderBy(p => p.Name).ToListAsync();
+
+            // Load statistics for each project
+            projectStats = new();
+            transactionsByCategory = new();
+
+            foreach (var proj in projects)
+            {
+                var tx = await DbContext.Transactions
+                    .Where(t => t.ProjectId == proj.Id && t.UserId == user.Id)
+                    .ToListAsync();
+
+                projectStats.Add(new ProjectStats
+                {
+                    ProjectId = proj.Id,
+                    ProjectName = proj.Name,
+                    TransactionCount = tx.Count,
+                    TotalIncome = tx.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                    TotalExpense = Math.Abs(tx.Where(t => t.Amount < 0).Sum(t => t.Amount))
+                });
+
+                // Group by category
+                var catGroups = tx
+                    .GroupBy(t => t.Category)
+                    .Select(g => new CategoryTransaction
+                    {
+                        Category = g.Key,
+                        Amount = g.Sum(t => t.Amount),
+                        Count = g.Count()
+                    })
+                    .OrderByDescending(c => Math.Abs(c.Amount))
+                    .ToList();
+
+                transactionsByCategory[proj.Id] = catGroups;
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ToggleCreateForm()
+    {
+        showCreateForm = !showCreateForm;
+        if (!showCreateForm)
+        {
+            CancelForm();
+        }
+    }
+
+    private void CancelForm()
+    {
+        newName = string.Empty;
+        newDescription = string.Empty;
+        editId = 0;
+        showCreateForm = false;
+    }
+
+    private async Task SaveProject()
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            errorMessage = "Введите название проекта";
+            showError = true;
+            return;
+        }
+
+        showError = false;
+        showMessage = false;
+
+        try
+        {
+            if (editId == 0)
+            {
+                // Create new
+                if (await DbContext.Projects.AnyAsync(p => p.Name == newName.Trim()))
+                {
+                    errorMessage = "Проект с таким названием уже существует";
+                    showError = true;
+                    return;
+                }
+
+                DbContext.Projects.Add(new Project 
+                { 
+                    Name = newName.Trim(), 
+                    Description = newDescription 
+                });
+                message = "✅ Проект создан успешно";
+            }
+            else
+            {
+                // Edit existing
+                var proj = await DbContext.Projects.FindAsync(editId);
+                if (proj == null)
+                {
+                    errorMessage = "Проект не найден";
+                    showError = true;
+                    return;
+                }
+
+                proj.Name = newName.Trim();
+                proj.Description = newDescription;
+                message = "✅ Проект обновлён успешно";
+            }
+
+            await DbContext.SaveChangesAsync();
+            showMessage = true;
+            CancelForm();
+            await LoadProjects();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+        }
+    }
+
+    private void StartEdit(Project p)
+    {
+        editId = p.Id;
+        newName = p.Name;
+        newDescription = p.Description;
+        showCreateForm = true;
+    }
+
+    private async Task ConfirmDelete(int id)
+    {
+        var hasTx = await DbContext.Transactions.AnyAsync(t => t.ProjectId == id);
+        if (hasTx)
+        {
+            errorMessage = "Нельзя удалить проект с транзакциями. Сначала удалите или переассоциируйте операции.";
+            showError = true;
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить проект? Это действие нельзя отменить.");
+        if (!ok) return;
+
+        await DeleteProject(id);
+    }
+
+    private async Task DeleteProject(int id)
+    {
+        try
+        {
+            var p = await DbContext.Projects.FindAsync(id);
+            if (p == null) return;
+
+            DbContext.Projects.Remove(p);
+            await DbContext.SaveChangesAsync();
+            message = "✅ Проект удалён";
+            showMessage = true;
+            await LoadProjects();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка при удалении: {ex.Message}";
+            showError = true;
+        }
+    }
+
+    private void ExpandProject(int projectId)
+    {
+        expandedProjectId = expandedProjectId == projectId ? null : projectId;
+    }
+
+    private class ProjectStats
+    {
+        public int ProjectId { get; set; }
+        public string ProjectName { get; set; } = string.Empty;
+        public int TransactionCount { get; set; }
+        public decimal TotalIncome { get; set; }
+        public decimal TotalExpense { get; set; }
+        public decimal Profit => TotalIncome - TotalExpense;
+    }
+
+    private class CategoryTransaction
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public int Count { get; set; }
+    }
+}

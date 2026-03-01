@@ -89,6 +89,55 @@ namespace MiniFinance.Services
 
             return categoryData;
         }
+
+        // Predict daily cash balance for next `days` days.
+        // Algorithm:
+        // - current balance = all transactions up to today (income + expense)
+        // - subtract unpaid reminders scheduled within next `days`
+        // - compute average daily income from past 3 months and add to each day
+        // - produce daily balances
+        public List<CashForecastPoint> PredictCashflowNextDays(List<Transaction> transactions, List<MiniFinance.Data.Models.Reminder> reminders, int days = 30)
+        {
+            var result = new List<CashForecastPoint>();
+
+            // current balance: consider all transactions up to today
+            var today = DateTime.Today;
+            decimal currentBalance = transactions.Where(t => t.Date <= today).Sum(t => t.Amount);
+
+            // Upcoming reminder outflows (sum per day)
+            var upcoming = reminders?.Where(r => !r.IsPaid && r.Date >= today && r.Date <= today.AddDays(days)).ToList() ?? new List<MiniFinance.Data.Models.Reminder>();
+
+            // Average daily income over past 3 months
+            var threeMonthsAgo = today.AddMonths(-3);
+            var recent = transactions.Where(t => t.Date >= threeMonthsAgo && t.Date <= today).ToList();
+            decimal totalRecentIncome = recent.Where(t => t.Amount > 0).Sum(t => t.Amount);
+            int daysSpan = (today - threeMonthsAgo).Days;
+            if (daysSpan <= 0) daysSpan = 1;
+            decimal avgDailyIncome = totalRecentIncome / daysSpan;
+
+            // Build a lookup for reminders by date
+            var reminderLookup = upcoming.GroupBy(r => r.Date.Date).ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
+
+            decimal bal = currentBalance;
+            for (int i = 1; i <= days; i++)
+            {
+                var d = today.AddDays(i);
+
+                // start from previous day balance
+                // add average income for the day
+                bal += avgDailyIncome;
+
+                // subtract reminders for the day
+                if (reminderLookup.TryGetValue(d.Date, out var remSum))
+                {
+                    bal -= remSum;
+                }
+
+                result.Add(new CashForecastPoint { Date = d.Date, Balance = bal });
+            }
+
+            return result;
+        }
     }
 
     public class ForecastResult
@@ -98,6 +147,12 @@ namespace MiniFinance.Services
         public decimal PredictedBalance { get; set; }
         public int Confidence { get; set; }
         public int BasedOnMonths { get; set; }
+    }
+
+    public class CashForecastPoint
+    {
+        public DateTime Date { get; set; }
+        public decimal Balance { get; set; }
     }
 
     public class CategoryForecast

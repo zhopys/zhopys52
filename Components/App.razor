@@ -5,10 +5,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="app.css" />
+    <script>
+        // prevent flash: set theme from localStorage or system preference before styles load
+        (function(){
+            try{
+                var t = null;
+                try{ t = localStorage.getItem('theme'); }catch(e){}
+                if(!t){
+                    try{ t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }catch(e){ t = 'light' }
+                }
+                if(t === 'dark') document.documentElement.setAttribute('data-theme','dark');
+            }catch(e){}
+        })();
+    </script>
     <link rel="stylesheet" href="MiniFinance.styles.css" />
+    <link rel="stylesheet" href="app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <script src="theme.js"></script>
     <HeadOutlet />
 </head>
 

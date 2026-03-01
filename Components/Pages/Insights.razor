@@ -1,0 +1,515 @@
+@page "/insights"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject IReportService ReportService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<PageTitle>Аналитика роста - MiniFinance</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div class="title">
+                <h1>Аналитика роста</h1>
+                <div class="meta text-muted">Финансовые показатели для масштабирования бизнеса</div>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="center py-5"><div class="spinner-border" role="status" aria-hidden="true"></div></div>
+        }
+        else if (!hasData)
+        {
+            <div class="empty-state">
+                <h3>Недостаточно данных</h3>
+                <p class="text-muted">Добавьте транзакции, чтобы увидеть аналитику роста</p>
+                <a class="btn btn-primary" href="/transactions">Добавить транзакции</a>
+            </div>
+        }
+        else
+        {
+            <!-- Key Metrics Overview -->
+            <div class="card-grid mb-4" style="grid-template-columns:repeat(4,1fr)">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Рентабельность</div>
+                        <div class="metric-value" style="@(profitMargin >= 0 ? "color:var(--success)" : "color:var(--danger)")">
+                            @profitMargin.ToString("F1")%
+                        </div>
+                        <div class="metric-hint">@GetProfitabilityHint()</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Средний чек</div>
+                        <div class="metric-value">@averageTransaction.ToString("N0") ₽</div>
+                        <div class="metric-hint">@transactionCount операций</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Чистая прибыль</div>
+                        <div class="metric-value" style="@(netProfit >= 0 ? "color:var(--success)" : "color:var(--danger)")">
+                            @netProfit.ToString("N0") ₽
+                        </div>
+                        <div class="metric-hint">за период</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Денежный поток</div>
+                        <div class="metric-value" style="@(cashFlow >= 0 ? "color:var(--success)" : "color:var(--danger)")">
+                            @cashFlow.ToString("N0") ₽
+                        </div>
+                        <div class="metric-hint">@(cashFlow >= 0 ? "стабильный" : "отрицательный")</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Insights -->
+            <div class="card-grid mb-4" style="grid-template-columns:1fr 1fr">
+                <!-- Profitability Insight -->
+                <div class="card insight-card">
+                    <div class="card-header">📊 Рентабельность и направления роста</div>
+                    <div class="card-body">
+                        <div class="insight-content">
+                            <p class="insight-text">
+                                <strong>Текущая рентабельность: @profitMargin.ToString("F1")%</strong>
+                            </p>
+                            <div class="insight-description">
+                                @if (profitMargin >= 30)
+                                {
+                                    <p>✅ <strong>Здоровая рентабельность!</strong> Ваш бизнес готов к масштабированию. Вы можете:</p>
+                                    <ul class="recommendations">
+                                        <li>Инвестировать в новые направления</li>
+                                        <li>Расширить команду и услуги</li>
+                                        <li>Выходить на новые рынки</li>
+                                        <li>Увеличивать объемы текущих операций</li>
+                                    </ul>
+                                }
+                                else if (profitMargin >= 15)
+                                {
+                                    <p>⚠️ <strong>Умеренная рентабельность.</strong> Есть потенциал для улучшения:</p>
+                                    <ul class="recommendations">
+                                        <li>Проанализируйте затраты по категориям</li>
+                                        <li>Сокращайте невостребованные услуги</li>
+                                        <li>Оптимизируйте процессы перед масштабированием</li>
+                                        <li>Ищите способы увеличить средний чек</li>
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p>⛔ <strong>Низкая рентабельность.</strong> Требуется оптимизация:</p>
+                                    <ul class="recommendations">
+                                        <li>Срочно пересмотрите структуру затрат</li>
+                                        <li>Определите убыточные направления</li>
+                                        <li>Повысьте цены на востребованные услуги</li>
+                                        <li>Масштабирование может усугубить ситуацию</li>
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Average Check Insight -->
+                <div class="card insight-card">
+                    <div class="card-header">💰 Средний чек и потенциал дохода</div>
+                    <div class="card-body">
+                        <div class="insight-content">
+                            <p class="insight-text">
+                                <strong>Средняя операция: @averageTransaction.ToString("N0") ₽</strong>
+                            </p>
+                            <div class="insight-description">
+                                @if (averageTransaction > 50000)
+                                {
+                                    <p>✅ <strong>Высокий средний чек!</strong> Ваши клиенты готовы платить.</p>
+                                    <ul class="recommendations">
+                                        <li>Можете поднимать цены на премиум услуги</li>
+                                        <li>Сосредоточьтесь на качестве и удержании</li>
+                                        <li>Даже малый рост клиентов даст большой эффект</li>
+                                        <li>Инвестируйте в брендирование и репутацию</li>
+                                    </ul>
+                                }
+                                else if (averageTransaction > 20000)
+                                {
+                                    <p>👍 <strong>Хороший уровень.</strong> Есть нишу для расширения:</p>
+                                    <ul class="recommendations">
+                                        <li>Предложите дополнительные услуги (апсейл)</li>
+                                        <li>Создавайте комбо-предложения</li>
+                                        <li>Обучайте команду кросс-продажам</li>
+                                        <li>Изучите готовность клиентов платить больше</li>
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p>⚠️ <strong>Низкий средний чек.</strong> Возможности роста:</p>
+                                    <ul class="recommendations">
+                                        <li>Пересмотрите ценообразование</li>
+                                        <li>Сфокусируйтесь на высокомаржинальных продуктах</li>
+                                        <li>Развивайте премиум-линейку услуг</li>
+                                        <li>Расчет на объем требует стабильности денежного потока</li>
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-grid mb-4" style="grid-template-columns:1fr 1fr">
+                <!-- Cash Flow Insight -->
+                <div class="card insight-card">
+                    <div class="card-header">💵 Денежный поток и расходы роста</div>
+                    <div class="card-body">
+                        <div class="insight-content">
+                            <p class="insight-text">
+                                <strong>Текущий поток: @cashFlow.ToString("N0") ₽</strong>
+                            </p>
+                            <div class="insight-description">
+                                @{
+                                    decimal monthlyAverage = monthlyData.Any() ? monthlyData.Average(m => m.Balance) : 0;
+                                    decimal monthlyIncome = monthlyData.Any() ? monthlyData.Average(m => m.Income) : 0;
+                                }
+                                
+                                @if (cashFlow >= monthlyIncome * 0.5m)
+                                {
+                                    <p>✅ <strong>Здоровый денежный поток!</strong> Вы можете:</p>
+                                    <ul class="recommendations">
+                                        <li>Нанять новых сотрудников</li>
+                                        <li>Инвестировать в оборудование и инструменты</li>
+                                        <li>Развивать маркетинг и рекламу</li>
+                                        <li>Создать резервный фонд для стабильности</li>
+                                    </ul>
+                                }
+                                else if (cashFlow > 0)
+                                {
+                                    <p>👍 <strong>Положительный поток, но напряженный.</strong> Будьте осторожны:</p>
+                                    <ul class="recommendations">
+                                        <li>Копите средства перед расширением</li>
+                                        <li>Масштабируйте постепенно и контролируемо</li>
+                                        <li>Следите за сроками платежей клиентов</li>
+                                        <li>Сначала улучшите собираемость и цены</li>
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p>⛔ <strong>Отрицательный денежный поток!</strong> Критично:</p>
+                                    <ul class="recommendations">
+                                        <li>Срочно вернитесь к базовой прибыльности</li>
+                                        <li>Сокращайте расходы без убытка качества</li>
+                                        <li>Ускорьте получение платежей от клиентов</li>
+                                        <li>Любое расширение приведет к краху</li>
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Net Profit & EBITDA Insight -->
+                <div class="card insight-card">
+                    <div class="card-header">📈 Чистая прибыль и инвестпотенциал</div>
+                    <div class="card-body">
+                        <div class="insight-content">
+                            <p class="insight-text">
+                                <strong>Чистая прибыль: @netProfit.ToString("N0") ₽</strong>
+                            </p>
+                            <div class="insight-description">
+                                @{
+                                    decimal investmentCapacity = (netProfit / Math.Max(totalIncome, 1)) * 100;
+                                }
+                                
+                                @if (netProfit > 0 && investmentCapacity >= 20)
+                                {
+                                    <p>✅ <strong>Отличный потенциал для инвестиций!</strong></p>
+                                    <ul class="recommendations">
+                                        <li>Вы можете позволить себе расчеты на рост</li>
+                                        <li>Инвестируйте в маркетинг и привлечение (10-15%)</li>
+                                        <li>Развивайте продукт и разные линейки услуг</li>
+                                        <li>Думайте о глобальном расширении</li>
+                                    </ul>
+                                }
+                                else if (netProfit > 0)
+                                {
+                                    <p>👍 <strong>Есть потенциал, но ограниченный.</strong></p>
+                                    <ul class="recommendations">
+                                        <li>Инвестируйте консервативно (5-10% прибыли)</li>
+                                        <li>Приоритет: стабилизация текущих операций</li>
+                                        <li>Затем — маркетинг и расширение</li>
+                                        <li>Накапливайте резерв для крупных инвестиций</li>
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p>⛔ <strong>Нет инвестпотенциала.</strong> Вернитесь к росту позже:</p>
+                                    <ul class="recommendations">
+                                        <li>Прибыли нет — инвестировать нечем</li>
+                                        <li>Сначала добейтесь положительной прибыли</li>
+                                        <li>Потом — постепенное расширение</li>
+                                        <li>Учитесь на текущей бизнес-модели</li>
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scaling Strategy Recommendations -->
+            <div class="card">
+                <div class="card-header">🚀 Рекомендуемая стратегия масштабирования</div>
+                <div class="card-body">
+                    <div class="scaling-strategy">
+                        @{
+                            var (phase, actions) = GetScalingPhase();
+                        }
+                        <div class="phase-header">Этап: @phase</div>
+                        <div class="phase-actions">
+                            @foreach (var action in actions)
+                            {
+                                <div class="action-item">
+                                    <div class="action-title">@action.Title</div>
+                                    <div class="action-description">@action.Description</div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Top categories by profitability -->
+                        @if (topCategories.Any())
+                        {
+                            <div style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--border)">
+                                <h4>Самые прибыльные направления</h4>
+                                <div style="display:flex;flex-direction:column;gap:1rem;margin-top:1rem">
+                                    @foreach (var cat in topCategories.Take(5))
+                                    {
+                                        <div style="background:var(--muted-surface);padding:1rem;border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+                                            <div>
+                                                <strong>@cat.Category</strong>
+                                                <div class="small text-muted">@cat.TransactionCount операций</div>
+                                            </div>
+                                            <div style="text-align:right">
+                                                <div class="fw-bold text-success">+@cat.Income.ToString("N0") ₽</div>
+                                                <div class="small text-muted">@cat.Profitability.ToString("F1")% маржа</div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Range Selector -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <div style="display:flex;gap:1rem;align-items:center">
+                        <div>
+                            <label class="label">Период анализа</label>
+                            <select class="input" @onchange="@((ChangeEventArgs e) => ChangePeriod(e.Value?.ToString()))" value="@currentPeriod">
+                                <option value="30">Последние 30 дней</option>
+                                <option value="90">Последние 90 дней</option>
+                                <option value="180">Последние 6 месяцев</option>
+                                <option value="365">Последний год</option>
+                                <option value="0">Все время</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline" @onclick="@(() => RefreshData())">⟳ Обновить</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool isLoading = true;
+    private bool hasData = false;
+    private string currentPeriod = "30";
+
+    private decimal profitMargin = 0;
+    private decimal averageTransaction = 0;
+    private int transactionCount = 0;
+    private decimal netProfit = 0;
+    private decimal cashFlow = 0;
+    private decimal totalIncome = 0;
+    private decimal totalExpense = 0;
+
+    private List<MonthlyTrend> monthlyData = new();
+    private List<CategoryMetrics> topCategories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+
+            if (user == null)
+                return;
+
+            DateTime startDate = currentPeriod == "0" 
+                ? DateTime.MinValue 
+                : DateTime.Today.AddDays(-int.Parse(currentPeriod));
+
+            var transactions = await DbContext.Transactions
+                .Where(t => t.UserId == user.Id && t.Date >= startDate)
+                .ToListAsync();
+
+            if (!transactions.Any())
+            {
+                hasData = false;
+                isLoading = false;
+                return;
+            }
+
+            // Calculate metrics
+            totalIncome = transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
+            totalExpense = Math.Abs(transactions.Where(t => t.Amount < 0).Sum(t => t.Amount));
+            netProfit = totalIncome - totalExpense;
+            cashFlow = transactions.Sum(t => t.Amount);
+            transactionCount = transactions.Count;
+            
+            // Profitability
+            profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
+            
+            // Average transaction
+            averageTransaction = transactionCount > 0 ? Math.Abs(transactions.Average(t => t.Amount)) : 0;
+
+            // Monthly data
+            monthlyData = ReportService.GetMonthlyTrends(transactions);
+
+            // Top categories by profitability
+            var categoryGroups = transactions
+                .GroupBy(t => t.Category)
+                .Select(g => new CategoryMetrics
+                {
+                    Category = g.Key,
+                    Income = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                    Expense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount)),
+                    TransactionCount = g.Count(),
+                    Profitability = 0
+                })
+                .ToList();
+
+            foreach (var cat in categoryGroups)
+            {
+                cat.Profitability = cat.Income > 0 ? ((cat.Income - cat.Expense) / cat.Income) * 100 : 0;
+            }
+
+            topCategories = categoryGroups.OrderByDescending(c => c.Profitability).ToList();
+
+            hasData = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadData();
+    }
+
+    private void ChangePeriod(string? period)
+    {
+        if (period != null)
+        {
+            currentPeriod = period;
+            LoadData().Wait();
+        }
+    }
+
+    private string GetProfitabilityHint()
+    {
+        if (profitMargin >= 30) return "Отличный результат";
+        if (profitMargin >= 15) return "Норма для бизнеса";
+        if (profitMargin > 0) return "Требует оптимизации";
+        return "Убыток";
+    }
+
+    private (string phase, List<ScalingAction> actions) GetScalingPhase()
+    {
+        if (netProfit <= 0)
+        {
+            return ("Стабилизация", new List<ScalingAction>
+            {
+                new("Анализ затрат", "Определите основные статьи расходов и убыточные операции"),
+                new("Оптимизация цен", "Пересмотрите ценообразование с учетом конкуренции"),
+                new("Сокращение потерь", "Устраните непрофитные направления"),
+                new("Фокус на кассу", "Убедитесь, что клиенты платят вовремя")
+            });
+        }
+
+        if (profitMargin < 15 || averageTransaction < 20000)
+        {
+            return ("Укрепление", new List<ScalingAction>
+            {
+                new("Улучшение маржи", "Повышайте цены постепенно, следя за спросом"),
+                new("Расширение чека", "Добавляйте дополнительные услуги (апсейл)"),
+                new("Стабильность", "Создавайте резервный фонд (3-6 месяцев расходов)"),
+                new("Опыт", "Совершенствуйте процессы перед масштабированием")
+            });
+        }
+
+        if (profitMargin >= 30 && cashFlow > 0 && netProfit > 0)
+        {
+            return ("Активный рост", new List<ScalingAction>
+            {
+                new("Расширение команды", "Нанимайте людей для увеличения мощности"),
+                new("Маркетинг (10-15%)", "Инвестируйте в привлечение новых клиентов"),
+                new("Премиум услуги", "Развивайте высокомаржинальные направления"),
+                new("Автоматизация", "Внедряйте инструменты для масштабирования")
+            });
+        }
+
+        return ("Оптимизация", new List<ScalingAction>
+        {
+            new("Балансировка", "Найдите оптимальное соотношение цена-качество"),
+            new("Клиентоцентричность", "Фокусируйтесь на удержании и дополнительных продажах"),
+            new("Системизация", "Документируйте процессы для будущего масштабирования"),
+            new("Мониторинг", "Регулярно анализируйте метрики")
+        });
+    }
+
+    public class CategoryMetrics
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal Income { get; set; }
+        public decimal Expense { get; set; }
+        public int TransactionCount { get; set; }
+        public decimal Profitability { get; set; }
+    }
+
+    public class ScalingAction
+    {
+        public string Title { get; set; }
+        public string Description { get; set; }
+
+        public ScalingAction(string title, string description)
+        {
+            Title = title;
+            Description = description;
+        }
+    }
+}

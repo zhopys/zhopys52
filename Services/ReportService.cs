@@ -111,11 +111,9 @@ namespace MiniFinance.Services
 
         public List<ProjectSummary> GetProjectReport(List<Transaction> transactions)
         {
-            // Try to use a 'Project' property if it exists on Transaction, otherwise fallback to Category
-            var projProp = typeof(Transaction).GetProperty("Project");
-
+            // Group by project name if available, otherwise fallback to Category
             var groups = transactions
-                .GroupBy(t => projProp != null ? (projProp.GetValue(t)?.ToString() ?? "(none)") : t.Category)
+                .GroupBy(t => t.Project != null ? t.Project.Name : t.Category)
                 .Select(g => new ProjectSummary
                 {
                     Project = string.IsNullOrWhiteSpace(g.Key) ? "(none)" : g.Key,
@@ -128,6 +126,69 @@ namespace MiniFinance.Services
 
             return groups;
         }
+
+        // Simple forecast based on linear regression over monthly balances.
+        // If there are fewer than 2 points, we fall back to repeating the last known balance.
+        public List<ForecastPoint> GetForecast(List<MonthlyTrend> monthlyTrends, int monthsAhead = 6)
+        {
+            var result = new List<ForecastPoint>();
+
+            if (monthlyTrends == null || monthlyTrends.Count == 0 || monthsAhead <= 0)
+                return result;
+
+            // Use monthly balance as the target value. Ensure sorted by time.
+            var ordered = monthlyTrends.OrderBy(m => new DateTime(m.Year, m.Month, 1)).ToList();
+
+            // Convert to numeric x,y where x is consecutive month index starting at 0
+            var values = ordered.Select(m => m.Balance).ToList();
+            int n = values.Count;
+
+            if (n == 1)
+            {
+                // Not enough data to project; repeat the single value
+                var start = new DateTime(ordered[0].Year, ordered[0].Month, 1);
+                for (int i = 1; i <= monthsAhead; i++)
+                {
+                    var d = start.AddMonths(i);
+                    result.Add(new ForecastPoint { Year = d.Year, Month = d.Month, Balance = ordered[0].Balance });
+                }
+                return result;
+            }
+
+            // Compute linear regression (least squares) for y = a + b*x
+            // x: 0 .. n-1
+            double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double x = i;
+                double y = (double)values[i];
+                sumX += x;
+                sumY += y;
+                sumXY += x * y;
+                sumXX += x * x;
+            }
+
+            double denom = n * sumXX - sumX * sumX;
+            double slope = denom == 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+            double intercept = (sumY - slope * sumX) / n;
+
+            var lastDate = new DateTime(ordered.Last().Year, ordered.Last().Month, 1);
+            for (int i = 1; i <= monthsAhead; i++)
+            {
+                int xForecast = n - 1 + i; // next indices
+                double yPred = intercept + slope * xForecast;
+                var d = lastDate.AddMonths(i);
+                result.Add(new ForecastPoint
+                {
+                    Year = d.Year,
+                    Month = d.Month,
+                    Balance = (decimal)Math.Round(yPred, 2)
+                });
+            }
+
+            return result;
+        }
+
     }
 
     public class CategoryReport
@@ -174,5 +235,14 @@ namespace MiniFinance.Services
         public decimal Expense { get; set; }
         public decimal Profit => Income - Expense;
         public int Transactions { get; set; }
+    }
+
+    // Forecast point used for simple projection
+    public class ForecastPoint
+    {
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public decimal Balance { get; set; }
+        public string MonthName => new DateTime(Year, Month, 1).ToString("MMM yyyy");
     }
 }
