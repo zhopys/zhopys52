@@ -36,6 +36,11 @@ namespace MiniFinance.Data
             builder.Entity<Project>(b =>
             {
                 b.HasIndex(p => p.Name).IsUnique();
+                
+                // Индексы для новых полей
+                b.HasIndex(p => p.Status);
+                b.HasIndex(p => p.Priority);
+                b.HasIndex(p => p.ProjectManager);
             });
 
             // Transaction -> Project relationship (optional). Restrict delete to prevent accidental removal.

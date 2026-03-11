@@ -39,19 +39,111 @@
     <div class="card mb-3">
         <div class="card-header">@(editId == 0 ? "Создать проект" : "Редактировать проект")</div>
         <div class="card-body">
-            <div class="row" style="gap:.5rem;align-items:end">
-                <div style="flex:1">
-                    <label class="label">Название <span class="text-danger">*</span></label>
-                    <input class="input" @bind="newName" placeholder="Например: Маркетинговая кампания 2026" aria-label="Название проекта" />
-                    @if (showError && string.IsNullOrWhiteSpace(newName)) { <div class="small text-danger">Название обязательно</div> }
+            <div class="form-container" style="display: flex; flex-direction: column; gap: 1rem;">
+                <!-- Основные поля -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                    <div>
+                        <label class="label">Название <span class="text-danger">*</span></label>
+                        <input class="input" @bind="newProject.Name" placeholder="Например: Маркетинговая кампания 2026" aria-label="Название проекта" />
+                        @if (showError && string.IsNullOrWhiteSpace(newProject.Name)) 
+                        { 
+                            <div class="small text-danger">Название обязательно</div> 
+                        }
+                    </div>
+                    
+                    <div>
+                        <label class="label">Статус проекта</label>
+                        <select class="input" @bind="newProject.Status">
+                            <option value="@ProjectStatus.Planning">Планирование</option>
+                            <option value="@ProjectStatus.Active">Активный</option>
+                            <option value="@ProjectStatus.OnHold">Приостановлен</option>
+                            <option value="@ProjectStatus.Completed">Завершен</option>
+                            <option value="@ProjectStatus.Cancelled">Отменен</option>
+                        </select>
+                    </div>
                 </div>
-                <div style="flex:2">
+
+                <!-- Финансовые показатели -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                    <div>
+                        <label class="label">Бюджет (₽)</label>
+                        <input type="number" class="input" @bind="newProject.Budget" placeholder="0" step="1000" />
+                    </div>
+                    
+                    <div>
+                        <label class="label">Целевой ROI (%)</label>
+                        <input type="number" class="input" @bind="newProject.TargetROI" placeholder="0" step="0.1" />
+                    </div>
+                    
+                    <div>
+                        <label class="label">Приоритет</label>
+                        <select class="input" @bind="newProject.Priority">
+                            <option value="">Не указан</option>
+                            <option value="@ProjectPriority.Low">Низкий</option>
+                            <option value="@ProjectPriority.Medium">Средний</option>
+                            <option value="@ProjectPriority.High">Высокий</option>
+                            <option value="@ProjectPriority.Critical">Критический</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Даты -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                    <div>
+                        <label class="label">Дата начала</label>
+                        <input type="date" class="input" @bind="newProject.StartDate" />
+                    </div>
+                    
+                    <div>
+                        <label class="label">Дата завершения</label>
+                        <input type="date" class="input" @bind="newProject.EndDate" />
+                    </div>
+                </div>
+
+                <!-- Менеджер -->
+                <div>
+                    <label class="label">Менеджер проекта</label>
+                    <input class="input" @bind="newProject.ProjectManager" placeholder="ФИО менеджера" />
+                </div>
+
+                <!-- Описание -->
+                <div>
                     <label class="label">Описание</label>
-                    <input class="input" @bind="newDescription" placeholder="Краткое описание проекта" aria-label="Описание проекта" />
+                    <textarea class="input" @bind="newProject.Description" 
+                              placeholder="Краткое описание проекта" 
+                              rows="2"
+                              style="resize: vertical;"></textarea>
                 </div>
-                <div style="min-width:200px;display:flex;gap:.5rem">
-                    <button class="btn btn-primary" @onclick="SaveProject" title="Сохранить проект">@(editId == 0 ? "Создать проект" : "Сохранить проект")</button>
-                    <button class="btn btn-outline" @onclick="CancelForm" title="Отменить">Отмена</button>
+
+                <!-- Дополнительные поля -->
+                <div>
+                    <label class="label">Ключевые показатели (KPI)</label>
+                    <textarea class="input" @bind="newProject.KPI" 
+                              placeholder="Например: увеличение продаж на 20%, снижение затрат на 15%" 
+                              rows="2"
+                              style="resize: vertical;"></textarea>
+                </div>
+
+                <div>
+                    <label class="label">Риски проекта</label>
+                    <textarea class="input" @bind="newProject.Risks" 
+                              placeholder="Опишите потенциальные риски" 
+                              rows="2"
+                              style="resize: vertical;"></textarea>
+                </div>
+
+                <div>
+                    <label class="label">Заметки / Комментарии</label>
+                    <textarea class="input" @bind="newProject.Notes" 
+                              placeholder="Дополнительная информация" 
+                              rows="2"
+                              style="resize: vertical;"></textarea>
+                </div>
+
+                <!-- Кнопки -->
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button class="btn btn-primary" @onclick="SaveProject">@(editId == 0 ? "Создать проект" : "Сохранить изменения")</button>
+                    <button class="btn btn-outline" @onclick="CancelForm">Отмена</button>
                 </div>
             </div>
         </div>
@@ -59,7 +151,19 @@
 }
 
 <div class="card">
-    <div class="card-header">Список проектов <span class="text-muted">— Всего: @(projects?.Count ?? 0)</span></div>
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Список проектов <span class="text-muted">— Всего: @(projects?.Count ?? 0)</span></span>
+            @if (projects?.Any() == true)
+            {
+                <div class="summary-stats" style="display: flex; gap: 1rem; font-size: 0.9rem;">
+                    <span>📊 Активных: @projects.Count(p => p.Status == ProjectStatus.Active)</span>
+                    <span>✅ Завершено: @projects.Count(p => p.Status == ProjectStatus.Completed)</span>
+                    <span>💰 Бюджет: @projects.Sum(p => p.Budget ?? 0).ToString("N0") ₽</span>
+                </div>
+            }
+        </div>
+    </div>
     <div class="card-body">
         @if (isLoading)
         {
@@ -76,10 +180,14 @@
                     <thead>
                         <tr>
                             <th>Название</th>
-                            <th>Описание</th>
+                            <th>Статус</th>
+                            <th>Приоритет</th>
+                            <th>Менеджер</th>
+                            <th class="text-end">Бюджет</th>
                             <th class="text-end">Доходы</th>
                             <th class="text-end">Расходы</th>
                             <th class="text-end">Прибыль</th>
+                            <th class="text-end">ROI</th>
                             <th class="text-center">Действия</th>
                         </tr>
                     </thead>
@@ -87,21 +195,146 @@
                         @foreach (var p in projects)
                         {
                             var s = stats.ContainsKey(p.Id) ? stats[p.Id] : new ProjectStat();
+                            var profitability = s.TotalIncome > 0 ? ((s.Profit / s.TotalIncome) * 100) : 0;
+                            var statusClass = GetStatusClass(p.Status);
+                            
                             <tr>
-                                <td>@p.Name</td>
-                                <td>@p.Description</td>
-                                <td class="text-end text-success">+@s.TotalIncome.ToString("N2") ₽</td>
-                                <td class="text-end text-danger">@s.TotalExpense.ToString("N2") ₽</td>
-                                <td class="text-end fw-bold" style="color:@(s.Profit>=0 ? "var(--success)" : "var(--danger)")">@(s.Profit>=0? "+" : "")@s.Profit.ToString("N2") ₽</td>
-                                <td class="text-center">
-                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(p)" title="Редактировать проект">Редактировать</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p.Id)" title="Удалить проект">Удалить</button>
+                                <td>
+                                    <strong>@p.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(p.Description))
+                                    {
+                                        <br /><small class="text-muted">@p.Description</small>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="status-badge @statusClass">@GetStatusText(p.Status)</span>
+                                </td>
+                                <td>
+                                    @if (p.Priority.HasValue)
+                                    {
+                                        <span class="priority-badge priority-@p.Priority.Value.ToString().ToLower()">
+                                            @GetPriorityText(p.Priority.Value)
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>@(p.ProjectManager ?? "—")</td>
+                                <td class="text-end">@(p.Budget?.ToString("N0") ?? "—") ₽</td>
+                                <td class="text-end text-success">+@s.TotalIncome.ToString("N0") ₽</td>
+                                <td class="text-end text-danger">@s.TotalExpense.ToString("N0") ₽</td>
+                                <td class="text-end fw-bold" style="color:@(s.Profit >= 0 ? "var(--success)" : "var(--danger)")">
+                                    @(s.Profit >= 0 ? "+" : "")@s.Profit.ToString("N0") ₽
+                                </td>
+                                <td class="text-end @(profitability >= 0 ? "text-success" : "text-danger")">
+                                    @profitability.ToString("F1")%
+                                </td>
+                                <td class="text-center" style="white-space: nowrap;">
+                                    <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(p)" title="Редактировать проект">✎</button>
+                                    <button class="btn btn-sm btn-outline-info" @onclick="() => ViewDetails(p.Id)" title="Детали проекта">👁️</button>
+                                    @if (!p.IsDefault)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p.Id)" title="Удалить проект">🗑</button>
+                                    }
                                 </td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
+
+            @if (selectedProject != null)
+            {
+                <div class="modal-overlay" @onclick="CloseDetails">
+                    <div class="modal-content" @onclick:stopPropagation="true">
+                        <div class="modal-header">
+                            <h3>@selectedProject.Name - детали проекта</h3>
+                            <button class="modal-close" @onclick="CloseDetails">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            @if (selectedStats != null)
+                            {
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                                    <div class="detail-card">
+                                        <div class="detail-label">Доходы</div>
+                                        <div class="detail-value positive">+@selectedStats.TotalIncome.ToString("N0") ₽</div>
+                                    </div>
+                                    <div class="detail-card">
+                                        <div class="detail-label">Расходы</div>
+                                        <div class="detail-value negative">@selectedStats.TotalExpense.ToString("N0") ₽</div>
+                                    </div>
+                                    <div class="detail-card">
+                                        <div class="detail-label">Прибыль</div>
+                                        <div class="detail-value @(selectedStats.Profit >= 0 ? "positive" : "negative")">
+                                            @(selectedStats.Profit >= 0 ? "+" : "")@selectedStats.Profit.ToString("N0") ₽
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if (selectedProject.Budget.HasValue)
+                                {
+                                    var budgetUsed = (selectedStats.TotalExpense / selectedProject.Budget.Value) * 100;
+                                    <div class="progress-section">
+                                        <div class="progress-label">
+                                            <span>Использовано бюджета</span>
+                                            <span>@budgetUsed.ToString("F1")% (@selectedStats.TotalExpense.ToString("N0") ₽ / @selectedProject.Budget.Value.ToString("N0") ₽)</span>
+                                        </div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill @(budgetUsed > 100 ? "over-budget" : "")" 
+                                                 style="width: @Math.Min(budgetUsed, 100)%;"></div>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (selectedProject.TargetROI.HasValue)
+                                {
+                                    var profitability = selectedStats.TotalIncome > 0 ? ((selectedStats.Profit / selectedStats.TotalIncome) * 100) : 0;
+                                    var targetProgress = (profitability / selectedProject.TargetROI.Value) * 100;
+                                    <div class="progress-section">
+                                        <div class="progress-label">
+                                            <span>Целевой ROI (@selectedProject.TargetROI.Value%)</span>
+                                            <span>@targetProgress.ToString("F1")% (текущий: @profitability.ToString("F1")%)</span>
+                                        </div>
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar-fill target" 
+                                                 style="width: @Math.Min(targetProgress, 100)%;"></div>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(selectedProject.KPI))
+                                {
+                                    <div class="info-section">
+                                        <h4>🎯 KPI</h4>
+                                        <p>@selectedProject.KPI</p>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(selectedProject.Risks))
+                                {
+                                    <div class="info-section">
+                                        <h4>⚠️ Риски</h4>
+                                        <p>@selectedProject.Risks</p>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(selectedProject.Notes))
+                                {
+                                    <div class="info-section">
+                                        <h4>📝 Заметки</h4>
+                                        <p>@selectedProject.Notes</p>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline" @onclick="CloseDetails">Закрыть</button>
+                        </div>
+                    </div>
+                </div>
+            }
         }
     </div>
 </div>
@@ -115,11 +348,14 @@
     private bool showError = false;
     private string errorMessage = string.Empty;
 
-    private string newName = string.Empty;
-    private string? newDescription;
+    private ProjectEditModel newProject = new();
     private int editId = 0;
 
     private Dictionary<int, ProjectStat> stats = new();
+    
+    // Для модального окна с деталями
+    private Project? selectedProject = null;
+    private ProjectStat? selectedStats = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -135,7 +371,11 @@
             var user = await UserManager.GetUserAsync(authState.User);
             if (user == null) return;
 
-            projects = await DbContext.Projects.OrderBy(p => p.Name).ToListAsync();
+            projects = await DbContext.Projects
+                .OrderByDescending(p => p.IsDefault)
+                .ThenBy(p => p.Status == ProjectStatus.Active ? 0 : 1)
+                .ThenBy(p => p.Name)
+                .ToListAsync();
 
             // compute stats per project for current user
             var tx = await DbContext.Transactions
@@ -154,7 +394,8 @@
                 );
 
             // fill Profit
-            foreach (var k in stats.Keys.ToList()) stats[k].Profit = stats[k].TotalIncome - stats[k].TotalExpense;
+            foreach (var k in stats.Keys.ToList()) 
+                stats[k].Profit = stats[k].TotalIncome - stats[k].TotalExpense;
         }
         finally
         {
@@ -170,8 +411,7 @@
 
     private void CancelForm()
     {
-        newName = string.Empty;
-        newDescription = string.Empty;
+        newProject = new ProjectEditModel();
         editId = 0;
         showCreateForm = false;
         showError = false;
@@ -180,7 +420,7 @@
 
     private async Task SaveProject()
     {
-        if (string.IsNullOrWhiteSpace(newName))
+        if (string.IsNullOrWhiteSpace(newProject.Name))
         {
             errorMessage = "Введите название проекта";
             showError = true;
@@ -190,49 +430,107 @@
         showError = false;
         showMessage = false;
 
-        if (editId == 0)
+        try
         {
-            if (await DbContext.Projects.AnyAsync(p => p.Name == newName.Trim()))
+            if (editId == 0)
             {
-                errorMessage = "Проект с таким названием уже существует";
-                showError = true;
-                return;
+                // Check for duplicate name
+                if (await DbContext.Projects.AnyAsync(p => p.Name == newProject.Name.Trim()))
+                {
+                    errorMessage = "Проект с таким названием уже существует";
+                    showError = true;
+                    return;
+                }
+
+                var project = new Project
+                {
+                    Name = newProject.Name.Trim(),
+                    Description = newProject.Description,
+                    Status = newProject.Status,
+                    Budget = newProject.Budget,
+                    TargetROI = newProject.TargetROI,
+                    StartDate = newProject.StartDate,
+                    EndDate = newProject.EndDate,
+                    Priority = newProject.Priority,
+                    ProjectManager = newProject.ProjectManager,
+                    KPI = newProject.KPI,
+                    Risks = newProject.Risks,
+                    Notes = newProject.Notes
+                };
+
+                DbContext.Projects.Add(project);
+                message = "✅ Проект создан";
+            }
+            else
+            {
+                var proj = await DbContext.Projects.FindAsync(editId);
+                if (proj == null)
+                {
+                    errorMessage = "Проект не найден";
+                    showError = true;
+                    return;
+                }
+
+                // Check for duplicate name if name changed
+                if (proj.Name != newProject.Name.Trim() && 
+                    await DbContext.Projects.AnyAsync(p => p.Name == newProject.Name.Trim()))
+                {
+                    errorMessage = "Проект с таким названием уже существует";
+                    showError = true;
+                    return;
+                }
+
+                proj.Name = newProject.Name.Trim();
+                proj.Description = newProject.Description;
+                proj.Status = newProject.Status;
+                proj.Budget = newProject.Budget;
+                proj.TargetROI = newProject.TargetROI;
+                proj.StartDate = newProject.StartDate;
+                proj.EndDate = newProject.EndDate;
+                proj.Priority = newProject.Priority;
+                proj.ProjectManager = newProject.ProjectManager;
+                proj.KPI = newProject.KPI;
+                proj.Risks = newProject.Risks;
+                proj.Notes = newProject.Notes;
+                
+                message = "✅ Проект обновлён";
             }
 
-            DbContext.Projects.Add(new Project { Name = newName.Trim(), Description = newDescription });
-            message = "✅ Проект создан";
+            await DbContext.SaveChangesAsync();
+            showMessage = true;
+            CancelForm();
+            await LoadProjects();
         }
-        else
+        catch (Exception ex)
         {
-            var proj = await DbContext.Projects.FindAsync(editId);
-            if (proj == null)
-            {
-                errorMessage = "Проект не найден";
-                showError = true;
-                return;
-            }
-            proj.Name = newName.Trim();
-            proj.Description = newDescription;
-            message = "✅ Проект обновлён";
+            errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
         }
-
-        await DbContext.SaveChangesAsync();
-        showMessage = true;
-        CancelForm();
-        await LoadProjects();
     }
 
     private void StartEdit(Project p)
     {
         editId = p.Id;
-        newName = p.Name;
-        newDescription = p.Description;
+        newProject = new ProjectEditModel
+        {
+            Name = p.Name,
+            Description = p.Description,
+            Status = p.Status,
+            Budget = p.Budget,
+            TargetROI = p.TargetROI,
+            StartDate = p.StartDate,
+            EndDate = p.EndDate,
+            Priority = p.Priority,
+            ProjectManager = p.ProjectManager,
+            KPI = p.KPI,
+            Risks = p.Risks,
+            Notes = p.Notes
+        };
         showCreateForm = true;
     }
 
     private async Task ConfirmDelete(int id)
     {
-        // Check if transactions exist for this project (any user or current user?) — check any transactions referencing project.
         var hasTx = await DbContext.Transactions.AnyAsync(t => t.ProjectId == id);
         if (hasTx)
         {
@@ -251,6 +549,7 @@
     {
         var proj = await DbContext.Projects.FindAsync(id);
         if (proj == null) return;
+        
         DbContext.Projects.Remove(proj);
         await DbContext.SaveChangesAsync();
         message = "✅ Проект удалён";
@@ -258,10 +557,79 @@
         await LoadProjects();
     }
 
+    private void ViewDetails(int id)
+    {
+        selectedProject = projects?.FirstOrDefault(p => p.Id == id);
+        if (selectedProject != null)
+        {
+            stats.TryGetValue(id, out selectedStats);
+        }
+    }
+
+    private void CloseDetails()
+    {
+        selectedProject = null;
+        selectedStats = null;
+    }
+
+    private string GetStatusText(ProjectStatus status)
+    {
+        return status switch
+        {
+            ProjectStatus.Active => "Активный",
+            ProjectStatus.Planning => "Планирование",
+            ProjectStatus.OnHold => "Приостановлен",
+            ProjectStatus.Completed => "Завершен",
+            ProjectStatus.Cancelled => "Отменен",
+            _ => status.ToString()
+        };
+    }
+
+    private string GetStatusClass(ProjectStatus status)
+    {
+        return status switch
+        {
+            ProjectStatus.Active => "status-active",
+            ProjectStatus.Planning => "status-planning",
+            ProjectStatus.OnHold => "status-onhold",
+            ProjectStatus.Completed => "status-completed",
+            ProjectStatus.Cancelled => "status-cancelled",
+            _ => ""
+        };
+    }
+
+    private string GetPriorityText(ProjectPriority priority)
+    {
+        return priority switch
+        {
+            ProjectPriority.Low => "Низкий",
+            ProjectPriority.Medium => "Средний",
+            ProjectPriority.High => "Высокий",
+            ProjectPriority.Critical => "Критический",
+            _ => priority.ToString()
+        };
+    }
+
     private class ProjectStat
     {
         public decimal TotalIncome { get; set; }
         public decimal TotalExpense { get; set; }
         public decimal Profit { get; set; }
+    }
+
+    private class ProjectEditModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public ProjectStatus Status { get; set; } = ProjectStatus.Planning;
+        public decimal? Budget { get; set; }
+        public decimal? TargetROI { get; set; }
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public ProjectPriority? Priority { get; set; }
+        public string? ProjectManager { get; set; }
+        public string? KPI { get; set; }
+        public string? Risks { get; set; }
+        public string? Notes { get; set; }
     }
 }

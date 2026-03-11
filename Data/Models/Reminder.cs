@@ -35,5 +35,11 @@ namespace MiniFinance.Data.Models
 
         // Link to user
         public string UserId { get; set; } = string.Empty;
+        
+        // Новые поля
+        public int? ProjectId { get; set; }
+        
+        [StringLength(500)]
+        public string? Notes { get; set; }
     }
 }
