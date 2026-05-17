@@ -10,5 +10,11 @@ namespace MiniFinance.Services
         List<CashflowEntry> GetCashflow(List<Transaction> transactions);
         List<ProjectSummary> GetProjectReport(List<Transaction> transactions);
         List<ForecastPoint> GetForecast(List<MonthlyTrend> monthlyTrends, int monthsAhead = 6);
+
+        // Новые отчеты
+        ProfitLossReport GetProfitLossReport(List<Transaction> transactions, DateTime startDate, DateTime endDate);
+        TrialBalanceReport GetTrialBalanceReport(List<Transaction> transactions, DateTime startDate, DateTime endDate);
+        List<IncomeExpenseBookEntry> GetIncomeExpenseBook(List<Transaction> transactions, DateTime startDate, DateTime endDate);
+        CashFlowStatementReport GetCashFlowStatement(List<Transaction> transactions, DateTime startDate, DateTime endDate);
     }
 }

@@ -1,0 +1,130 @@
+@page "/login"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@using MiniFinance.Components.Account
+@using MiniFinance.Components.Account.Shared
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject ILogger<Login> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject IJSRuntime JS
+
+<PageTitle>Вход - MiniFinance</PageTitle>
+
+<div class="login-page">
+    <div class="login-container">
+        <div class="login-header">
+            <h1>MiniFinance</h1>
+            <p class="text-muted">Вход в учётную запись</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+
+            <div class="form-group">
+                <label class="label">Email</label>
+                <InputText @bind-Value="Input.Email" class="input" autocomplete="username" placeholder="name@example.com" />
+                <ValidationMessage For="() => Input.Email" />
+            </div>
+
+            <div class="form-group">
+                <label class="label">Пароль</label>
+                <InputText type="password" @bind-Value="Input.Password" class="input" autocomplete="current-password" placeholder="Введите пароль" />
+                <ValidationMessage For="() => Input.Password" />
+            </div>
+
+            <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
+                <InputCheckbox @bind-Value="Input.RememberMe" style="accent-color:var(--accent)" />
+                <label>Запомнить меня</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
+        </EditForm>
+
+        <div class="login-footer">
+            <a href="Account/ForgotPassword">Забыли пароль?</a>
+            <span style="margin:0 .5rem;color:var(--border)">|</span>
+            <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">Регистрация</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+    private EditContext editContext = default!;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        editContext = new EditContext(Input);
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        }
+    }
+
+    public async Task LoginUser()
+    {
+        if (!editContext.Validate()) return;
+
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("User logged in.");
+            RedirectManager.RedirectTo(ReturnUrl);
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            RedirectManager.RedirectTo(
+                "Account/LoginWith2fa",
+                new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
+        }
+        else if (result.IsLockedOut)
+        {
+            Logger.LogWarning("User account locked out.");
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+        else
+        {
+            errorMessage = "Неверный email или пароль.";
+        }
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Email обязателен")]
+        [EmailAddress(ErrorMessage = "Некорректный email")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Пароль обязателен")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [Display(Name = "Remember me?")]
+        public bool RememberMe { get; set; }
+
+        public PasskeyInputModel? Passkey { get; set; }
+    }
+}

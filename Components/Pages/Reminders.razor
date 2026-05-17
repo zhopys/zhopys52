@@ -10,134 +10,289 @@
 @inject IJSRuntime JsRuntime
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject MiniFinance.Services.INotificationEmailService EmailService
 @attribute [Authorize]
 
 <PageTitle>Напоминания - MiniFinance</PageTitle>
 
-<!-- Простые кнопки для переключения табов -->
-<div style="margin-bottom: 20px;">
-    <button class="btn @(_activeTab == "upcoming" ? "btn-primary" : "btn-outline")" @onclick="@(() => SetTab("upcoming"))">
-        Предстоящие
-    </button>
-    <button class="btn @(_activeTab == "overdue" ? "btn-primary" : "btn-outline")" @onclick="@(() => SetTab("overdue"))">
-        Просроченные
-    </button>
-    <button class="btn @(_activeTab == "paid" ? "btn-primary" : "btn-outline")" @onclick="@(() => SetTab("paid"))">
-        Оплаченные
-    </button>
-    <button class="btn @(_activeTab == "all" ? "btn-primary" : "btn-outline")" @onclick="@(() => SetTab("all"))">
-        Все
-    </button>
+<div class="page-header">
+    <div class="title">
+        <h1>Напоминания</h1>
+        <div class="meta text-muted">Управление платежами и счетами</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline" @onclick="SendNotifications" disabled="@_sendingNotifications">
+            @if (_sendingNotifications) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+            </svg>
+            Отправить уведомления
+        </button>
+        <button class="btn btn-primary" @onclick="@(() => _showCreateForm = true)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Создать
+        </button>
+    </div>
 </div>
 
-<!-- Кнопка создания -->
-<button class="btn btn-success" @onclick="@(() => _showCreateForm = true)">+ Создать напоминание</button>
+@if (_showMessage)
+{
+    <div class="alert alert-success">@_message</div>
+}
 
-<!-- Форма создания -->
+@if (_showError)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<!-- Tabs -->
+<div class="card mb-3">
+    <div class="card-body" style="padding: 0.5rem;">
+        <div class="tab-bar">
+            <button class="tab @(_activeTab == "upcoming" ? "active" : "")" @onclick="@(() => SetTab("upcoming"))">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Предстоящие
+                @if (_upcomingCount > 0) { <span class="tab-count">@_upcomingCount</span> }
+            </button>
+            <button class="tab @(_activeTab == "overdue" ? "active" : "")" @onclick="@(() => SetTab("overdue"))">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Просроченные
+                @if (_overdueCount > 0) { <span class="tab-count tab-count-danger">@_overdueCount</span> }
+            </button>
+            <button class="tab @(_activeTab == "paid" ? "active" : "")" @onclick="@(() => SetTab("paid"))">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Оплаченные
+            </button>
+            <button class="tab @(_activeTab == "all" ? "active" : "")" @onclick="@(() => SetTab("all"))">
+                Все
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create / Edit form -->
 @if (_showCreateForm)
 {
-    <div style="border: 1px solid #ccc; padding: 20px; margin: 20px 0;">
-        <h3>@(_editId == 0 ? "Создать" : "Редактировать")</h3>
-        
-        <div>
-            <label>Название:</label>
-            <input type="text" @bind="_newName" />
+    <div class="card mb-3">
+        <div class="card-header">@(_editId == 0 ? "Новое напоминание" : "Редактирование")</div>
+        <div class="card-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Название <span class="required">*</span></label>
+                    <input type="text" class="form-input" @bind="_newName" placeholder="Например: Аренда офиса" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сумма <span class="required">*</span></label>
+                    <input type="number" class="form-input" @bind="_newAmount" placeholder="0" step="100" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Категория</label>
+                    <select class="form-select form-input" @bind="_newCategory">
+                        <option value="">Выберите категорию</option>
+                        @foreach (var c in _categories) { <option value="@c">@c</option> }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Периодичность</label>
+                    <select class="form-select form-input" @bind="_newFrequency">
+                        <option value="@ReminderFrequency.OneTime">Разово</option>
+                        <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
+                        <option value="@ReminderFrequency.Yearly">Ежегодно</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Дата</label>
+                    <input type="date" class="form-input" @bind="_newDate" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Проект</label>
+                    <select class="form-select form-input" @bind="_newProjectId">
+                        <option value="">Без проекта</option>
+                        @foreach (var p in _projects) { <option value="@p.Id">@p.Name</option> }
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label class="form-label">Заметки</label>
+                    <textarea class="form-input" @bind="_newNotes" placeholder="Дополнительная информация" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="mt-3" style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button class="btn btn-primary" @onclick="SaveReminder">@(_editId == 0 ? "Создать" : "Сохранить")</button>
+                <button class="btn btn-outline" @onclick="CancelForm">Отмена</button>
+            </div>
         </div>
-        
-        <div>
-            <label>Сумма:</label>
-            <input type="number" @bind="_newAmount" />
-        </div>
-        
-        <div>
-            <label>Категория:</label>
-            <select @bind="_newCategory">
-                <option value="">---</option>
-                @foreach (var c in _categories)
-                {
-                    <option value="@c">@c</option>
-                }
-            </select>
-        </div>
-        
-        <div>
-            <label>Периодичность:</label>
-            <select @bind="_newFrequency">
-                <option value="@ReminderFrequency.OneTime">Разово</option>
-                <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
-                <option value="@ReminderFrequency.Yearly">Ежегодно</option>
-            </select>
-        </div>
-        
-        <div>
-            <label>Дата:</label>
-            <input type="date" @bind="_newDate" />
-        </div>
-        
-        <div>
-            <label>Проект:</label>
-            <select @bind="_newProjectId">
-                <option value="">---</option>
-                @foreach (var p in _projects)
-                {
-                    <option value="@p.Id">@p.Name</option>
-                }
-            </select>
-        </div>
-        
-        <div>
-            <label>Заметки:</label>
-            <textarea @bind="_newNotes"></textarea>
-        </div>
-        
-        <button class="btn btn-primary" @onclick="@SaveReminder">Сохранить</button>
-        <button class="btn btn-secondary" @onclick="@CancelForm">Отмена</button>
     </div>
 }
 
-<!-- Список напоминаний -->
-<div>
-    @if (_reminders == null)
+<!-- Summary cards -->
+@if (_reminders != null && _activeTab == "upcoming")
+{
+    var upcoming = _reminders.Where(r => !r.IsPaid && r.Date >= DateTime.Today).OrderBy(r => r.Date).ToList();
+    if (upcoming.Any())
     {
-        <p>Загрузка...</p>
+        var totalDue = upcoming.Sum(r => r.Amount);
+        var nextDue = upcoming.FirstOrDefault();
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">К оплате</div>
+                <div class="kpi-value">@totalDue.ToString("N0") Br</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Ближайший</div>
+                <div class="kpi-value" style="font-size:20px">@nextDue?.Name</div>
+                <div class="text-muted small">@nextDue?.Date.ToString("dd.MM.yyyy") · @nextDue?.Amount.ToString("N0") Br</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Количество</div>
+                <div class="kpi-value">@upcoming.Count</div>
+            </div>
+        </div>
     }
-    else if (!GetFilteredReminders().Any())
-    {
-        <p>Нет напоминаний</p>
-    }
-    else
-    {
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Название</th>
-                    <th>Сумма</th>
-                    <th>Дата</th>
-                    <th>Статус</th>
-                    <th>Действия</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var r in GetFilteredReminders())
+}
+
+<!-- List -->
+<div class="card">
+    <div class="card-header">
+        @if (_reminders != null)
+        {
+            <span class="text-muted small">Всего: @GetFilteredReminders().Count()</span>
+        }
+    </div>
+    <div class="card-body" style="padding:0">
+        @if (_reminders == null)
+        {
+            <div class="loading-state">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <p class="text-muted mt-3">Загрузка...</p>
+                </div>
+            </div>
+        }
+        else if (!GetFilteredReminders().Any())
+        {
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-tertiary)">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                </div>
+                <div class="empty-state-title">@GetEmptyTitle()</div>
+                <div class="empty-state-text">@GetEmptyMessage()</div>
+                @if (_activeTab == "all" || _activeTab == "upcoming")
                 {
-                    <tr>
-                        <td>@r.Name</td>
-                        <td>@r.Amount</td>
-                        <td>@r.Date.ToString("dd.MM.yyyy")</td>
-                        <td>@(r.IsPaid ? "Оплачено" : "Ожидает")</td>
-                        <td>
-                            @if (!r.IsPaid)
-                            {
-                                <button class="btn btn-sm btn-success" @onclick="@(() => MarkPaid(r.Id))">✓</button>
-                            }
-                            <button class="btn btn-sm btn-primary" @onclick="@(() => EditReminder(r))">✎</button>
-                            <button class="btn btn-sm btn-danger" @onclick="@(() => ConfirmDelete(r.Id))">🗑</button>
-                        </td>
-                    </tr>
+                    <button class="btn btn-primary" @onclick="@(() => _showCreateForm = true)">Создать напоминание</button>
                 }
-            </tbody>
-        </table>
-    }
+            </div>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Категория</th>
+                        <th class="text-end">Сумма</th>
+                        <th>Дата</th>
+                        <th>Периодичность</th>
+                        <th>Статус</th>
+                        <th class="text-center">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in GetFilteredReminders().OrderBy(r => r.Date))
+                    {
+                        var isOverdue = !r.IsPaid && r.Date < DateTime.Today;
+                        var daysUntil = (int)(r.Date - DateTime.Today).TotalDays;
+                        <tr>
+                            <td>
+                                <strong>@r.Name</strong>
+                                @if (!string.IsNullOrWhiteSpace(r.Notes))
+                                {
+                                    <br /><small class="text-muted">@r.Notes</small>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(r.Category))
+                                {
+                                    <span class="badge">@r.Category</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end fw-bold">@r.Amount.ToString("N0") Br</td>
+                            <td>
+                                <div class="@(isOverdue ? "text-danger" : "")">
+                                    @r.Date.ToString("dd.MM.yyyy")
+                                </div>
+                                @if (!r.IsPaid)
+                                {
+                                    <div class="small @(isOverdue ? "text-danger" : "text-muted")">
+                                        @if (isOverdue)
+                                        {
+                                            @($"Просрочено на {Math.Abs(daysUntil)} дн.")
+                                        }
+                                        else if (daysUntil == 0)
+                                        {
+                                            <span class="text-danger">Сегодня!</span>
+                                        }
+                                        else if (daysUntil == 1)
+                                        {
+                                            <span>Завтра</span>
+                                        }
+                                        else
+                                        {
+                                            @($"Через {daysUntil} дн.")
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <span class="small text-muted">@GetFrequencyText(r.Frequency)</span>
+                            </td>
+                            <td>
+                                @if (r.IsPaid)
+                                {
+                                    <span class="badge badge-success">Оплачено</span>
+                                    @if (r.PaidDate.HasValue)
+                                    {
+                                        <br /><span class="small text-muted">@r.PaidDate.Value.ToString("dd.MM.yyyy")</span>
+                                    }
+                                }
+                                else if (isOverdue)
+                                {
+                                    <span class="badge badge-danger">Просрочено</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-info">Ожидает</span>
+                                }
+                            </td>
+                            <td class="text-center" style="white-space: nowrap;">
+                                @if (!r.IsPaid)
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="@(() => MarkPaid(r.Id))" title="Отметить как оплаченное">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline" @onclick="@(() => EditReminder(r))" title="Редактировать">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="@(() => ConfirmDelete(r.Id))" title="Удалить">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
 </div>
 
 @code {
@@ -147,9 +302,14 @@
 
     private bool _showCreateForm;
     private string _message = string.Empty;
+    private bool _showMessage;
     private string _errorMessage = string.Empty;
+    private bool _showError;
+    private bool _sendingNotifications;
 
     private string _activeTab = "upcoming";
+    private int _upcomingCount;
+    private int _overdueCount;
 
     private int _editId;
     private string _newName = string.Empty;
@@ -193,6 +353,9 @@
             _reminders = await DbContext.Reminders
                 .Where(r => r.UserId == user.Id)
                 .ToListAsync();
+
+            _upcomingCount = _reminders.Count(r => !r.IsPaid && r.Date >= DateTime.Today);
+            _overdueCount = _reminders.Count(r => !r.IsPaid && r.Date < DateTime.Today);
         }
     }
 
@@ -231,6 +394,8 @@
     {
         if (string.IsNullOrWhiteSpace(_newName))
         {
+            _errorMessage = "Укажите название";
+            _showError = true;
             return;
         }
 
@@ -272,6 +437,12 @@
         await DbContext.SaveChangesAsync();
         CancelForm();
         await LoadReminders();
+        _message = _editId == 0 ? "Напоминание создано" : "Напоминание обновлено";
+        _showMessage = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3000);
+        _showMessage = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private void EditReminder(Reminder r)
@@ -304,6 +475,61 @@
             DbContext.Reminders.Remove(r);
             await DbContext.SaveChangesAsync();
             await LoadReminders();
+        }
+    }
+
+    private async Task SendNotifications()
+    {
+        _sendingNotifications = true;
+        _showError = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null || string.IsNullOrEmpty(user.Email))
+            {
+                _errorMessage = "Email не найден в профиле пользователя";
+                _showError = true;
+                return;
+            }
+
+            var now = DateTime.Today;
+            var cutoff = now.AddDays(user.NotificationDaysBefore);
+
+            var upcomingReminders = await DbContext.Reminders
+                .Where(r => r.UserId == user.Id && !r.IsPaid && r.Date >= now && r.Date <= cutoff)
+                .ToListAsync();
+
+            var upcomingTaxes = await DbContext.TaxPayments
+                .Where(t => t.UserId == user.Id && !t.IsPaid && t.DueDate >= now && t.DueDate <= cutoff)
+                .ToListAsync();
+
+            var items = upcomingReminders.Select(r => (user.Email, r.Name, r.Amount, r.Date, "reminder", (int)(r.Date - now).TotalDays))
+                .Concat(upcomingTaxes.Select(t => (user.Email, t.Name, t.Amount, t.DueDate, "tax", (int)(t.DueDate - now).TotalDays)))
+                .ToList();
+
+            if (!items.Any())
+            {
+                _message = "Нет предстоящих платежей для уведомления";
+                _showMessage = true;
+                return;
+            }
+
+            var sent = await EmailService.SendAllUpcomingNotificationsAsync(items);
+            _message = $"Отправлено {sent} уведомлений на {user.Email}";
+            _showMessage = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ошибка: {ex.Message}";
+            _showError = true;
+        }
+        finally
+        {
+            _sendingNotifications = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -344,5 +570,38 @@
 
         await DbContext.SaveChangesAsync();
         await LoadReminders();
+    }
+
+    private string GetEmptyTitle()
+    {
+        return _activeTab switch
+        {
+            "upcoming" => "Нет предстоящих платежей",
+            "overdue" => "Нет просроченных платежей",
+            "paid" => "Нет оплаченных напоминаний",
+            _ => "Нет напоминаний"
+        };
+    }
+
+    private string GetEmptyMessage()
+    {
+        return _activeTab switch
+        {
+            "upcoming" => "Все платежи оплачены",
+            "overdue" => "Отличная работа, всё оплачено вовремя!",
+            "paid" => "Пока нет оплаченных напоминаний",
+            _ => "Создайте первое напоминание, чтобы отслеживать платежи"
+        };
+    }
+
+    private string GetFrequencyText(ReminderFrequency frequency)
+    {
+        return frequency switch
+        {
+            ReminderFrequency.OneTime => "Разово",
+            ReminderFrequency.Monthly => "Ежемесячно",
+            ReminderFrequency.Yearly => "Ежегодно",
+            _ => frequency.ToString()
+        };
     }
 }

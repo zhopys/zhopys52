@@ -13,34 +13,46 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
-<PageTitle>Импорт CSV - MiniFinance</PageTitle>
+<PageTitle>Импорт транзакций - MiniFinance</PageTitle>
 
 <AuthorizeView Context="authContext">
     <Authorized>
-        <h1>Импорт транзакций из CSV</h1>
-
-        <div class="alert alert-info">
-            <h5>Формат CSV файла:</h5>
-            <p>Дата,Сумма,Описание,Категория</p>
-            <p>Пример: 2024-01-15,-1500.00,Аренда офиса,Аренда</p>
-            <p>Сумма: положительная - доход, отрицательная - расход</p>
-            <p>
-                <a href="/sample-uploads/transactions_example.csv" download>Скачать пример CSV</a>
-            </p>
+        <div class="page-header" style="margin-bottom: 1.5rem;">
+            <div class="title">
+                <h1>Импорт транзакций</h1>
+                <div class="meta text-muted">Загрузите CSV файл с транзакциями</div>
+            </div>
         </div>
 
-        <div class="card">
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header">Формат CSV</div>
             <div class="card-body">
+                <div class="alert alert-info">
+                    <p><code>Дата,Сумма,Описание,Категория</code></p>
+                    <p>Пример: <code>2024-01-15,-1500.00,Аренда офиса,Аренда</code></p>
+                    <p>Сумма: положительная — доход, отрицательная — расход</p>
+                </div>
+
                 <EditForm Model="@uploadModel" OnValidSubmit="@HandleImport">
-                    <div class="mb-3">
-                        <label for="file" class="form-label">Выберите CSV файл:</label>
-                        <InputFile id="file" class="form-control" OnChange="@OnFileSelected" accept=".csv" />
+                    <div style="margin-bottom: 1rem;">
+                        <label for="file" class="label">Выберите файл:</label>
+                        <InputFile id="file" class="input" OnChange="@OnFileSelected" accept=".csv" />
+                        <small class="text-muted">Поддерживается формат CSV</small>
                     </div>
 
                     @if (!string.IsNullOrEmpty(message))
                     {
-                        <div class="alert @(isError ? "alert-danger" : "alert-success")">
+                        <div class="alert @(isError ? "alert-danger" : "alert-success")" style="margin-bottom: 1rem;">
                             @message
+                        </div>
+                    }
+
+                    @if (importCount > 0)
+                    {
+                        <div class="card" style="margin-bottom: 1rem; background: var(--bg);">
+                            <div class="card-body" style="padding: 1rem;">
+                                <div>Импортировано транзакций: <strong>@importCount</strong></div>
+                            </div>
                         </div>
                     }
 
@@ -54,6 +66,7 @@
 </AuthorizeView>
 
 @code {
+    private ApplicationUser? _currentUser;
     private class UploadModel { }
     private UploadModel uploadModel = new();
 
@@ -61,12 +74,20 @@
     private string message = string.Empty;
     private bool isError = false;
     private bool isProcessing = false;
+    private int importCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUser = await UserManager.GetUserAsync(authState.User);
+    }
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
-        message = $"Выбран файл: {selectedFile.Name} ({selectedFile.Size} байт)";
+        message = $"Выбран файл: {selectedFile.Name} ({selectedFile.Size / 1024:N0} КБ)";
         isError = false;
+        importCount = 0;
     }
 
     private async Task HandleImport()
@@ -80,6 +101,7 @@
 
         isProcessing = true;
         message = "Импорт...";
+        importCount = 0;
 
         try
         {
@@ -92,8 +114,8 @@
                 return;
             }
 
-            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB max
-            var transactions = CsvParser.Parse(stream, user.Id);
+            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            var transactions = await CsvParser.ParseAsync(stream, user.Id);
 
             if (!transactions.Any())
             {
@@ -102,10 +124,10 @@
                 return;
             }
 
-            // Сохраняем транзакции в БД
             await DbContext.Transactions.AddRangeAsync(transactions);
             await DbContext.SaveChangesAsync();
 
+            importCount = transactions.Count;
             message = $"Успешно импортировано {transactions.Count} транзакций!";
             isError = false;
             selectedFile = null;

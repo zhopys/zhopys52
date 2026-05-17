@@ -24,5 +24,12 @@ namespace MiniFinance.Data.Models
 
         // Type of category: expense or income
         public CategoryType Type { get; set; } = CategoryType.Expense;
+
+        // Keywords for auto-categorization (comma-separated)
+        public string? Keywords { get; set; }
+
+        public string? Icon { get; set; }
+
+        public string? Color { get; set; }
     }
 }

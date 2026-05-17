@@ -61,6 +61,9 @@ namespace MiniFinance.Data.Models
         
         [StringLength(100)]
         public string? ProjectManager { get; set; }
+
+        [StringLength(100)]
+        public string? Department { get; set; }
         
         [StringLength(500)]
         [Display(Name = "Ключевые показатели (KPI)")]

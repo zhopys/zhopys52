@@ -10,7 +10,7 @@ using Microsoft.Extensions.Primitives;
 using MiniFinance.Components.Account.Pages;
 using MiniFinance.Components.Account.Pages.Manage;
 using MiniFinance.Data;
-
+ 
 namespace Microsoft.AspNetCore.Routing;
 
 internal static class IdentityComponentsEndpointRouteBuilderExtensions

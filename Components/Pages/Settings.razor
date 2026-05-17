@@ -1,0 +1,379 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+@inject MiniFinance.Services.INotificationEmailService EmailService
+@attribute [Authorize]
+
+<PageTitle>Настройки - MiniFinance</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div class="title">
+                <h1>Настройки</h1>
+                <div class="meta text-muted">Параметры организации и внешний вид</div>
+            </div>
+        </div>
+
+        @if (showMessage)
+        {
+            <div class="alert alert-success">@_message</div>
+        }
+
+        @if (showError)
+        {
+            <div class="alert alert-error">@_errorMessage</div>
+        }
+
+        <!-- Organization settings -->
+        <div class="card mb-3">
+            <div class="card-header">Организация</div>
+            <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
+                    <div>
+                        <label class="label">Название компании</label>
+                        <input class="input" @bind="companyName" placeholder="ООО &quot;Компания&quot;" />
+                    </div>
+                    <div>
+                        <label class="label">УНП</label>
+                        <input class="input" @bind="unp" placeholder="123456789" />
+                    </div>
+                    <div>
+                        <label class="label">Система налогообложения</label>
+                        <select class="input" @bind="taxSystem">
+                            <option value="USN">УСН</option>
+                            <option value="OSN">ОСН</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary" @onclick="SaveSettings">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Integration -->
+        <div class="card mb-3">
+            <div class="card-header">Интеграция</div>
+            <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
+                    <div>
+                        <label class="label">API-ключ</label>
+                        <input class="input" @bind="apiKey" placeholder="Ваш API-ключ" />
+                    </div>
+                    <div>
+                        <label class="label">URL интеграции</label>
+                        <input class="input" @bind="integrationUrl" placeholder="https://api.example.com" />
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary" @onclick="SaveIntegration">Сохранить интеграцию</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications -->
+        <div class="card mb-3">
+            <div class="card-header">Уведомления</div>
+            <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
+                    <div>
+                        <label class="label" style="display:flex;align-items:center;gap:8px">
+                            <input type="checkbox" @bind="enableNotifications" />
+                            Email-уведомления
+                        </label>
+                    </div>
+                    <div>
+                        <label class="label">Дней до срока</label>
+                        <input class="input" type="number" min="1" max="30" @bind="notificationDaysBefore" />
+                    </div>
+                </div>
+                <div class="mt-3" style="display:flex;gap:0.5rem;align-items:center">
+                    <button class="btn btn-primary" @onclick="SaveNotificationSettings" disabled="@_savingNotifications">
+                        @if (_savingNotifications) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
+                        Сохранить
+                    </button>
+                    <button class="btn btn-outline" @onclick="SendTestEmail" disabled="@_sendingEmail">
+                        @if (_sendingEmail) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
+                        Отправить тестовое письмо
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(emailStatus))
+                {
+                    <div class="alert @(emailSuccess ? "alert-success" : "alert-error") mt-3">@emailStatus</div>
+                }
+            </div>
+        </div>
+
+        <!-- Appearance -->
+        <div class="card">
+            <div class="card-header">Внешний вид</div>
+            <div class="card-body">
+                <div style="display:flex;align-items:center;gap:1rem">
+                    <span class="text-muted">Тема:</span>
+                    <button class="btn btn-outline" @onclick="ToggleTheme">
+                        @(isDark ? "Светлая" : "Тёмная")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private string companyName = string.Empty;
+    private string unp = string.Empty;
+    private string taxSystem = "USN";
+    private string apiKey = string.Empty;
+    private string integrationUrl = string.Empty;
+    private bool isDark = false;
+    private bool showMessage = false;
+    private bool showError = false;
+    private string _message = string.Empty;
+    private string _errorMessage = string.Empty;
+    private bool enableNotifications = true;
+    private int notificationDaysBefore = 3;
+    private string emailStatus = string.Empty;
+    private bool emailSuccess = false;
+    private bool _savingNotifications;
+    private bool _sendingEmail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user != null)
+        {
+            enableNotifications = user.EnableNotifications;
+            notificationDaysBefore = user.NotificationDaysBefore;
+
+            try
+            {
+                var settings = await DbContext.OrganizationSettings
+                    .FirstOrDefaultAsync(s => s.UserId == user.Id);
+
+                if (settings != null)
+                {
+                    companyName = settings.CompanyName;
+                    unp = settings.UNP;
+                    taxSystem = settings.TaxSystem.ToString();
+                    apiKey = settings.ApiKey ?? string.Empty;
+                    integrationUrl = settings.IntegrationUrl ?? string.Empty;
+                }
+            }
+            catch
+            {
+                // Table may not exist yet
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                isDark = await JS.InvokeAsync<bool>("window.matchMedia('(prefers-color-scheme: dark)').matches");
+                StateHasChanged();
+            }
+            catch { /* JS interop may not be ready */ }
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
+        {
+            parsedTax = TaxSystem.USN;
+        }
+
+        try
+        {
+            var settings = await DbContext.OrganizationSettings
+                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+
+            if (settings == null)
+            {
+                settings = new OrganizationSettings
+                {
+                    UserId = user.Id,
+                    CompanyName = companyName,
+                    UNP = unp,
+                    TaxSystem = parsedTax
+                };
+                DbContext.OrganizationSettings.Add(settings);
+            }
+            else
+            {
+                settings.CompanyName = companyName;
+                settings.UNP = unp;
+                settings.TaxSystem = parsedTax;
+                DbContext.OrganizationSettings.Update(settings);
+            }
+
+            await DbContext.SaveChangesAsync();
+            ShowMessage("Настройки сохранены");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+            showMessage = false;
+        }
+    }
+
+    private async Task SaveIntegration()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
+        {
+            parsedTax = TaxSystem.USN;
+        }
+
+        try
+        {
+            var settings = await DbContext.OrganizationSettings
+                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+
+            if (settings == null)
+            {
+                settings = new OrganizationSettings
+                {
+                    UserId = user.Id,
+                    CompanyName = companyName,
+                    UNP = unp,
+                    TaxSystem = parsedTax,
+                    ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim(),
+                    IntegrationUrl = string.IsNullOrWhiteSpace(integrationUrl) ? null : integrationUrl.Trim()
+                };
+                DbContext.OrganizationSettings.Add(settings);
+            }
+            else
+            {
+                settings.ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
+                settings.IntegrationUrl = string.IsNullOrWhiteSpace(integrationUrl) ? null : integrationUrl.Trim();
+                DbContext.OrganizationSettings.Update(settings);
+            }
+
+            await DbContext.SaveChangesAsync();
+            ShowMessage("Настройки интеграции сохранены");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+            showMessage = false;
+        }
+    }
+
+    private async Task SaveNotificationSettings()
+    {
+        _savingNotifications = true;
+        showError = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) return;
+
+            user.EnableNotifications = enableNotifications;
+            user.NotificationDaysBefore = notificationDaysBefore;
+            var result = await UserManager.UpdateAsync(user);
+
+            if (result.Succeeded)
+            {
+                ShowMessage("Настройки уведомлений сохранены");
+            }
+            else
+            {
+                _errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+                showError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+        }
+        finally
+        {
+            _savingNotifications = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SendTestEmail()
+    {
+        _sendingEmail = true;
+        emailStatus = string.Empty;
+        emailSuccess = false;
+        showError = false;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null || string.IsNullOrEmpty(user.Email))
+            {
+                emailStatus = "Email не найден в профиле пользователя";
+                emailSuccess = false;
+                return;
+            }
+
+            await EmailService.SendTestEmailAsync(user.Email);
+            emailStatus = "Тестовое письмо отправлено";
+            emailSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            emailStatus = $"Ошибка отправки: {ex.Message}";
+            emailSuccess = false;
+        }
+        finally
+        {
+            _sendingEmail = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        isDark = !isDark;
+        var theme = isDark ? "dark" : "light";
+        await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{theme}'); try {{ localStorage.setItem('theme', '{theme}'); }} catch(e) {{}}");
+    }
+
+    private void ShowMessage(string msg)
+    {
+        _message = msg;
+        showMessage = true;
+        showError = false;
+        _ = InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            await Task.Delay(3000);
+            showMessage = false;
+            StateHasChanged();
+        });
+    }
+}

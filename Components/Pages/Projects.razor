@@ -47,25 +47,33 @@
 <!-- Уведомления -->
 @if (showMessage)
 {
-    <div class="notification success animate-slide-down">
-        <div class="notification-icon">✅</div>
+    <div class="notification success">
+        <div class="notification-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11"/></svg>
+        </div>
         <div class="notification-content">
             <strong>Успешно!</strong>
             <p>@message</p>
         </div>
-        <button class="notification-close" @onclick="() => showMessage = false">✕</button>
+        <button class="notification-close" @onclick="() => showMessage = false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
     </div>
 }
 
 @if (showError)
 {
-    <div class="notification error animate-slide-down">
-        <div class="notification-icon">❌</div>
+    <div class="notification error">
+        <div class="notification-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
         <div class="notification-content">
             <strong>Ошибка!</strong>
             <p>@errorMessage</p>
         </div>
-        <button class="notification-close" @onclick="() => showError = false">✕</button>
+        <button class="notification-close" @onclick="() => showError = false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
     </div>
 }
 
@@ -76,7 +84,9 @@
         <div class="modal-content modal-lg" @onclick:stopPropagation="true">
             <div class="modal-header">
                 <h3>@(editId == 0 ? "Создание проекта" : "Редактирование проекта")</h3>
-                <button class="modal-close" @onclick="CancelForm">✕</button>
+                <button class="modal-close" @onclick="CancelForm">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="form-grid">
@@ -100,7 +110,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Бюджет проекта (₽)</label>
+                        <label class="form-label">Бюджет проекта (Br)</label>
                         <input type="number" class="form-input" 
                                placeholder="Плановый бюджет" 
                                @bind="newProject.Budget" />
@@ -137,9 +147,16 @@
 
                     <div class="form-group">
                         <label class="form-label">Менеджер проекта</label>
-                        <input class="form-input" 
-                               placeholder="ФИО менеджера" 
+                        <input class="form-input"
+                               placeholder="ФИО менеджера"
                                @bind="newProject.ProjectManager" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Отдел / Департамент</label>
+                        <input class="form-input"
+                               placeholder="Например: Маркетинг, Разработка"
+                               @bind="newProject.Department" />
                     </div>
 
                     <div class="form-group full-width">
@@ -196,7 +213,9 @@
 
     <div class="dashboard-stats">
         <div class="stat-card">
-            <div class="stat-icon">📊</div>
+            <div class="stat-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </div>
             <div class="stat-content">
                 <div class="stat-label">Всего проектов</div>
                 <div class="stat-value">@projects.Count</div>
@@ -207,30 +226,146 @@
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">💰</div>
+            <div class="stat-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
             <div class="stat-content">
                 <div class="stat-label">Общий бюджет</div>
-                <div class="stat-value">@totalBudget.ToString("N0") ₽</div>
+                <div class="stat-value">@totalBudget.ToString("N0") Br</div>
                 <div class="stat-trend">Плановый</div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">📈</div>
+            <div class="stat-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            </div>
             <div class="stat-content">
                 <div class="stat-label">Факт. доходы</div>
-                <div class="stat-value positive">+@totalActualIncome.ToString("N0") ₽</div>
+                <div class="stat-value positive">+@totalActualIncome.ToString("N0") Br</div>
                 <div class="stat-trend">За все время</div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">📉</div>
+            <div class="stat-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+            </div>
             <div class="stat-content">
                 <div class="stat-label">Факт. расходы</div>
-                <div class="stat-value negative">-@totalActualCost.ToString("N0") ₽</div>
+                <div class="stat-value negative">-@totalActualCost.ToString("N0") Br</div>
                 <div class="stat-trend">За все время</div>
             </div>
         </div>
     </div>
+    }
+
+    <!-- Department summaries -->
+    @if (departmentSummaries.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header">Анализ по отделам</div>
+            <div class="card-body" style="padding:0">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Отдел</th>
+                            <th class="text-center">Проектов</th>
+                            <th class="text-center">Активных</th>
+                            <th class="text-end">Доходы</th>
+                            <th class="text-end">Расходы</th>
+                            <th class="text-end">Прибыль</th>
+                            <th class="text-end">Маржа</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var dept in departmentSummaries)
+                        {
+                            <tr>
+                                <td><strong>@dept.Department</strong></td>
+                                <td class="text-center">@dept.ProjectCount</td>
+                                <td class="text-center">@dept.ActiveProjects</td>
+                                <td class="text-end text-success">@dept.TotalIncome.ToString("N0") Br</td>
+                                <td class="text-end text-danger">@dept.TotalExpense.ToString("N0") Br</td>
+                                <td class="text-end fw-bold @(dept.TotalProfit >= 0 ? "text-success" : "text-danger")">
+                                    @dept.TotalProfit.ToString("N0") Br
+                                </td>
+                                <td class="text-end">
+                                    <span class="@(dept.AvgMargin >= 0 ? "text-success" : "text-danger")">
+                                        @dept.AvgMargin.ToString("F1")%
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- Profitability comparison table -->
+    @if (profitabilityMetrics.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header">Сравнительная рентабельность проектов</div>
+            <div class="card-body" style="padding:0">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Проект</th>
+                            @if (!string.IsNullOrWhiteSpace(profitabilityMetrics.FirstOrDefault()?.Department))
+                            {
+                                <th>Отдел</th>
+                            }
+                            <th class="text-end">Доход</th>
+                            <th class="text-end">Расход</th>
+                            <th class="text-end">Прибыль</th>
+                            <th class="text-end">Маржа</th>
+                            <th class="text-end">ROI</th>
+                            <th class="text-end">Ср./мес</th>
+                            <th class="text-center">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in profitabilityMetrics)
+                        {
+                            <tr>
+                                <td><strong>@m.ProjectName</strong></td>
+                                @if (!string.IsNullOrWhiteSpace(m.Department))
+                                {
+                                    <td><span class="badge badge-info">@m.Department</span></td>
+                                }
+                                <td class="text-end text-success">@m.TotalIncome.ToString("N0")</td>
+                                <td class="text-end text-danger">@m.TotalExpense.ToString("N0")</td>
+                                <td class="text-end fw-bold @(m.Profit >= 0 ? "text-success" : "text-danger")">
+                                    @m.Profit.ToString("N0") Br
+                                </td>
+                                <td class="text-end">
+                                    <span class="@(m.Margin >= 0 ? "text-success" : "text-danger")">
+                                        @m.Margin.ToString("F1")%
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="@(m.ROI >= 1 ? "text-success" : "text-danger")">
+                                        @m.ROI.ToString("F2")x
+                                    </span>
+                                </td>
+                                <td class="text-end">@m.AvgMonthlyProfit.ToString("N0") Br</td>
+                                <td class="text-center">
+                                    @if (m.IsOnTrack)
+                                    {
+                                        <span class="badge badge-success">В плане</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-warning">Отставание</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 }
 
 <!-- Основной контент -->
@@ -247,7 +382,9 @@
     else if (projects == null || !projects.Any())
     {
         <div class="empty-state">
-            <div class="empty-state-icon">📁</div>
+            <div class="empty-state-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </div>
             <h3 class="empty-state-title">Нет проектов</h3>
             <p class="empty-state-text">Создайте первый проект для организации ваших финансовых операций</p>
             <button class="btn btn-primary btn-lg" @onclick="ToggleCreateForm">
@@ -332,15 +469,15 @@
                     <div class="project-meta">
                         @if (!string.IsNullOrWhiteSpace(proj.ProjectManager))
                         {
-                            <span class="meta-item">👤 @proj.ProjectManager</span>
+                            <span class="meta-item">@proj.ProjectManager</span>
                         }
                         @if (proj.StartDate.HasValue)
                         {
-                            <span class="meta-item">📅 Начало: @proj.StartDate.Value.ToString("dd.MM.yyyy")</span>
+                            <span class="meta-item">Начало: @proj.StartDate.Value.ToString("dd.MM.yyyy")</span>
                         }
                         @if (daysRemaining.HasValue && daysRemaining > 0)
                         {
-                            <span class="meta-item">⏳ Осталось: @daysRemaining дн.</span>
+                            <span class="meta-item">@daysRemaining дн. осталось</span>
                         }
                     </div>
 
@@ -359,16 +496,16 @@
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Доходы</span>
-                                <span class="stat-value positive">+@stats.TotalIncome.ToString("N0") ₽</span>
+                                <span class="stat-value positive">+@stats.TotalIncome.ToString("N0") Br</span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Расходы</span>
-                                <span class="stat-value negative">@stats.TotalExpense.ToString("N0") ₽</span>
+                                <span class="stat-value negative">@stats.TotalExpense.ToString("N0") Br</span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Прибыль</span>
                                 <span class="stat-value @(stats.Profit >= 0 ? "positive" : "negative")">
-                                    @(stats.Profit >= 0 ? "+" : "")@stats.Profit.ToString("N0") ₽
+                                    @(stats.Profit >= 0 ? "+" : "")@stats.Profit.ToString("N0") Br
                                 </span>
                             </div>
                             <div class="stat-item">
@@ -422,7 +559,7 @@
                                         <div class="metric-value">
                                             @(stats.TransactionCount > 0 
                                                 ? ((stats.TotalIncome + Math.Abs(stats.TotalExpense)) / stats.TransactionCount).ToString("N0") 
-                                                : "0") ₽
+                                                : "0") Br
                                         </div>
                                     </div>
                                     <div class="metric-card">
@@ -446,14 +583,14 @@
                                         @if (!string.IsNullOrWhiteSpace(proj.KPI))
                                         {
                                             <div class="info-card">
-                                                <div class="info-title">🎯 Ключевые показатели</div>
+                                                <div class="info-title">Ключевые показатели</div>
                                                 <div class="info-content">@proj.KPI</div>
                                             </div>
                                         }
                                         @if (!string.IsNullOrWhiteSpace(proj.Risks))
                                         {
                                             <div class="info-card">
-                                                <div class="info-title">⚠️ Риски проекта</div>
+                                                <div class="info-title">Риски проекта</div>
                                                 <div class="info-content">@proj.Risks</div>
                                             </div>
                                         }
@@ -464,7 +601,7 @@
                                 @if (!string.IsNullOrWhiteSpace(proj.Notes))
                                 {
                                     <div class="notes-section">
-                                        <div class="notes-title">📝 Заметки</div>
+                                        <div class="notes-title">Заметки</div>
                                         <div class="notes-content">@proj.Notes</div>
                                     </div>
                                 }
@@ -483,7 +620,7 @@
                                                         <span class="category-count">@cat.Count оп.</span>
                                                     </div>
                                                     <div class="category-amount @(cat.Amount >= 0 ? "positive" : "negative")">
-                                                        @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") ₽
+                                                        @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") Br
                                                     </div>
                                                 </div>
                                             }
@@ -514,6 +651,8 @@
 
     private List<ProjectStats> projectStats = new();
     private Dictionary<int, List<CategoryTransaction>> transactionsByCategory = new();
+    private List<MiniFinance.Services.ProjectProfitabilityService.DepartmentSummary> departmentSummaries = new();
+    private List<MiniFinance.Services.ProjectProfitabilityService.ProjectProfitabilityMetrics> profitabilityMetrics = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -569,6 +708,10 @@
 
                 transactionsByCategory[proj.Id] = catGroups;
             }
+
+            // Compute profitability metrics
+            profitabilityMetrics = MiniFinance.Services.ProjectProfitabilityService.ComputeMetrics(projects, await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync());
+            departmentSummaries = MiniFinance.Services.ProjectProfitabilityService.ComputeDepartmentSummaries(projects, await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync());
         }
         catch (Exception ex)
         {
@@ -636,13 +779,14 @@
                     EndDate = newProject.EndDate,
                     Priority = newProject.Priority,
                     ProjectManager = newProject.ProjectManager,
+                    Department = newProject.Department,
                     KPI = newProject.KPI,
                     Risks = newProject.Risks,
                     Notes = newProject.Notes
                 };
 
                 DbContext.Projects.Add(project);
-                message = "✅ Проект создан успешно";
+                message = "Проект создан успешно";
             }
             else
             {
@@ -673,11 +817,12 @@
                 proj.EndDate = newProject.EndDate;
                 proj.Priority = newProject.Priority;
                 proj.ProjectManager = newProject.ProjectManager;
+                proj.Department = newProject.Department;
                 proj.KPI = newProject.KPI;
                 proj.Risks = newProject.Risks;
                 proj.Notes = newProject.Notes;
                 
-                message = "✅ Проект обновлён успешно";
+                message = "Проект обновлён успешно";
             }
 
             await DbContext.SaveChangesAsync();
@@ -706,6 +851,7 @@
             EndDate = p.EndDate,
             Priority = p.Priority,
             ProjectManager = p.ProjectManager,
+            Department = p.Department,
             KPI = p.KPI,
             Risks = p.Risks,
             Notes = p.Notes
@@ -738,7 +884,7 @@
 
             DbContext.Projects.Remove(p);
             await DbContext.SaveChangesAsync();
-            message = "✅ Проект удалён";
+            message = "Проект удалён";
             showMessage = true;
             await LoadProjects();
         }
@@ -807,6 +953,7 @@
         public DateTime? EndDate { get; set; }
         public ProjectPriority? Priority { get; set; }
         public string? ProjectManager { get; set; }
+        public string? Department { get; set; }
         public string? KPI { get; set; }
         public string? Risks { get; set; }
         public string? Notes { get; set; }

@@ -1,0 +1,303 @@
+@page "/cash-forecast"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject IForecastingService ForecastingService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+<div class="main">
+    <AuthorizeView>
+        <Authorized>
+            <div class="page-header">
+                <div class="title">
+                    <ul class="breadcrumb">
+                        <li><a href="/">Главная</a></li>
+                        <li>Аналитика</li>
+                    </ul>
+                    <h1>Прогноз кассовых разрывов</h1>
+                    <div class="meta">Интеллектуальный анализ ликвидности на базе ваших транзакций</div>
+                </div>
+                <div class="page-actions">
+                    <select class="input" style="width: auto;" @bind="forecastDays">
+                        <option value="30">30 дней</option>
+                        <option value="60">60 дней</option>
+                        <option value="90">90 дней</option>
+                    </select>
+                    <button class="btn btn-primary" @onclick="LoadForecast" disabled="@isLoading">
+                        @if (isLoading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Обновить
+                    </button>
+                </div>
+            </div>
+
+            @if (isLoading) {
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                </div>
+            }
+            else if (!hasData) {
+                <div class="empty-state">
+                    <div class="empty-state-icon">📉</div>
+                    <div class="empty-state-title">Недостаточно данных</div>
+                    <div class="empty-state-text">Добавьте транзакции и запланированные платежи, чтобы построить прогноз.</div>
+                    <a href="/transactions" class="btn btn-outline mt-3">Перейти к транзакциям</a>
+                </div>
+            }
+            else {
+                @if (forecast.HasRisk) {
+                    <div class="alert alert-danger d-flex align-items-center mb-4">
+                        <span style="font-size: 1.5rem; margin-right: 12px;">⚠️</span>
+                        <div>
+                            <div class="fw-bold">Обнаружен риск: @GetRiskLabel(forecast.RiskLevel)</div>
+                            <div class="small">Минимальный остаток составит @forecast.MinBalance.ToString("N0") Br.</div>
+                        </div>
+                    </div>
+                }
+
+                <div class="kpi-grid mb-4">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Текущий баланс</div>
+                        <div class="kpi-value">@forecast.CurrentBalance.ToString("N0") <span class="small muted">Br</span></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Дней до разрыва</div>
+                        <div class="kpi-value @(forecast.Gaps.Any() ? "text-danger" : "text-success")">
+                            @GetDaysToGap()
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Итог периода</div>
+                        <div class="kpi-value @(forecast.BaseScenario.FinalBalance < 0 ? "text-danger" : "text-success")">
+                            @forecast.BaseScenario.FinalBalance.ToString("N0")
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr; @(GetWideLayoutStyles()) gap: 24px;">
+                    <div style="min-width: 0;">
+                        <div class="card mb-4">
+                            <div class="card-header">Динамика остатков (Базовый сценарий)</div>
+                            <div class="card-body" style="padding: 0;">
+                                @RenderChart(forecast.BaseScenario.Points)
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">Периоды дефицита средств</div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Период</th>
+                                            <th>Длительность</th>
+                                            <th>Дефицит</th>
+                                            <th class="text-end">Статус</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var gap in forecast.Gaps) {
+                                            <tr>
+                                                <td class="fw-bold">@gap.StartDate.ToString("dd.MM") — @(gap.EndDate?.ToString("dd.MM") ?? "...")</td>
+                                                <td>@gap.Duration дн.</td>
+                                                <td class="text-danger fw-bold">@gap.MinBalance.ToString("N0") Br</td>
+                                                <td class="text-end">
+                                                    <span class="severity-badge @GetSeverityClass(gap.Severity)">
+                                                        @GetSeverityLabel(gap.Severity)
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                        @if (!forecast.Gaps.Any()) {
+                                            <tr>
+                                                <td colspan="4" class="text-center py-5">
+                                                    <div class="text-success fw-bold">Разрывов не обнаружено</div>
+                                                    <div class="small text-muted">Ваша ликвидность в порядке</div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="card mb-4">
+                            <div class="card-header">Сценарии прогноза</div>
+                            <div class="card-body">
+                                @foreach (var s in new[] { forecast.OptimisticScenario, forecast.BaseScenario, forecast.PessimisticScenario }) {
+                                    <div class="mb-4">
+                                        <div class="d-flex justify-content-between mb-1" style="font-size: 13px;">
+                                            <span class="text-secondary">@s.Name</span>
+                                            <span class="fw-bold">@s.FinalBalance.ToString("N0") Br</span>
+                                        </div>
+                                        <div style="height: 6px; background: var(--bg); border-radius: 10px; overflow: hidden;">
+                                            <div style="height: 100%; width: @GetScenarioPercent(s.FinalBalance)%; background: @GetScenarioColor(s.Name); transition: width 0.6s ease;"></div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm" style="background: var(--accent-weak); border-color: var(--accent); border-style: dashed;">
+                            <div class="card-body">
+                                <h3 style="color: var(--accent); font-size: 15px;" class="mb-2">💡 Рекомендация ИИ</h3>
+                                <div class="insight-text" style="font-size: 13px; line-height: 1.6;">
+                                    @if (forecast.DaysInRed > 0) {
+                                        <p>Обнаружена нехватка средств в течение <strong>@forecast.DaysInRed дней</strong>.</p>
+                                        <ul class="recommendations small">
+                                            <li>Перенесите оплату налогов или крупных закупок на более поздний срок.</li>
+                                            <li>Проверьте дебиторскую задолженность — время напомнить клиентам об оплате.</li>
+                                        </ul>
+                                    } else {
+                                        <p>Ситуация стабильна. Все обязательства будут выполнены в срок.</p>
+                                        <p class="insight-description">Попробуйте вложить свободные <strong>@((forecast.MinBalance * 0.2m).ToString("N0")) Br</strong> в развитие или краткосрочный депозит.</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool hasData = false;
+    private int forecastDays = 90;
+    private AdvancedCashForecast forecast = new();
+
+    protected override async Task OnInitializedAsync() => await LoadForecast();
+
+    private async Task LoadForecast() {
+        isLoading = true;
+        try {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) return;
+
+            var tx = await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync();
+            var rem = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
+
+            if (!tx.Any()) {
+                hasData = false;
+                return;
+            }
+
+            // Вызов вашего сервиса прогнозирования
+            forecast = ForecastingService.ForecastCashGapsAdvanced(tx, rem, new List<TaxPayment>(), forecastDays);
+            hasData = true;
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"Error loading forecast: {ex.Message}");
+        }
+        finally {
+            isLoading = false;
+        }
+    }
+
+    private string GetDaysToGap() {
+        var gap = forecast.Gaps.OrderBy(g => g.StartDate).FirstOrDefault();
+        if (gap == null) return "Нет";
+        var d = (gap.StartDate - DateTime.Today).Days;
+        return d <= 0 ? "Сегодня" : $"{d} дн.";
+    }
+
+    private string GetWideLayoutStyles() => "grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));";
+
+    private RenderFragment RenderChart(List<ScenarioPoint> points) => __builder => {
+        if (points == null || !points.Any()) return;
+        var max = points.Max(p => p.Balance);
+        var min = points.Min(p => p.Balance);
+        var range = Math.Max((double)(max - min), 1.0);
+        var h = 180;
+
+        <div style="padding: 24px 0 12px 0; background: var(--surface);">
+            <svg width="100%" height="@(h + 20)" viewBox="0 0 @points.Count @(h + 20)" preserveAspectRatio="none" style="overflow:visible">
+                <defs>
+                    <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.2" />
+                        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+                    </linearGradient>
+                </defs>
+                @{ 
+                    string pathLine = ""; 
+                    for (int i = 0; i < points.Count; i++) {
+                        var y = h - (double)((points[i].Balance - min) / (decimal)range * h);
+                        pathLine += (i == 0 ? "M" : "L") + $"{i} {y} ";
+                    }
+                    string pathArea = pathLine + $" L {points.Count - 1} {h + 20} L 0 {h + 20} Z";
+                }
+                <path d="@pathArea" fill="url(#chartFill)" />
+                <path d="@pathLine" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                
+                @if (min < 0) {
+                    var zy = h - (double)((0 - min) / (decimal)range * h);
+                    <line x1="0" y1="@zy" x2="@points.Count" y2="@zy" stroke="var(--danger)" stroke-width="1" stroke-dasharray="4" vector-effect="non-scaling-stroke" />
+                }
+            </svg>
+            <div class="d-flex justify-content-between px-4 mt-3 small muted fw-bold">
+                <span>@points.First().Date.ToString("dd MMM")</span>
+                <span>@points.Last().Date.ToString("dd MMM")</span>
+            </div>
+        </div>
+    };
+
+    private string GetRiskClass() => forecast.RiskLevel switch {
+        "critical" or "high" => "alert-danger",
+        "medium" => "alert-warning",
+        _ => "alert-info"
+    };
+
+    private string GetRiskLabel(string l) => l switch {
+        "critical" => "Критический",
+        "high" => "Высокий",
+        "medium" => "Средний",
+        _ => "Низкий"
+    };
+
+    private string GetSeverityClass(GapSeverity s) => s switch {
+        GapSeverity.Critical => "severity-critical",
+        GapSeverity.High => "severity-high",
+        GapSeverity.Medium => "severity-medium",
+        _ => "severity-low"
+    };
+
+    private string GetSeverityLabel(GapSeverity s) => s switch {
+        GapSeverity.Critical => "Критическая",
+        GapSeverity.High => "Высокая",
+        GapSeverity.Medium => "Средняя",
+        _ => "Низкая"
+    };
+
+    private string GetScenarioColor(string n) => 
+        n.Contains("Опт") ? "var(--success)" : 
+        n.Contains("Пес") ? "var(--danger)" : "var(--accent)";
+
+    private double GetScenarioPercent(decimal b) {
+        var m = Math.Max(forecast.OptimisticScenario.FinalBalance, 1);
+        return Math.Clamp((double)(b / m * 100), 10, 100);
+    }
+}
+
+<style>
+    /* Локальные исправления для SVG и сеток */
+    .table thead th { border-top: none; }
+    .kpi-card { transition: transform 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); }
+    
+    @@media (min-width: 992px) {
+        .main {
+            padding: 32px 48px; /* Чуть больше воздуха на десктопе */
+        }
+    }
+</style>

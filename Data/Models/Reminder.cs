@@ -41,5 +41,7 @@ namespace MiniFinance.Data.Models
         
         [StringLength(500)]
         public string? Notes { get; set; }
+
+        public DateTime? NotificationSentDate { get; set; }
     }
 }

@@ -6,21 +6,27 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
+@using MiniFinance.Services
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 @inject ApplicationDbContext DbContext
+@inject IJSRuntime JSRuntime
 @attribute [Authorize]
 
 <PageTitle>Профиль - MiniFinance</PageTitle>
 
 <AuthorizeView>
     <Authorized>
-        <div class="page-header">
+        <div class="page-header" style="margin-bottom:2rem">
             <div class="title">
-                <h1>Профиль</h1>
-                <div class="meta text-muted">Управление учётной записью и параметрами</div>
+                <h1 style="font-size:1.5rem;font-weight:600;margin-bottom:.25rem">Профиль</h1>
+                <div class="meta text-muted">
+                    <span style="font-weight:500">@currentUser?.UserName</span>
+                    <span style="margin:0 .5rem">•</span>
+                    <span>Участник с @(userCreatedDate?.ToString("MMMM yyyy", new System.Globalization.CultureInfo("ru-RU")) ?? "неизвестно")</span>
+                </div>
             </div>
         </div>
 
@@ -34,146 +40,264 @@
             <div class="alert alert-danger">@errorMessage</div>
         }
 
-        <div class="card-grid" style="grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
-            <!-- Profile Info Card -->
-            <div class="card">
-                <div class="card-header">Информация о профиле</div>
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:1rem">
-                        <div>
-                            <div class="label">Имя пользователя</div>
-                            <div class="value">@currentUser?.UserName</div>
-                        </div>
-                        <div>
-                            <div class="label">Email</div>
-                            <div class="value">@userEmail</div>
-                        </div>
-                        <div>
-                            <div class="label">Регистрация</div>
-                            <div class="value text-muted small">@(userCreatedDate?.ToString("dd.MM.yyyy HH:mm") ?? "Неизвестно") UTC</div>
-                        </div>
-                        <div style="padding-top:.5rem;border-top:1px solid var(--border)">
-                            <button class="btn btn-outline" @onclick="ToggleEditProfile">✎ Редактировать профиль</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Stats Card -->
-            <div class="card">
-                <div class="card-header">Статистика</div>
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:1rem">
-                        <div>
-                            <div class="label">Всего транзакций</div>
-                            <div class="value">@totalTransactions</div>
-                        </div>
-                        <div>
-                            <div class="label">Последняя активность</div>
-                            <div class="value text-muted small">@(lastActivityDate?.ToString("dd.MM.yyyy HH:mm") ?? "Нет данных") UTC</div>
-                        </div>
-                        <div style="padding-top:.5rem;border-top:1px solid var(--border)">
-                            <a class="btn btn-outline" href="/reports">Подробная статистика</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Edit Profile Section -->
-        @if (isEditingProfile)
+        @if (_isLoading)
         {
+            <div class="center py-5">
+                <div class="spinner"></div>
+                <p class="text-muted mt-3">Загрузка статистики...</p>
+            </div>
+        }
+        else
+        {
+            <!-- KPI Cards -->
+            <div class="card-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2rem">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Всего доходов</div>
+                        <div class="metric-value" style="color:var(--success)">@_totalIncome.ToString("N0") Br</div>
+                        <div class="metric-hint">@_incomeTransactions транзакций</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Всего расходов</div>
+                        <div class="metric-value" style="color:var(--danger)">@_totalExpense.ToString("N0") Br</div>
+                        <div class="metric-hint">@_expenseTransactions транзакций</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Баланс</div>
+                        <div class="metric-value" style="color:@(_balance >= 0 ? "var(--success)" : "var(--danger)")">@_balance.ToString("N0") Br</div>
+                        <div class="metric-hint">@(_savingsRate.ToString("F1"))% накоплений</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Средняя транзакция</div>
+                        <div class="metric-value">@_avgTransaction.ToString("N0") Br</div>
+                        <div class="metric-hint">за все время</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">Всего транзакций</div>
+                        <div class="metric-value">@totalTransactions</div>
+                        <div class="metric-hint">@_activeDays активных дней</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="metric-label">В среднем за месяц</div>
+                        <div class="metric-value">@_avgPerMonth.ToString("F0")</div>
+                        <div class="metric-hint">транзакций</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity Chart -->
             <div class="card mb-4">
-                <div class="card-header">Редактирование профиля</div>
+                <div class="card-header">Активность по месяцам</div>
                 <div class="card-body">
-                    <EditForm Model="@editModel" OnValidSubmit="@SaveProfileChanges" Context="editFormContext">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary class="text-danger" />
+                    <div style="height:300px;position:relative">
+                        <canvas id="activityChart"></canvas>
+                    </div>
+                </div>
+            </div>
 
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+            <div class="card-grid" style="grid-template-columns:1fr 1fr;margin-bottom:2rem">
+                <!-- Top Categories -->
+                <div class="card">
+                    <div class="card-header">Топ категорий расходов</div>
+                    <div class="card-body">
+                        @if (_topCategories.Any())
+                        {
+                            <div style="display:flex;flex-direction:column;gap:1rem">
+                                @foreach (var cat in _topCategories.Take(5))
+                                {
+                                    <div>
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:.375rem">
+                                            <span style="font-size:13px;font-weight:500">@cat.Category</span>
+                                            <span style="font-size:13px;font-weight:600;color:var(--danger)">@cat.Amount.ToString("N0") Br</span>
+                                        </div>
+                                        <div style="background:var(--surface-hover);height:6px;border-radius:3px;overflow:hidden">
+                                            <div style="background:var(--accent);height:100%;width:@(cat.Percentage)%;transition:width 0.3s ease"></div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted small">Нет данных о расходах</p>
+                        }
+                    </div>
+                </div>
+
+                <!-- Achievements -->
+                <div class="card">
+                    <div class="card-header">Достижения</div>
+                    <div class="card-body">
+                        <div style="display:flex;flex-direction:column;gap:.75rem">
+                            @foreach (var achievement in _achievements)
+                            {
+                                <div style="padding:12px;background:var(--surface-hover);border-radius:var(--radius);border-left:3px solid var(--accent)">
+                                    <div style="font-weight:600;font-size:13px;margin-bottom:2px">@achievement.Title</div>
+                                    <div class="small text-muted" style="line-height:1.5">@achievement.Description</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Info & Settings -->
+            <div class="card-grid" style="grid-template-columns:1fr 1fr;margin-bottom:2rem">
+                <!-- Profile Info Card -->
+                <div class="card">
+                    <div class="card-header">Информация о профиле</div>
+                    <div class="card-body">
+                        <div style="display:flex;flex-direction:column;gap:1rem">
                             <div>
-                                <label class="label">Имя пользователя</label>
-                                <InputText class="input" @bind-Value="editModel.UserName" disabled />
-                                <div class="small text-muted">Не может быть изменено</div>
+                                <div class="label">Имя пользователя</div>
+                                <div style="font-size:14px;font-weight:500">@currentUser?.UserName</div>
                             </div>
                             <div>
-                                <label class="label">Email</label>
-                                <InputText type="email" class="input" @bind-Value="editModel.Email" />
+                                <div class="label">Email</div>
+                                <div style="font-size:14px;font-weight:500">@userEmail</div>
+                            </div>
+                            <div>
+                                <div class="label">Регистрация</div>
+                                <div class="text-muted small">@(userCreatedDate?.ToString("dd.MM.yyyy HH:mm") ?? "Неизвестно")</div>
+                            </div>
+                            <div>
+                                <div class="label">Последняя активность</div>
+                                <div class="text-muted small">@(lastActivityDate?.ToString("dd.MM.yyyy HH:mm") ?? "Нет данных")</div>
+                            </div>
+                            <div style="padding-top:.75rem;border-top:1px solid var(--border)">
+                                <button class="btn btn-outline" @onclick="ToggleEditProfile" style="width:100%">Редактировать профиль</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">Быстрые действия</div>
+                    <div class="card-body">
+                        <div style="display:flex;flex-direction:column;gap:.5rem">
+                            <a class="btn btn-outline" href="/transactions">
+                                Добавить транзакцию
+                            </a>
+                            <a class="btn btn-outline" href="/reports">
+                                Посмотреть отчёты
+                            </a>
+                            <a class="btn btn-outline" href="/import">
+                                Импортировать CSV
+                            </a>
+                            <button class="btn btn-outline" @onclick="ExportUserData">
+                                Экспорт всех данных
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit Profile Section -->
+            @if (isEditingProfile)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">Редактирование профиля</div>
+                    <div class="card-body">
+                        <EditForm Model="@editModel" OnValidSubmit="@SaveProfileChanges" Context="editFormContext">
+                            <DataAnnotationsValidator />
+                            <ValidationSummary class="text-danger" />
+
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+                                <div>
+                                    <label class="label">Имя пользователя</label>
+                                    <InputText class="input" @bind-Value="editModel.UserName" disabled />
+                                    <div class="small text-muted" style="margin-top:.25rem">Не может быть изменено</div>
+                                </div>
+                                <div>
+                                    <label class="label">Email</label>
+                                    <InputText type="email" class="input" @bind-Value="editModel.Email" />
+                                </div>
+                            </div>
+
+                            <div style="display:flex;gap:.5rem">
+                                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                                <button type="button" class="btn btn-outline" @onclick="CancelEditProfile">Отмена</button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            }
+
+            <!-- Security Card -->
+            <div class="card mb-4">
+                <div class="card-header">Безопасность</div>
+                <div class="card-body">
+                    <div style="display:flex;flex-direction:column;gap:1rem">
+                        <div>
+                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                <div>
+                                    <div style="font-weight:600;font-size:14px;margin-bottom:2px">Пароль</div>
+                                    <div class="small text-muted">Изменить пароль учётной записи</div>
+                                </div>
+                                <button class="btn btn-outline" @onclick="ToggleChangePassword">Изменить пароль</button>
                             </div>
                         </div>
 
-                        <div style="display:flex;gap:.5rem">
-                            <button type="submit" class="btn btn-primary">Сохранить изменения</button>
-                            <button type="button" class="btn btn-outline" @onclick="CancelEditProfile">Отмена</button>
+                        @if (isChangingPassword)
+                        {
+                            <div style="padding-top:1rem;border-top:1px solid var(--border)">
+                                <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
+                                    <EditForm Model="@passwordModel" OnValidSubmit="@ChangePassword" Context="pwFormContext">
+                                        <DataAnnotationsValidator />
+                                        <ValidationSummary class="text-danger" />
+
+                                        <div style="display:flex;flex-direction:column;gap:1rem">
+                                            <div>
+                                                <label class="label">Текущий пароль</label>
+                                                <InputText type="password" class="input" @bind-Value="passwordModel.OldPassword" />
+                                            </div>
+                                            <div>
+                                                <label class="label">Новый пароль</label>
+                                                <InputText type="password" class="input" @bind-Value="passwordModel.NewPassword" />
+                                            </div>
+                                            <div>
+                                                <label class="label">Подтверждение пароля</label>
+                                                <InputText type="password" class="input" @bind-Value="passwordModel.ConfirmPassword" />
+                                            </div>
+
+                                            <div style="display:flex;gap:.5rem;padding-top:.5rem">
+                                                <button type="submit" class="btn btn-primary">Изменить пароль</button>
+                                                <button type="button" class="btn btn-outline" @onclick="CancelChangePassword">Отмена</button>
+                                            </div>
+                                        </div>
+                                    </EditForm>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="card" style="border-color:var(--danger)">
+                <div class="card-header" style="color:var(--danger)">Зона опасности</div>
+                <div class="card-body">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <div style="font-weight:600;font-size:14px;margin-bottom:2px">Выход из системы</div>
+                            <div class="small text-muted">Завершить текущую сессию</div>
                         </div>
-                    </EditForm>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="Logout">Выход</button>
+                    </div>
                 </div>
             </div>
         }
-
-        <!-- Security Card -->
-        <div class="card mb-4">
-            <div class="card-header">Безопасность</div>
-            <div class="card-body">
-                <div style="display:flex;flex-direction:column;gap:1rem">
-                    <div>
-                        <div style="display:flex;align-items:center;justify-content:space-between">
-                            <div>
-                                <strong>Пароль</strong>
-                                <div class="small text-muted">Последнее изменение: неизвестно</div>
-                            </div>
-                            <button class="btn btn-outline" @onclick="ToggleChangePassword">Изменить пароль</button>
-                        </div>
-                    </div>
-
-                    @if (isChangingPassword)
-                    {
-                        <div style="padding-top:1rem;border-top:1px solid var(--border)">
-                            <div style="background:var(--muted-surface);padding:1rem;border-radius:8px">
-                                <EditForm Model="@passwordModel" OnValidSubmit="@ChangePassword" Context="pwFormContext">
-                                    <DataAnnotationsValidator />
-                                    <ValidationSummary class="text-danger" />
-
-                                    <div style="display:flex;flex-direction:column;gap:1rem">
-                                        <div>
-                                            <label class="label">Текущий пароль</label>
-                                            <InputText type="password" class="input" @bind-Value="passwordModel.OldPassword" />
-                                        </div>
-                                        <div>
-                                            <label class="label">Новый пароль</label>
-                                            <InputText type="password" class="input" @bind-Value="passwordModel.NewPassword" />
-                                        </div>
-                                        <div>
-                                            <label class="label">Подтверждение пароля</label>
-                                            <InputText type="password" class="input" @bind-Value="passwordModel.ConfirmPassword" />
-                                        </div>
-
-                                        <div style="display:flex;gap:.5rem">
-                                            <button type="submit" class="btn btn-primary">Изменить пароль</button>
-                                            <button type="button" class="btn btn-outline" @onclick="CancelChangePassword">Отмена</button>
-                                        </div>
-                                    </div>
-                                </EditForm>
-                            </div>
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-
-        <!-- Danger Zone -->
-        <div class="card" style="border-color:var(--danger);border-width:2px">
-            <div class="card-header" style="color:var(--danger)">⚠️ Зона опасности</div>
-            <div class="card-body">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <strong>Выход из системы</strong>
-                        <div class="small text-muted">Завершить текущую сессию</div>
-                    </div>
-                    <button class="btn btn-outline-danger" @onclick="Logout">Выход</button>
-                </div>
-            </div>
-        </div>
     </Authorized>
     <NotAuthorized>
         <div class="center py-5">
@@ -184,6 +308,76 @@
     </NotAuthorized>
 </AuthorizeView>
 
+<script>
+    let activityChart = null;
+
+    window.renderActivityChart = function(labels, data) {
+        const ctx = document.getElementById('activityChart');
+        if (!ctx) return;
+
+        if (activityChart) {
+            activityChart.destroy();
+        }
+
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDark ? '#8b949e' : '#656d76';
+        const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        const accentColor = isDark ? '#a78bfa' : '#7c3aed';
+        const accentBg = isDark ? 'rgba(167,139,250,0.5)' : 'rgba(124,58,237,0.5)';
+
+        activityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Транзакции',
+                    data: data,
+                    backgroundColor: accentBg,
+                    borderColor: accentColor,
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: isDark ? '#161b22' : '#ffffff',
+                        titleColor: isDark ? '#e6edf3' : '#1f2328',
+                        bodyColor: isDark ? '#8b949e' : '#656d76',
+                        borderColor: isDark ? '#30363d' : '#d0d7de',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: textColor,
+                            precision: 0
+                        },
+                        grid: {
+                            color: gridColor
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: textColor
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    };
+</script>
+
 @code {
     private ApplicationUser? currentUser;
     private string userEmail = string.Empty;
@@ -193,11 +387,27 @@
 
     private bool isEditingProfile = false;
     private bool isChangingPassword = false;
+    private bool _isLoading = true;
 
     private bool showMessage = false;
     private string message = string.Empty;
     private bool showError = false;
     private string errorMessage = string.Empty;
+
+    // Statistics
+    private decimal _totalIncome = 0;
+    private decimal _totalExpense = 0;
+    private decimal _balance = 0;
+    private int _incomeTransactions = 0;
+    private int _expenseTransactions = 0;
+    private decimal _savingsRate = 0;
+    private decimal _avgTransaction = 0;
+    private int _activeDays = 0;
+    private decimal _avgPerMonth = 0;
+
+    private List<CategoryStat> _topCategories = new();
+    private List<Achievement> _achievements = new();
+    private List<MonthlyActivity> _monthlyActivity = new();
 
     private EditProfileModel editModel = new();
     private ChangePasswordModel passwordModel = new();
@@ -210,20 +420,161 @@
         if (currentUser != null)
         {
             userEmail = currentUser.Email ?? string.Empty;
+            userCreatedDate = currentUser.Id != null ? DateTime.UtcNow : null;
 
-            totalTransactions = await DbContext.Transactions
-                .Where(t => t.UserId == currentUser.Id)
-                .CountAsync();
-
-            lastActivityDate = await DbContext.Transactions
-                .Where(t => t.UserId == currentUser.Id)
-                .OrderByDescending(t => t.Date)
-                .Select(t => (DateTime?)t.Date)
-                .FirstOrDefaultAsync();
+            await LoadStatistics();
 
             editModel.UserName = currentUser.UserName ?? string.Empty;
             editModel.Email = currentUser.Email ?? string.Empty;
         }
+
+        _isLoading = false;
+    }
+
+    private async Task LoadStatistics()
+    {
+        if (currentUser == null) return;
+
+        var transactions = await DbContext.Transactions
+            .Where(t => t.UserId == currentUser.Id)
+            .ToListAsync();
+
+        totalTransactions = transactions.Count;
+
+        _totalIncome = transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
+        _totalExpense = Math.Abs(transactions.Where(t => t.Amount < 0).Sum(t => t.Amount));
+        _balance = _totalIncome - _totalExpense;
+        _incomeTransactions = transactions.Count(t => t.Amount > 0);
+        _expenseTransactions = transactions.Count(t => t.Amount < 0);
+
+        if (_totalIncome > 0)
+        {
+            _savingsRate = (_balance / _totalIncome) * 100;
+        }
+
+        if (totalTransactions > 0)
+        {
+            _avgTransaction = transactions.Average(t => Math.Abs(t.Amount));
+        }
+
+        _activeDays = transactions.Select(t => t.Date.Date).Distinct().Count();
+
+        lastActivityDate = transactions.Any()
+            ? transactions.OrderByDescending(t => t.Date).First().Date
+            : null;
+
+        // Calculate months active
+        if (transactions.Any())
+        {
+            var firstTransaction = transactions.Min(t => t.Date);
+            var monthsActive = Math.Max(1, (int)((DateTime.Now - firstTransaction).TotalDays / 30));
+            _avgPerMonth = (decimal)totalTransactions / monthsActive;
+        }
+
+        // Top categories
+        _topCategories = transactions
+            .Where(t => t.Amount < 0)
+            .GroupBy(t => t.Category)
+            .Select(g => new CategoryStat
+            {
+                Category = g.Key,
+                Amount = Math.Abs(g.Sum(t => t.Amount)),
+                Count = g.Count()
+            })
+            .OrderByDescending(c => c.Amount)
+            .Take(5)
+            .ToList();
+
+        var maxAmount = _topCategories.Any() ? _topCategories.Max(c => c.Amount) : 1;
+        foreach (var cat in _topCategories)
+        {
+            cat.Percentage = maxAmount > 0 ? (cat.Amount / maxAmount) * 100 : 0;
+        }
+
+        // Monthly activity
+        _monthlyActivity = transactions
+            .GroupBy(t => new { t.Date.Year, t.Date.Month })
+            .Select(g => new MonthlyActivity
+            {
+                Month = new DateTime(g.Key.Year, g.Key.Month, 1),
+                Count = g.Count()
+            })
+            .OrderBy(m => m.Month)
+            .TakeLast(12)
+            .ToList();
+
+        // Generate achievements
+        GenerateAchievements();
+    }
+
+    private void GenerateAchievements()
+    {
+        _achievements.Clear();
+
+        if (totalTransactions >= 100)
+        {
+            _achievements.Add(new Achievement
+            {
+                Title = "Активный пользователь",
+                Description = $"{totalTransactions} транзакций записано"
+            });
+        }
+
+        if (_activeDays >= 30)
+        {
+            _achievements.Add(new Achievement
+            {
+                Title = "Постоянство",
+                Description = $"{_activeDays} активных дней"
+            });
+        }
+
+        if (_savingsRate > 20)
+        {
+            _achievements.Add(new Achievement
+            {
+                Title = "Мастер накоплений",
+                Description = $"{_savingsRate:F1}% сбережений"
+            });
+        }
+
+        if (_balance > 100000)
+        {
+            _achievements.Add(new Achievement
+            {
+                Title = "Финансовая стабильность",
+                Description = "Баланс более 100К"
+            });
+        }
+
+        if (_achievements.Count == 0)
+        {
+            _achievements.Add(new Achievement
+            {
+                Title = "Начало пути",
+                Description = "Продолжайте вести учёт финансов"
+            });
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_isLoading && _monthlyActivity.Any())
+        {
+            await RenderActivityChart();
+        }
+    }
+
+    private async Task RenderActivityChart()
+    {
+        try
+        {
+            var labels = _monthlyActivity.Select(m => m.Month.ToString("MMM yyyy", new System.Globalization.CultureInfo("ru-RU"))).ToArray();
+            var data = _monthlyActivity.Select(m => m.Count).ToArray();
+
+            await JSRuntime.InvokeVoidAsync("renderActivityChart", labels, data);
+        }
+        catch { }
     }
 
     private void ToggleEditProfile()
@@ -259,7 +610,7 @@
 
             if (result.Succeeded)
             {
-                message = "✅ Профиль успешно обновлён.";
+                message = "Профиль успешно обновлён.";
                 showMessage = true;
                 isEditingProfile = false;
                 userEmail = editModel.Email;
@@ -306,7 +657,7 @@
 
             if (result.Succeeded)
             {
-                message = "✅ Пароль успешно изменён.";
+                message = "Пароль успешно изменён.";
                 showMessage = true;
                 isChangingPassword = false;
                 passwordModel = new();
@@ -320,6 +671,23 @@
         catch (Exception ex)
         {
             errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+        }
+    }
+
+    private async Task ExportUserData()
+    {
+        if (currentUser == null) return;
+
+        try
+        {
+            NavigationManager.NavigateTo($"/reports/export/csv?start=&end=&tab=transactions", forceLoad: true);
+            message = "Экспорт данных начат.";
+            showMessage = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка экспорта: {ex.Message}";
             showError = true;
         }
     }
@@ -352,5 +720,25 @@
         [Required(ErrorMessage = "Подтверждение пароля обязательно")]
         [Compare("NewPassword", ErrorMessage = "Пароли не совпадают")]
         public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    public class CategoryStat
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public int Count { get; set; }
+        public decimal Percentage { get; set; }
+    }
+
+    public class Achievement
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+
+    public class MonthlyActivity
+    {
+        public DateTime Month { get; set; }
+        public int Count { get; set; }
     }
 }

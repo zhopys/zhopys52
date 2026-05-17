@@ -6,362 +6,234 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using MiniFinance.Data.Models
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject IForecastingService ForecastingService
-@inject IReportService ReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @attribute [Authorize]
 
-<PageTitle>Главная - MiniFinance</PageTitle>
+<PageTitle>Главная — MiniFinance</PageTitle>
 
-<AuthorizeView Context="authContext">
-    <Authorized>
-        <div class="page-header">
-            <div class="title">
-                <h1>Добро пожаловать, @authContext.User.Identity?.Name!</h1>
-                <div class="meta text-muted">Обзор вашего финансового состояния</div>
-            </div>
-            <div class="page-actions">
-                <a class="btn btn-outline" href="/transactions">Транзакции</a>
-                <a class="btn btn-outline" href="/import">Импорт CSV</a>
-                <a class="btn btn-primary" href="/transactions/new">+ Новая транзакция</a>
-            </div>
-        </div>
-
-        @if (transactions == null)
-        {
-            <div class="center py-5">
-                <div class="spinner-border" role="status" aria-hidden="true"></div>
-            </div>
-        }
-        else if (!transactions.Any())
-        {
-            <div class="empty-state">
-                <h3 class="lead">Начните учёт финансов</h3>
-                <p class="text-muted">У вас пока нет транзакций. Добавьте первую транзакцию или импортируйте выписку.</p>
-                <div class="row" style="justify-content:center;margin-top:1rem;gap:.5rem">
-                    <a class="btn btn-primary" href="/transactions">Добавить транзакцию</a>
-                    <a class="btn btn-outline" href="/import">Импортировать CSV</a>
+<div class="main">
+    <AuthorizeView Context="authContext">
+        <Authorized>
+            <div class="page-header">
+                <div class="title">
+                    <h1>Обзор</h1>
+                    <div class="meta">@DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("ru-RU"))</div>
                 </div>
-            </div>
-        }
-        else
-        {
-            <!-- KPI cards -->
-            <div class="card-grid mb-4">
-                <div class="card">
-                    <div class="card-body kpi">
-                        <div class="label">Всего транзакций</div>
-                        <div class="value">@transactions.Count</div>
-                        <div class="small text-muted">Всего операций</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body kpi">
-                        <div class="label">Доходы</div>
-                        <div class="value text-success">+@totalIncome.ToString("N0") ₽</div>
-                        <div class="small text-muted">За выбранный период</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body kpi">
-                        <div class="label">Расходы</div>
-                        <div class="value text-danger">@Math.Abs(totalExpense).ToString("N0") ₽</div>
-                        <div class="small text-muted">Удержания и платежи</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body kpi">
-                        <div class="label">Баланс</div>
-                        <div class="value">@(balance >= 0 ? "+" : "")@balance.ToString("N0") ₽</div>
-                        <div class="small text-muted">Текущий остаток</div>
-                    </div>
+                <div class="page-actions">
+                    <a href="/transactions/create" class="btn btn-primary">
+                        <span>+</span> Новая операция
+                    </a>
                 </div>
             </div>
 
-            <!-- Forecast and charts -->
-            @if (forecast != null)
+            @if (isLoading)
             {
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
-                            <div>
-                                <h3 class="mb-0">Прогноз на 30 дней</h3>
-                                <div class="small text-muted">На основе последних данных</div>
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                </div>
+            }
+            else
+            {
+                @if (cashGaps.Any())
+                {
+                    <div class="alert alert-danger d-flex align-items-center mb-4">
+                        <div style="font-size: 1.5rem; margin-right: 12px;">⚠️</div>
+                        <div style="flex: 1">
+                            <div class="fw-bold">Внимание: Риск кассового разрыва</div>
+                            <div class="small">Ближайший дефицит ожидается @cashGaps.First().StartDate.ToString("dd MMM").</div>
+                        </div>
+                        <a href="/cash-forecast" class="btn btn-sm btn-danger text-white">Подробнее</a>
+                    </div>
+                }
+
+                <div class="kpi-grid mb-4">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Общий баланс</div>
+                        <div class="kpi-value @(balance >= 0 ? "text-success" : "text-danger")">
+                            @balance.ToString("N0") <small class="text-muted">Br</small>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Доход за месяц</div>
+                        <div class="kpi-value text-success">
+                            +@CurrentMonthIncome.ToString("N0") <small style="font-size: 14px">Br</small>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Расход за месяц</div>
+                        <div class="kpi-value text-danger">
+                            -@Math.Abs(CurrentMonthExpense).ToString("N0") <small style="font-size: 14px">Br</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px;">
+                    <div style="min-width: 0;">
+                        @if (monthlyData.Any())
+                        {
+                            <div class="card mb-4">
+                                <div class="card-header">Динамика (последние 6 месяцев)</div>
+                                <div class="card-body">
+                                    <div class="chart-bar-container">
+                                        @foreach (var m in monthlyData)
+                                        {
+                                            var maxVal = monthlyData.Max(x => Math.Abs(x.Value));
+                                            var height = maxVal > 0 ? (int)(Math.Abs(m.Value) / maxVal * 120) : 0;
+                                            <div class="chart-bar">
+                                                <div class="chart-bar-fill @(m.Value >= 0 ? "income" : "expense")" 
+                                                     style="height:@(height + 2)px" 
+                                                     title="@m.Value.ToString("N0") Br"></div>
+                                                <div class="chart-bar-label">@m.Label</div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
                             </div>
-                            <div class="kpi" style="text-align:right">
-                                <div class="small text-muted">Уверенность</div>
-                                <div class="value">@forecast.Confidence% </div>
+                        }
+
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span>Последние транзакции</span>
+                                <a href="/transactions" class="btn btn-ghost btn-sm">Все</a>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Дата</th>
+                                            <th>Контрагент / Описание</th>
+                                            <th class="text-end">Сумма</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var t in recentTransactions)
+                                        {
+                                            <tr>
+                                                <td class="small text-muted">@t.Date.ToString("dd.MM")</td>
+                                                <td>
+                                                    <div class="fw-bold">@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</div>
+                                                    <div class="small text-muted">@t.Description</div>
+                                                </td>
+                                                <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                                    @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2")
+                                                </td>
+                                            </tr>
+                                        }
+                                        @if (!recentTransactions.Any())
+                                        {
+                                            <tr><td colspan="3" class="text-center py-4 text-muted">Нет операций</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="card mb-4" style="@(upcomingTaxes.Any() ? "border-left: 3px solid var(--warning)" : "")">
+                            <div class="card-header">Налоги к оплате</div>
+                            <div class="card-body p-0">
+                                @foreach (var tax in upcomingTaxes.Take(4))
+                                {
+                                    <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <div class="fw-bold small">@tax.Name</div>
+                                            <div class="small text-muted">до @tax.DueDate.ToString("dd.MM.yyyy")</div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="fw-bold">@tax.Amount.ToString("N0") Br</div>
+                                            <a href="/taxes" class="small text-accent">Оплатить</a>
+                                        </div>
+                                    </div>
+                                }
+                                @if (!upcomingTaxes.Any())
+                                {
+                                    <div class="p-3 text-center small text-muted">Налогов не запланировано</div>
+                                }
                             </div>
                         </div>
 
-                        @if (forecastPoints != null && forecastPoints.Any())
-                        {
-                            <div style="margin-top:1rem">
-                                <svg viewBox="0 0 600 200" width="100%" height="220" preserveAspectRatio="none" aria-label="Прогноз остатков на 30 дней">
-                                    @{
-                                        // prepare points
-                                        var pts = new List<string>();
-                                        var balances = forecastPoints.Select(p => p.Balance).ToList();
-                                        decimal min = balances.Min();
-                                        decimal max = balances.Max();
-                                        // include zero baseline to center
-                                        min = Math.Min(min, 0);
-                                        max = Math.Max(max, 0);
-                                        if (min == max) { min -= 1; max += 1; }
-
-                                        for (int i = 0; i < forecastPoints.Count; i++)
-                                        {
-                                            double x = 20 + i * ((560.0) / Math.Max(1, forecastPoints.Count - 1));
-                                            double norm = (double)((forecastPoints[i].Balance - min) / (max - min));
-                                            double y = 180 - norm * 160; // pad
-                                            pts.Add($"{x.ToString(System.Globalization.CultureInfo.InvariantCulture)},{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-                                        }
-
-                                        var polylinePoints = string.Join(" ", pts);
-
-                                        // draw baseline for zero
-                                        double zeroNorm = (double)((0 - min) / (max - min));
-                                        double zeroY = 180 - zeroNorm * 160;
-
-                                        // draw negative area polygons (segments under zero)
-                                        var negPolys = new List<string>();
-                                        // build arrays of points with Date and Balance
-                                        var ptsList = forecastPoints.Select((p, idx) => new { idx, p.Date, p.Balance }).ToList();
-
-                                        int idx0 = 0;
-                                        while (idx0 < ptsList.Count)
-                                        {
-                                            // find next segment where balance < 0
-                                            while (idx0 < ptsList.Count && ptsList[idx0].Balance >= 0) idx0++;
-                                            if (idx0 >= ptsList.Count) break;
-                                            int start = idx0;
-                                            // find end of negative run
-                                            while (idx0 < ptsList.Count && ptsList[idx0].Balance < 0) idx0++;
-                                            int end = idx0 - 1;
-
-                                            // compute polygon points including intersections at start-1/start and end/end+1 to close to baseline
-                                            var polyPts = new List<string>();
-
-                                            // left intersection
-                                            int leftIdx = Math.Max(0, start - 1);
-                                            double xLeft = 20 + leftIdx * ((560.0) / Math.Max(1, ptsList.Count - 1));
-                                            double bLeft = (double)ptsList[leftIdx].Balance;
-                                            double xStart = 20 + start * ((560.0) / Math.Max(1, ptsList.Count - 1));
-                                            double bStart = (double)ptsList[start].Balance;
-                                            double xi = xLeft;
-                                            if (bLeft >= 0 && bStart < 0)
-                                            {
-                                                // interpolate crossing between leftIdx and start
-                                                double t = (double)(bLeft) / (double)(bLeft - bStart);
-                                                xi = xLeft + t * (xStart - xLeft);
-                                            }
-                                            double yi = zeroY;
-                                            polyPts.Add($"{xi.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yi.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-
-                                            // negative points
-                                            for (int k = start; k <= end; k++)
-                                            {
-                                                double xk = 20 + k * ((560.0) / Math.Max(1, ptsList.Count - 1));
-                                                double normk = (double)((ptsList[k].Balance - min) / (max - min));
-                                                double yk = 180 - normk * 160;
-                                                polyPts.Add($"{xk.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yk.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-                                            }
-
-                                            // right intersection
-                                            int rightIdx = Math.Min(ptsList.Count - 1, end + 1);
-                                            double xRight = 20 + rightIdx * ((560.0) / Math.Max(1, ptsList.Count - 1));
-                                            double bRight = (double)ptsList[rightIdx].Balance;
-                                            double xEnd = 20 + end * ((560.0) / Math.Max(1, ptsList.Count - 1));
-                                            double bEnd = (double)ptsList[end].Balance;
-                                            double xj = xRight;
-                                            if (bEnd < 0 && bRight >= 0)
-                                            {
-                                                double t2 = (double)(-bEnd) / (double)(bRight - bEnd);
-                                                xj = xEnd + t2 * (xRight - xEnd);
-                                            }
-                                            polyPts.Add($"{xj.ToString(System.Globalization.CultureInfo.InvariantCulture)},{yi.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-
-                                            // close polygon by adding left intersection again
-                                            polyPts.Add(polyPts[0]);
-
-                                            negPolys.Add(string.Join(" ", polyPts));
-                                        }
-                                    }
-
-                                    <rect x="0" y="0" width="100%" height="100%" fill="transparent" />
-                                    <polyline points="@polylinePoints" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-                                    @foreach (var poly in negPolys)
-                                    {
-                                        <polygon points="@poly" fill="#fdecea" stroke="none"></polygon>
-                                    }
-                                    <line x1="0" x2="600" y1="@zeroY" y2="@zeroY" stroke="#999" stroke-dasharray="3,3" />
-                                </svg>
-
-                                @if (forecastPoints.Any(p => p.Balance < 0))
-                                {
-                                    <div class="alert alert-danger mt-3">Риск кассового разрыва: прогноз уходит в минус</div>
-                                }
+                        <div class="card" style="background: var(--surface-hover); border: none;">
+                            <div class="card-body text-center p-4">
+                                <div style="font-size: 2rem; margin-bottom: 8px;">📊</div>
+                                <h4 class="mb-2">Аналитика роста</h4>
+                                <p class="small text-muted mb-3">Узнайте, насколько эффективно масштабируется ваш бизнес.</p>
+                                <a href="/insights" class="btn btn-outline w-100">Открыть отчет</a>
                             </div>
-                        }
+                        </div>
                     </div>
                 </div>
             }
-
-            <div class="card-grid">
-                <div class="card">
-                    <div class="card-header">Топ категорий расходов</div>
-                    <div class="card-body">
-                        @if (report != null && report.ExpenseByCategory.Any())
-                        {
-                            <ul class="list">
-                                @foreach (var cat in report.ExpenseByCategory.Take(6))
-                                {
-                                    <li class="list-item">
-                                        <div class="left">
-                                            <div class="fw-bold">@cat.Category</div>
-                                            <div class="muted small">@cat.Count транзакций</div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="fw-bold text-danger">@cat.Amount.ToString("N0") ₽</div>
-                                            <div class="small text-muted">@cat.Percentage.ToString("F1")%</div>
-                                        </div>
-                                    </li>
-                                }
-                            </ul>
-                            <a class="btn btn-outline w-100 mt-2" href="/reports">Подробные отчёты →</a>
-                        }
-                        else
-                        {
-                            <div class="text-muted">Нет данных о расходах</div>
-                        }
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">Последние транзакции</div>
-                    <div class="card-body">
-                        <ul class="list">
-                            @foreach (var t in transactions.OrderByDescending(x => x.Date).Take(8))
-                            {
-                                <li class="list-item">
-                                    <div class="left">
-                                        <div class="fw-bold">@t.Description</div>
-                                        <div class="muted small">@t.Date.ToString("dd.MM.yyyy") • @t.Category</div>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">@(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N0") ₽</div>
-                                    </div>
-                                </li>
-                            }
-                        </ul>
-                        <a class="btn btn-outline w-100 mt-2" href="/transactions">Открыть все транзакции →</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card mt-4">
-                <div class="card-body">
-                    <h3 class="mb-2">Быстрые действия</h3>
-                    <div class="row" style="gap:.5rem">
-                        <a class="btn btn-primary" href="/transactions">Добавить транзакцию</a>
-                        <a class="btn btn-outline" href="/import">Импорт CSV</a>
-                        <a class="btn btn-outline" href="/reports">Отчёты</a>
-                        <button class="btn btn-outline" @onclick="RefreshData">Обновить данные</button>
-                    </div>
-                </div>
-            </div>
-        }
-    </Authorized>
-</AuthorizeView>
+        </Authorized>
+    </AuthorizeView>
+</div>
 
 @code {
+    private bool isLoading = true;
     private List<Transaction> transactions = new();
-    private ForecastResult? forecast;
-    private List<CashForecastPoint> forecastPoints = new();
-    private CategoryReport? report;
-    private List<MiniFinance.Data.Models.Reminder> upcomingReminders = new();
-    private decimal totalIncome => transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
-    private decimal totalExpense => transactions.Where(t => t.Amount < 0).Sum(t => t.Amount);
-    private decimal balance => totalIncome + totalExpense;
+    private List<Transaction> recentTransactions = new();
+    private List<MonthlyDataPoint> monthlyData = new();
+    private List<CashGap> cashGaps = new();
+    private List<TaxPayment> upcomingTaxes = new();
+
+    private decimal CurrentMonthIncome => transactions
+        .Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month && t.Amount > 0)
+        .Sum(t => t.Amount);
+
+    private decimal CurrentMonthExpense => transactions
+        .Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month && t.Amount < 0)
+        .Sum(t => t.Amount);
+
+    private decimal balance => transactions.Sum(t => t.Amount);
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
-    }
-
-    private async Task LoadData()
-    {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = await UserManager.GetUserAsync(authState.User);
+
         if (user != null)
         {
             transactions = await DbContext.Transactions
                 .Where(t => t.UserId == user.Id)
+                .OrderByDescending(t => t.Date)
                 .ToListAsync();
 
-            // Генерируем прогноз и отчеты
-            if (transactions.Any())
+            recentTransactions = transactions.Take(6).ToList();
+
+            // Динамика за 6 месяцев
+            var ruCulture = new System.Globalization.CultureInfo("ru-RU");
+            for (int i = 5; i >= 0; i--)
             {
-                forecast = ForecastingService.PredictNextMonth(transactions);
-                report = ReportService.GetCategoryBreakdown(transactions);
-
-                // load reminders for forecasting and upcoming list
-                var today = DateTime.Today;
-                var rems = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
-                upcomingReminders = rems.Where(r => !r.IsPaid && r.Date >= today && r.Date <= today.AddDays(7)).OrderBy(r => r.Date).ToList();
-
-                // forecast 30 days points
-                var remForForecast = rems.Where(r => !r.IsPaid && r.Date >= today && r.Date <= today.AddDays(30)).ToList();
-                forecastPoints = ForecastingService.PredictCashflowNextDays(transactions, remForForecast, 30);
+                var month = DateTime.Today.AddMonths(-i);
+                var monthTx = transactions.Where(t => t.Date.Year == month.Year && t.Date.Month == month.Month).ToList();
+                monthlyData.Add(new MonthlyDataPoint
+                {
+                    Label = month.ToString("MMM", ruCulture),
+                    Value = monthTx.Sum(t => t.Amount)
+                });
             }
+
+            // Прогноз
+            var reminders = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
+            cashGaps = ForecastingService.DetectCashGaps(transactions, reminders, 90, 0);
+
+            // Налоги
+            upcomingTaxes = await DbContext.TaxPayments
+                .Where(t => t.UserId == user.Id && !t.IsPaid && t.DueDate >= DateTime.Today)
+                .OrderBy(t => t.DueDate)
+                .ToListAsync();
         }
+
+        isLoading = false;
     }
 
-    private async Task RefreshData()
+    private class MonthlyDataPoint
     {
-        await LoadData();
-        StateHasChanged();
-    }
-
-    private async Task MarkReminderPaid(int id)
-    {
-        var r = await DbContext.Reminders.FindAsync(id);
-        if (r == null) return;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        // create expense transaction
-        var tx = new Transaction
-        {
-            Date = r.Date,
-            Amount = -Math.Abs(r.Amount),
-            Description = $"Оплата: {r.Name}",
-            Category = r.Category ?? string.Empty,
-            UserId = user.Id,
-            ProjectId = null
-        };
-
-        DbContext.Transactions.Add(tx);
-
-        if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.OneTime)
-        {
-            r.IsPaid = true;
-            r.PaidDate = DateTime.Now;
-        }
-        else if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.Monthly)
-        {
-            r.Date = r.Date.AddMonths(1);
-        }
-        else if (r.Frequency == MiniFinance.Data.Models.ReminderFrequency.Yearly)
-        {
-            r.Date = r.Date.AddYears(1);
-        }
-
-        await DbContext.SaveChangesAsync();
-        await LoadData();
+        public string Label { get; set; } = string.Empty;
+        public decimal Value { get; set; }
     }
 }

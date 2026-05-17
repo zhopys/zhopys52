@@ -1,0 +1,420 @@
+@page "/taxes"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject ITaxService TaxService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+@attribute [Authorize]
+
+<PageTitle>Налоги и счета - MiniFinance</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div class="title">
+                <h1>Налоги и счета</h1>
+                <div class="meta text-muted">Учёт налоговых платежей и счетов</div>
+            </div>
+        </div>
+
+        @if (showMessage)
+        {
+            <div class="alert alert-success">@_message</div>
+        }
+
+        <!-- Tabs -->
+        <div class="card mb-3">
+            <div class="card-body" style="padding: 0.75rem;">
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn @(_activeTab == "taxes" ? "btn-primary" : "btn-outline") btn-sm" @onclick="@(() => _activeTab = "taxes")">Налоги</button>
+                    <button class="btn @(_activeTab == "bills" ? "btn-primary" : "btn-outline") btn-sm" @onclick="@(() => _activeTab = "bills")">Счета</button>
+                </div>
+            </div>
+        </div>
+
+        @if (_activeTab == "taxes")
+        {
+            <!-- Add tax form -->
+            <div class="card mb-3">
+                <div class="card-header">Добавить налог</div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:.5rem;align-items:end">
+                        <div>
+                            <label class="label">Название</label>
+                            <select class="input" @bind="newTaxName">
+                                <option value="НДС">НДС</option>
+                                <option value="УСН">УСН</option>
+                                <option value="ФСЗН">ФСЗН</option>
+                                <option value="Подоходный">Подоходный</option>
+                                <option value="Другое">Другое</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label">Сумма</label>
+                            <InputNumber class="input" @bind-Value="newTaxAmount" />
+                        </div>
+                        <div>
+                            <label class="label">Дата уплаты</label>
+                            <InputDate class="input" @bind-Value="newTaxDueDate" />
+                        </div>
+                        <div>
+                            <button class="btn btn-primary mt-3" @onclick="AddTax">Добавить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taxes table -->
+            <div class="card">
+                <div class="card-body" style="padding:0">
+                    @if (isLoading)
+                    {
+                        <div class="center text-muted py-4">Загрузка...</div>
+                    }
+                    else if (!taxes.Any())
+                    {
+                        <div class="empty-state">Нет налоговых платежей</div>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Дата уплаты</th>
+                                    <th class="text-end">Сумма</th>
+                                    <th>Статус</th>
+                                    <th class="text-center">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var tax in taxes)
+                                {
+                                    <tr>
+                                        <td><strong>@tax.Name</strong></td>
+                                        <td class="text-muted">@tax.DueDate.ToString("dd.MM.yyyy")</td>
+                                        <td class="text-end">@tax.Amount.ToString("N2") Br</td>
+                                        <td>
+                                            @if (tax.IsPaid)
+                                            {
+                                                <span class="badge badge-success">Оплачено</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge badge-danger">Не оплачено</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            @if (!tax.IsPaid)
+                                            {
+                                                <button class="btn btn-sm btn-success" @onclick="() => MarkPaid(tax.Id)">Отметить оплаченным</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTax(tax.Id)">Удалить</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Add bill form -->
+            <div class="card mb-3">
+                <div class="card-header">Добавить счёт</div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:.5rem;align-items:end">
+                        <div>
+                            <label class="label">Название</label>
+                            <input class="input" @bind="newBillName" placeholder="Например: Аренда офиса" />
+                        </div>
+                        <div>
+                            <label class="label">Сумма</label>
+                            <InputNumber class="input" @bind-Value="newBillAmount" />
+                        </div>
+                        <div>
+                            <label class="label">Категория</label>
+                            <input list="billCategoryList" class="input" @bind="newBillCategory" placeholder="Категория" />
+                            <datalist id="billCategoryList">
+                                @foreach (var c in _categories) { <option value="@c"></option> }
+                            </datalist>
+                        </div>
+                        <div>
+                            <label class="label">Дата уплаты</label>
+                            <InputDate class="input" @bind-Value="newBillDueDate" />
+                        </div>
+                        <div>
+                            <button class="btn btn-primary mt-3" @onclick="AddBill">Добавить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bills table -->
+            <div class="card">
+                <div class="card-body" style="padding:0">
+                    @if (isLoading)
+                    {
+                        <div class="center text-muted py-4">Загрузка...</div>
+                    }
+                    else if (!bills.Any())
+                    {
+                        <div class="empty-state">Нет счетов</div>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Категория</th>
+                                    <th>Дата уплаты</th>
+                                    <th class="text-end">Сумма</th>
+                                    <th>Статус</th>
+                                    <th class="text-center">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var bill in bills)
+                                {
+                                    var isOverdue = !bill.IsPaid && bill.Date < DateTime.Today;
+                                    <tr>
+                                        <td><strong>@bill.Name</strong></td>
+                                        <td class="text-muted">@(string.IsNullOrWhiteSpace(bill.Category) ? "—" : bill.Category)</td>
+                                        <td class="@(isOverdue ? "text-danger" : "text-muted")">@bill.Date.ToString("dd.MM.yyyy")</td>
+                                        <td class="text-end">@bill.Amount.ToString("N2") Br</td>
+                                        <td>
+                                            @if (bill.IsPaid)
+                                            {
+                                                <span class="badge badge-success">Оплачено</span>
+                                            }
+                                            else if (isOverdue)
+                                            {
+                                                <span class="badge badge-danger">Просрочено</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge">Ожидает</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            @if (!bill.IsPaid)
+                                            {
+                                                <button class="btn btn-sm btn-success" @onclick="() => MarkBillPaid(bill.Id)">Отметить оплаченным</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteBill(bill.Id)">Удалить</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<TaxPayment> taxes = new();
+    private List<Reminder> bills = new();
+    private List<string> _categories = new();
+    private bool isLoading = true;
+    private bool showMessage = false;
+    private string _message = string.Empty;
+    private string _activeTab = "taxes";
+
+    private string newTaxName = "НДС";
+    private decimal newTaxAmount;
+    private DateTime newTaxDueDate = DateTime.Today.AddMonths(1);
+
+    private string newBillName = string.Empty;
+    private decimal newBillAmount;
+    private string newBillCategory = string.Empty;
+    private DateTime newBillDueDate = DateTime.Today.AddMonths(1);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTaxes();
+        await LoadBills();
+        await LoadCategories();
+    }
+
+    private async Task LoadTaxes()
+    {
+        isLoading = true;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user != null)
+        {
+            taxes = await TaxService.GetTaxesAsync(user.Id);
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadBills()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user != null)
+        {
+            bills = await DbContext.Reminders
+                .Where(r => r.UserId == user.Id)
+                .ToListAsync();
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        _categories = await DbContext.Categories
+            .Select(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddTax()
+    {
+        if (newTaxAmount <= 0) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        var tax = new TaxPayment
+        {
+            Name = newTaxName,
+            Amount = newTaxAmount,
+            DueDate = newTaxDueDate,
+            UserId = user.Id
+        };
+
+        await TaxService.AddTaxAsync(tax);
+        _message = $"Налог {newTaxName} добавлен";
+        showMessage = true;
+        newTaxAmount = 0;
+        newTaxDueDate = DateTime.Today.AddMonths(1);
+        await LoadTaxes();
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3000);
+        showMessage = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task MarkPaid(int id)
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        await TaxService.MarkAsPaidAsync(id, user.Id);
+        _message = "Налог отмечен как оплаченный. Создана транзакция.";
+        showMessage = true;
+        await LoadTaxes();
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3000);
+        showMessage = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DeleteTax(int id)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить налог?");
+        if (!ok) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        await TaxService.DeleteTaxAsync(id, user.Id);
+        await LoadTaxes();
+    }
+
+    private async Task AddBill()
+    {
+        if (string.IsNullOrWhiteSpace(newBillName) || newBillAmount <= 0) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        var bill = new Reminder
+        {
+            Name = newBillName.Trim(),
+            Amount = newBillAmount,
+            Category = newBillCategory,
+            Frequency = ReminderFrequency.OneTime,
+            Date = newBillDueDate,
+            UserId = user.Id,
+            IsPaid = false
+        };
+
+        DbContext.Reminders.Add(bill);
+        await DbContext.SaveChangesAsync();
+        _message = $"Счёт {newBillName} добавлен";
+        showMessage = true;
+        newBillName = string.Empty;
+        newBillAmount = 0;
+        newBillCategory = string.Empty;
+        newBillDueDate = DateTime.Today.AddMonths(1);
+        await LoadBills();
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3000);
+        showMessage = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task MarkBillPaid(int id)
+    {
+        var bill = await DbContext.Reminders.FindAsync(id);
+        if (bill == null) return;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+
+        // Create expense transaction
+        var tx = new Transaction
+        {
+            Date = bill.Date,
+            Amount = -Math.Abs(bill.Amount),
+            Description = $"Оплата счёта: {bill.Name}",
+            Category = bill.Category ?? string.Empty,
+            UserId = user.Id
+        };
+        DbContext.Transactions.Add(tx);
+
+        bill.IsPaid = true;
+        bill.PaidDate = DateTime.Now;
+
+        await DbContext.SaveChangesAsync();
+        _message = "Счёт отмечен как оплаченный. Создана транзакция.";
+        showMessage = true;
+        await LoadBills();
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(3000);
+        showMessage = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DeleteBill(int id)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить счёт?");
+        if (!ok) return;
+
+        var bill = await DbContext.Reminders.FindAsync(id);
+        if (bill == null) return;
+
+        DbContext.Reminders.Remove(bill);
+        await DbContext.SaveChangesAsync();
+        await LoadBills();
+    }
+}

@@ -4,106 +4,93 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MiniFinance is a personal finance management application built with ASP.NET Core Blazor Server (.NET 10.0 preview). It provides multi-user transaction tracking with CSV import capabilities.
+MiniFinance — платформа учёта расходов малого бизнеса на ASP.NET Core Blazor Server (.NET 9.0).
+
+**7 ключевых функций:**
+1. Автоматический импорт транзакций из банков и платёжных систем (CSV)
+2. Категоризация расходов (налоги, аренда, зарплаты)
+3. Финансовые отчёты (P&L, cash flow)
+4. Напоминания о сроке уплаты налогов и счетов
+5. Анализ рентабельности проектов или отделов
+6. Интеграция с облачными бухгалтерскими сервисами
+7. Прогнозирование кассовых разрывов
 
 ## Development Commands
 
 ### Build and Run
 ```bash
-# Build the project
 dotnet build
-
-# Run the application
 dotnet run
-
-# Run with specific profile
 dotnet run --launch-profile https
 ```
 
-The app runs on:
-- HTTP: http://localhost:5210
-- HTTPS: https://localhost:7275
+HTTP: http://localhost:5210 | HTTPS: https://localhost:7275
 
 ### Database Management
 
-The application uses SQLite with Entity Framework Core. The database is automatically created on startup using `DbContext.Database.EnsureCreated()` in `Program.cs`.
+SQLite + EF Core, без миграций. `EnsureCreated()` + raw SQL в `Program.cs`.
 
-**Important**: This project does NOT use EF migrations. Schema changes require:
-1. Delete `Data/app.db`
-2. Update entity models in `Data/`
-3. Restart the application to recreate the database
-
-To manually reset the database:
+Для сброса:
 ```bash
-rm Data/app.db
-dotnet run
+rm app.db && dotnet run
 ```
 
 ## Architecture
 
-### Data Layer (`Data/`)
+### Data Layer (`Data/Models/`)
 
-- **ApplicationDbContext**: EF Core context inheriting from `IdentityDbContext<ApplicationUser>`
-- **ApplicationUser**: Custom Identity user with navigation property to Transactions
-- **Transaction**: Core entity with user isolation via `UserId` foreign key
-- **Relationship**: One-to-many (User → Transactions) with cascade delete
+- **ApplicationUser**: Identity user с `Transactions`, `BaseCurrency`, `EnableNotifications`, `CreatedAt`
+- **Transaction**: Date, Amount, Description, Category, UserId, ProjectId, PaymentMethod, Counterparty, IsMandatory
+- **Category**: Name (unique), Type (Income/Expense), IsDefault, Icon, Color
+- **Project**: Name (unique), Status, Priority, Budget, ROI, ProjectManager, KPI, Risks
+- **Reminder**: Name, Amount, Category, Frequency (OneTime/Monthly/Yearly), Date, IsPaid
 
-All database queries must filter by `UserId` to ensure data isolation between users.
+**ApplicationDbContext**: DbSets — Transactions, Categories, Reminders, Projects.
+
+Все запросы фильтруются по `UserId`.
 
 ### Services Layer (`Services/`)
 
-- **ICsvParser / CsvParser**: Parses CSV files for transaction import
-- CSV format: `Date,Amount,Description,Category`
-- Positive amounts = income, negative = expenses
-- Default category: "Прочее" (Other)
+| Сервис | Назначение |
+|---|---|
+| `ICsvParser / CsvParser` | Парсинг CSV для импорта транзакций |
+| `ICategorizationService / CategorizationService` | Авто-категоризация по ключевым словам |
+| `IReportService / ReportService` | Category breakdown, monthly trends, cashflow, project reports |
+| `IForecastingService / ForecastingService` | Прогнозы income/expense, cashflow forecast |
 
-### UI Layer (`Components/`)
+### UI Layer (`Components/Pages/`)
 
-**Pages** (`Components/Pages/`):
-- `Home.razor`: Dashboard with statistics (total transactions, income, expenses, balance)
-- `Transactions.razor`: CRUD interface for manual transaction management
-- `Import.razor`: CSV file upload with validation (max 10MB)
+| Страница | Назначение |
+|---|---|
+| `Home.razor` | Дашборд с KPI, прогнозами, напоминаниями |
+| `Transactions.razor` | CRUD транзакций с фильтрами и авто-категоризацией |
+| `Import.razor` | CSV импорт транзакций |
+| `Categories.razor` | Управление категориями |
+| `Reminders.razor` | Напоминания о платежах |
+| `Projects.razor` | Аналитика проектов |
+| `Reports.razor` | Финансовые отчёты с CSV/Excel экспортом |
+| `Insights.razor` | Прогнозы и тренды |
+| `Account.razor` | Профиль пользователя |
 
-**Authentication** (`Components/Account/`):
-- Full ASP.NET Core Identity scaffolding (login, register, 2FA, password reset, etc.)
-- Password requirements are relaxed for development (min 3 chars, no complexity)
+### Export Endpoints
 
-**Layout** (`Components/Layout/`):
-- `MainLayout.razor`: Main application layout
-- `NavMenu.razor`: Navigation with authorization-based menu items
+- `/reports/export/csv` — CSV экспорт
+- `/reports/export/xlsx` — Excel (.xlsx) через ClosedXML
+- `/reports/export/excel` — HTML table (legacy)
 
-### Authentication & Authorization
-
-All main pages use `@attribute [Authorize]` and `<AuthorizeView>` components. User context is accessed via:
-```csharp
-var user = await UserManager.GetUserAsync(context.User);
-```
-
-Always filter database queries by `user.Id` to maintain data isolation.
-
-### Key Patterns
-
-1. **User Data Isolation**: Every transaction query must include `.Where(t => t.UserId == user.Id)`
-2. **Blazor Context**: Use `context.User` within `<AuthorizeView Context="authContext">` blocks
-3. **Database Auto-Creation**: No migrations; database schema is created from entity models on startup
-4. **CSV Import**: Handles malformed lines gracefully with try-catch, skips invalid rows
+Все требуют аутентификации, фильтруют по `UserId`. Параметры: `start`, `end`, `tab`, `projectId`.
 
 ## CSV Import Format
 
-Expected format for transaction imports:
 ```csv
 Date,Amount,Description,Category
 2024-01-15,-1500.00,Аренда офиса,Аренда
-2024-01-20,5000.00,Зарплата,Доход
 ```
 
-- Date: Any format parseable by `DateTime.Parse` with `InvariantCulture`
-- Amount: Decimal with `InvariantCulture` (negative for expenses, positive for income)
-- Description: Required text field
-- Category: Optional (defaults to "Прочее")
+Amount: положительная = доход, отрицательная = расход. Category опциональна (авто-категоризация).
 
 ## Configuration
 
-- **Connection String**: Defined in `appsettings.json` as `"DataSource=app.db"`
-- **User Secrets**: Configured with ID `MiniFinance-12345678`
-- **Identity Options**: Configured in `Program.cs` with relaxed password requirements for development
+- **Connection String**: `appsettings.json` → `"DataSource=app.db"`
+- **Identity**: relaxed passwords (min 3 chars, no complexity)
+- **Dependencies**: ClosedXML 0.105.0, EF Core 9.0, ASP.NET Core Identity 9.0

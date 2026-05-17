@@ -6,7 +6,7 @@ namespace MiniFinance.Services
 {
     public interface ICsvParser
     {
-        List<Transaction> Parse(Stream fileStream, string userId);
+        Task<List<Transaction>> ParseAsync(Stream fileStream, string userId);
     }
 
     public class CsvParser : ICsvParser
@@ -18,16 +18,16 @@ namespace MiniFinance.Services
             _categorizationService = categorizationService;
         }
 
-        public List<Transaction> Parse(Stream fileStream, string userId)
+        public async Task<List<Transaction>> ParseAsync(Stream fileStream, string userId)
         {
             var transactions = new List<Transaction>();
 
             using var reader = new StreamReader(fileStream);
 
             int lineNumber = 0;
-            while (!reader.EndOfStream)
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
             {
-                var line = reader.ReadLine();
                 lineNumber++;
 
                 if (string.IsNullOrWhiteSpace(line))

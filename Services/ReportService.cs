@@ -189,6 +189,195 @@ namespace MiniFinance.Services
             return result;
         }
 
+        // Отчет о прибылях и убытках (P&L)
+        public ProfitLossReport GetProfitLossReport(List<Transaction> transactions, DateTime startDate, DateTime endDate)
+        {
+            var filtered = transactions.Where(t => t.Date >= startDate && t.Date <= endDate).ToList();
+
+            var report = new ProfitLossReport
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                TotalIncome = filtered.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                TotalExpense = Math.Abs(filtered.Where(t => t.Amount < 0).Sum(t => t.Amount))
+            };
+
+            report.IncomeByCategory = filtered
+                .Where(t => t.Amount > 0)
+                .GroupBy(t => t.Category)
+                .Select(g => new PLCategoryItem
+                {
+                    Category = g.Key,
+                    Amount = g.Sum(t => t.Amount),
+                    Percentage = 0
+                })
+                .OrderByDescending(c => c.Amount)
+                .ToList();
+
+            report.ExpenseByCategory = filtered
+                .Where(t => t.Amount < 0)
+                .GroupBy(t => t.Category)
+                .Select(g => new PLCategoryItem
+                {
+                    Category = g.Key,
+                    Amount = Math.Abs(g.Sum(t => t.Amount)),
+                    Percentage = 0
+                })
+                .OrderByDescending(c => c.Amount)
+                .ToList();
+
+            // Рассчитываем проценты
+            foreach (var item in report.IncomeByCategory)
+            {
+                item.Percentage = report.TotalIncome > 0 ? (item.Amount / report.TotalIncome) * 100 : 0;
+            }
+
+            foreach (var item in report.ExpenseByCategory)
+            {
+                item.Percentage = report.TotalExpense > 0 ? (item.Amount / report.TotalExpense) * 100 : 0;
+            }
+
+            report.NetProfit = report.TotalIncome - report.TotalExpense;
+            report.ProfitMargin = report.TotalIncome > 0 ? (report.NetProfit / report.TotalIncome) * 100 : 0;
+
+            return report;
+        }
+
+        // Оборотно-сальдовая ведомость
+        public TrialBalanceReport GetTrialBalanceReport(List<Transaction> transactions, DateTime startDate, DateTime endDate)
+        {
+            var beforePeriod = transactions.Where(t => t.Date < startDate).ToList();
+            var inPeriod = transactions.Where(t => t.Date >= startDate && t.Date <= endDate).ToList();
+            var allUpToEnd = transactions.Where(t => t.Date <= endDate).ToList();
+
+            var categories = transactions.Select(t => t.Category).Distinct().OrderBy(c => c).ToList();
+
+            var report = new TrialBalanceReport
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                Entries = new List<TrialBalanceEntry>()
+            };
+
+            foreach (var category in categories)
+            {
+                var openingBalance = beforePeriod.Where(t => t.Category == category).Sum(t => t.Amount);
+                var debit = inPeriod.Where(t => t.Category == category && t.Amount > 0).Sum(t => t.Amount);
+                var credit = Math.Abs(inPeriod.Where(t => t.Category == category && t.Amount < 0).Sum(t => t.Amount));
+                var closingBalance = allUpToEnd.Where(t => t.Category == category).Sum(t => t.Amount);
+
+                report.Entries.Add(new TrialBalanceEntry
+                {
+                    Category = category,
+                    OpeningBalance = openingBalance,
+                    Debit = debit,
+                    Credit = credit,
+                    ClosingBalance = closingBalance
+                });
+            }
+
+            report.TotalOpeningBalance = report.Entries.Sum(e => e.OpeningBalance);
+            report.TotalDebit = report.Entries.Sum(e => e.Debit);
+            report.TotalCredit = report.Entries.Sum(e => e.Credit);
+            report.TotalClosingBalance = report.Entries.Sum(e => e.ClosingBalance);
+
+            return report;
+        }
+
+        // Книга доходов и расходов (УСН)
+        public List<IncomeExpenseBookEntry> GetIncomeExpenseBook(List<Transaction> transactions, DateTime startDate, DateTime endDate)
+        {
+            var filtered = transactions
+                .Where(t => t.Date >= startDate && t.Date <= endDate)
+                .OrderBy(t => t.Date)
+                .ToList();
+
+            var entries = new List<IncomeExpenseBookEntry>();
+            int entryNumber = 1;
+
+            foreach (var transaction in filtered)
+            {
+                var idString = transaction.Id.ToString();
+                entries.Add(new IncomeExpenseBookEntry
+                {
+                    EntryNumber = entryNumber++,
+                    Date = transaction.Date,
+                    DocumentNumber = idString.Length >= 8 ? idString.Substring(0, 8) : idString.PadLeft(8, '0'),
+                    Counterparty = transaction.Counterparty ?? "Не указан",
+                    Description = transaction.Description ?? transaction.Category,
+                    Income = transaction.Amount > 0 ? transaction.Amount : 0,
+                    Expense = transaction.Amount < 0 ? Math.Abs(transaction.Amount) : 0,
+                    Category = transaction.Category
+                });
+            }
+
+            return entries;
+        }
+
+        // Отчет о движении денежных средств (ДДС)
+        public CashFlowStatementReport GetCashFlowStatement(List<Transaction> transactions, DateTime startDate, DateTime endDate)
+        {
+            var filtered = transactions.Where(t => t.Date >= startDate && t.Date <= endDate).ToList();
+
+            var report = new CashFlowStatementReport
+            {
+                StartDate = startDate,
+                EndDate = endDate
+            };
+
+            // Операционная деятельность
+            report.OperatingIncome = filtered
+                .Where(t => t.Amount > 0 && (t.Category == "Доход" || t.Category == "Продажи" || t.Category == "Услуги"))
+                .Sum(t => t.Amount);
+
+            report.OperatingExpenses = Math.Abs(filtered
+                .Where(t => t.Amount < 0 && (t.Category == "Расход" || t.Category == "Зарплата" || t.Category == "Аренда" || t.Category == "Налоги"))
+                .Sum(t => t.Amount));
+
+            report.OperatingCashFlow = report.OperatingIncome - report.OperatingExpenses;
+
+            // Инвестиционная деятельность
+            report.InvestmentIncome = filtered
+                .Where(t => t.Amount > 0 && t.Category == "Инвестиции")
+                .Sum(t => t.Amount);
+
+            report.InvestmentExpenses = Math.Abs(filtered
+                .Where(t => t.Amount < 0 && t.Category == "Инвестиции")
+                .Sum(t => t.Amount));
+
+            report.InvestmentCashFlow = report.InvestmentIncome - report.InvestmentExpenses;
+
+            // Финансовая деятельность
+            report.FinancingIncome = filtered
+                .Where(t => t.Amount > 0 && (t.Category == "Кредит" || t.Category == "Займ"))
+                .Sum(t => t.Amount);
+
+            report.FinancingExpenses = Math.Abs(filtered
+                .Where(t => t.Amount < 0 && (t.Category == "Кредит" || t.Category == "Займ"))
+                .Sum(t => t.Amount));
+
+            report.FinancingCashFlow = report.FinancingIncome - report.FinancingExpenses;
+
+            // Итого
+            report.NetCashFlow = report.OperatingCashFlow + report.InvestmentCashFlow + report.FinancingCashFlow;
+
+            // Детализация по категориям
+            report.CategoryDetails = filtered
+                .GroupBy(t => t.Category)
+                .Select(g => new CashFlowCategoryDetail
+                {
+                    Category = g.Key,
+                    Income = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                    Expense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount)),
+                    NetFlow = g.Sum(t => t.Amount),
+                    TransactionCount = g.Count()
+                })
+                .OrderByDescending(c => Math.Abs(c.NetFlow))
+                .ToList();
+
+            return report;
+        }
+
     }
 
     public class CategoryReport
@@ -244,5 +433,96 @@ namespace MiniFinance.Services
         public int Month { get; set; }
         public decimal Balance { get; set; }
         public string MonthName => new DateTime(Year, Month, 1).ToString("MMM yyyy");
+    }
+
+    // Отчет о прибылях и убытках
+    public class ProfitLossReport
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public decimal TotalIncome { get; set; }
+        public decimal TotalExpense { get; set; }
+        public decimal NetProfit { get; set; }
+        public decimal ProfitMargin { get; set; }
+        public List<PLCategoryItem> IncomeByCategory { get; set; } = new();
+        public List<PLCategoryItem> ExpenseByCategory { get; set; } = new();
+    }
+
+    public class PLCategoryItem
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public decimal Percentage { get; set; }
+    }
+
+    // Оборотно-сальдовая ведомость
+    public class TrialBalanceReport
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public List<TrialBalanceEntry> Entries { get; set; } = new();
+        public decimal TotalOpeningBalance { get; set; }
+        public decimal TotalDebit { get; set; }
+        public decimal TotalCredit { get; set; }
+        public decimal TotalClosingBalance { get; set; }
+    }
+
+    public class TrialBalanceEntry
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal OpeningBalance { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal ClosingBalance { get; set; }
+    }
+
+    // Книга доходов и расходов
+    public class IncomeExpenseBookEntry
+    {
+        public int EntryNumber { get; set; }
+        public DateTime Date { get; set; }
+        public string DocumentNumber { get; set; } = string.Empty;
+        public string Counterparty { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public decimal Income { get; set; }
+        public decimal Expense { get; set; }
+        public string Category { get; set; } = string.Empty;
+    }
+
+    // Отчет о движении денежных средств
+    public class CashFlowStatementReport
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+
+        // Операционная деятельность
+        public decimal OperatingIncome { get; set; }
+        public decimal OperatingExpenses { get; set; }
+        public decimal OperatingCashFlow { get; set; }
+
+        // Инвестиционная деятельность
+        public decimal InvestmentIncome { get; set; }
+        public decimal InvestmentExpenses { get; set; }
+        public decimal InvestmentCashFlow { get; set; }
+
+        // Финансовая деятельность
+        public decimal FinancingIncome { get; set; }
+        public decimal FinancingExpenses { get; set; }
+        public decimal FinancingCashFlow { get; set; }
+
+        // Итого
+        public decimal NetCashFlow { get; set; }
+
+        // Детализация
+        public List<CashFlowCategoryDetail> CategoryDetails { get; set; } = new();
+    }
+
+    public class CashFlowCategoryDetail
+    {
+        public string Category { get; set; } = string.Empty;
+        public decimal Income { get; set; }
+        public decimal Expense { get; set; }
+        public decimal NetFlow { get; set; }
+        public int TransactionCount { get; set; }
     }
 }

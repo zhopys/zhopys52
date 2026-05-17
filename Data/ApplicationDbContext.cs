@@ -15,6 +15,9 @@ namespace MiniFinance.Data
         public DbSet<Category> Categories { get; set; }
         public DbSet<Reminder> Reminders { get; set; }
         public DbSet<Project> Projects { get; set; }
+        public DbSet<TaxPayment> TaxPayments { get; set; }
+        public DbSet<OrganizationSettings> OrganizationSettings { get; set; }
+        public DbSet<Employee> Employees { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -26,29 +29,24 @@ namespace MiniFinance.Data
                 .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Categories
-            builder.Entity<Category>(b =>
-            {
-                b.HasIndex(c => c.Name).IsUnique();
-            });
-
-            // Projects
-            builder.Entity<Project>(b =>
-            {
-                b.HasIndex(p => p.Name).IsUnique();
-                
-                // Индексы для новых полей
-                b.HasIndex(p => p.Status);
-                b.HasIndex(p => p.Priority);
-                b.HasIndex(p => p.ProjectManager);
-            });
-
-            // Transaction -> Project relationship (optional). Restrict delete to prevent accidental removal.
             builder.Entity<Transaction>()
                 .HasOne(t => t.Project)
                 .WithMany()
                 .HasForeignKey(t => t.ProjectId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<Category>(b =>
+            {
+                b.HasIndex(c => c.Name).IsUnique();
+            });
+
+            builder.Entity<Project>(b =>
+            {
+                b.HasIndex(p => p.Name).IsUnique();
+                b.HasIndex(p => p.Status);
+                b.HasIndex(p => p.Priority);
+                b.HasIndex(p => p.ProjectManager);
+            });
         }
     }
 }
