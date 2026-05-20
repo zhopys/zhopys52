@@ -6,78 +6,110 @@
 @inject ITransactionService TransactionService
 @inject IUserContextService UserContext
 
-@if (TransactionId > 0)
-{
-    <div class="card mt-2 transaction-details">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" OnClose="OnClose">
+    <HeaderContent>
+        @if (_tx != null)
+        {
+            <div>
+                <h3 class="mb-0">@_tx.Description</h3>
+                <div class="small @(_tx.Amount >= 0 ? "text-success" : "text-danger") fw-bold">
+                    @(_tx.Amount >= 0 ? "+" : "")@_tx.Amount.ToString("N2") Br · @_tx.Date.ToString("dd.MM.yyyy")
+                </div>
+            </div>
+        }
+        else
+        {
             <span>Операция #@TransactionId</span>
-            <button type="button" class="btn btn-sm btn-outline" @onclick="OnClose">Закрыть</button>
-        </div>
-        <div class="card-body">
+        }
+    </HeaderContent>
+    <ChildContent>
+        @if (_tx == null && TransactionId > 0)
+        {
+            <div class="text-muted small">Загрузка…</div>
+        }
+        else if (_tx != null)
+        {
             @if (_canApprove && _status == TransactionApprovalStatus.Pending)
             {
-                <div class="alert alert-warning small">
+                <div class="alert alert-warning small mb-3">
                     Ожидает утверждения
                     <button class="btn btn-sm btn-primary ms-2" @onclick="Approve">Утвердить</button>
                     <button class="btn btn-sm btn-outline ms-1" @onclick="Reject">Отклонить</button>
                 </div>
             }
 
-            <div class="mb-3">
-                <label class="label">Теги (через запятую)</label>
-                <input class="input" @bind="_tagsInput" />
-                <button class="btn btn-sm btn-outline mt-1" @onclick="SaveTags">Сохранить теги</button>
-                @if (_tagNames.Any())
+            <DetailFields Columns="2">
+                <DetailField Label="Тип">
+                    <span class="badge @(_tx.Amount >= 0 ? "badge-success" : "badge-danger")">@(_tx.Amount >= 0 ? "Доход" : "Расход")</span>
+                </DetailField>
+                <DetailField Label="Категория"><span class="badge">@_tx.Category</span></DetailField>
+                <DetailField Label="Контрагент">@(_tx.Counterparty ?? _tx.CounterpartyEntity?.Name ?? "—")</DetailField>
+                <DetailField Label="Проект">@(_tx.Project?.Name ?? "—")</DetailField>
+                <DetailField Label="Способ оплаты">@(PaymentLabel(_tx.PaymentMethod))</DetailField>
+                <DetailField Label="Статус">@ApprovalLabel(_tx.ApprovalStatus)</DetailField>
+                @if (_tx.IsMandatory)
                 {
-                    <div class="reports-active-filters mt-2">
-                        @foreach (var t in _tagNames)
-                        {
-                            <span class="filter-chip">@t</span>
-                        }
-                    </div>
+                    <DetailField Label="Обязательный">Да</DetailField>
                 }
-            </div>
+            </DetailFields>
+            @if (!string.IsNullOrWhiteSpace(_tx.Notes))
+            {
+                <DetailField Label="Заметки" ValueClass="mt-2">
+                    <div class="small">@_tx.Notes</div>
+                </DetailField>
+            }
 
-            <div class="mb-3">
-                <label class="label">Чеки и документы (PDF, JPG, PNG до 10 МБ)</label>
-                <InputFile OnChange="OnFileSelected" accept=".pdf,.jpg,.jpeg,.png,.webp" />
-                @if (_attachments.Any())
-                {
-                    <ul class="small mt-2" style="list-style:none;padding:0">
-                        @foreach (var a in _attachments)
-                        {
-                            <li class="mb-1">
-                                <a href="@AttachmentService.GetPublicUrl(a)" target="_blank" rel="noopener">@a.FileName</a>
-                                <button type="button" class="btn btn-sm btn-outline text-danger ms-1" @onclick="() => DeleteAttachment(a.Id)">×</button>
-                            </li>
-                        }
-                    </ul>
-                }
-            </div>
+            <h4 class="detail-section-title">Теги</h4>
+            <input class="input" @bind="_tagsInput" placeholder="через запятую" />
+            <button class="btn btn-sm btn-outline mt-1" @onclick="SaveTags">Сохранить теги</button>
+            @if (_tagNames.Any())
+            {
+                <div class="reports-active-filters mt-2">
+                    @foreach (var t in _tagNames)
+                    {
+                        <span class="filter-chip">@t</span>
+                    }
+                </div>
+            }
 
-            <div>
-                <label class="label">Комментарии</label>
-                @foreach (var c in _comments)
-                {
-                    <div class="small mb-1 p-2" style="background:var(--surface-hover);border-radius:6px">
-                        <strong>@(c.AuthorName ?? "Сотрудник")</strong>
-                        <span class="text-muted"> · @c.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
-                        <div>@c.Text</div>
-                    </div>
-                }
-                <textarea class="input mt-1" rows="2" @bind="_newComment" placeholder="Комментарий..."></textarea>
-                <button class="btn btn-sm btn-primary mt-1" @onclick="AddComment">Добавить</button>
-            </div>
-        </div>
-    </div>
-}
+            <h4 class="detail-section-title">Чеки и документы</h4>
+            <InputFile OnChange="OnFileSelected" accept=".pdf,.jpg,.jpeg,.png,.webp" />
+            @if (_attachments.Any())
+            {
+                <ul class="small mt-2" style="list-style:none;padding:0">
+                    @foreach (var a in _attachments)
+                    {
+                        <li class="mb-1">
+                            <a href="@AttachmentService.GetPublicUrl(a)" target="_blank" rel="noopener">@a.FileName</a>
+                            <button type="button" class="btn btn-sm btn-outline text-danger ms-1" @onclick="() => DeleteAttachment(a.Id)">×</button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <h4 class="detail-section-title">Комментарии</h4>
+            @foreach (var c in _comments)
+            {
+                <div class="small mb-1 p-2" style="background:var(--surface-hover);border-radius:6px">
+                    <strong>@(c.AuthorName ?? "Сотрудник")</strong>
+                    <span class="text-muted"> · @c.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                    <div>@c.Text</div>
+                </div>
+            }
+            <textarea class="input mt-1" rows="2" @bind="_newComment" placeholder="Комментарий..."></textarea>
+            <button class="btn btn-sm btn-primary mt-1" @onclick="AddComment">Добавить</button>
+        }
+    </ChildContent>
+</DetailsDrawer>
 
 @code {
     [Parameter] public int TransactionId { get; set; }
     [Parameter] public string UserId { get; set; } = "";
     [Parameter] public string? AuthorName { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    private Transaction? _tx;
     private List<string> _tagNames = new();
     private string _tagsInput = "";
     private List<TransactionAttachment> _attachments = new();
@@ -88,7 +120,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (TransactionId <= 0 || string.IsNullOrEmpty(UserId)) return;
+        if (!IsOpen || TransactionId <= 0 || string.IsNullOrEmpty(UserId))
+        {
+            _tx = null;
+            return;
+        }
         await LoadAsync();
     }
 
@@ -96,8 +132,8 @@
     {
         var ctx = await UserContext.GetContextAsync(UserId);
         _canApprove = UserContext.CanApproveTransactions(ctx);
-        var tx = await TransactionService.GetAsync(TransactionId, UserId);
-        _status = tx?.ApprovalStatus ?? TransactionApprovalStatus.Approved;
+        _tx = await TransactionService.GetAsync(TransactionId, UserId);
+        _status = _tx?.ApprovalStatus ?? TransactionApprovalStatus.Approved;
         _tagNames = (await TagService.GetTransactionTagNamesAsync(TransactionId, UserId)).ToList();
         _tagsInput = string.Join(", ", _tagNames);
         _attachments = await AttachmentService.ListAsync(TransactionId, UserId);
@@ -139,4 +175,20 @@
 
     private async Task Approve() { await TransactionService.ApproveAsync(TransactionId, UserId); await LoadAsync(); }
     private async Task Reject() { await TransactionService.RejectAsync(TransactionId, UserId); await LoadAsync(); }
+
+    private static string PaymentLabel(PaymentMethod? m) => m switch
+    {
+        PaymentMethod.Cash => "Наличные",
+        PaymentMethod.Card => "Карта",
+        PaymentMethod.EWallet => "Электронный кошелёк",
+        PaymentMethod.BankTransfer => "Безналичный",
+        _ => "—"
+    };
+
+    private static string ApprovalLabel(TransactionApprovalStatus s) => s switch
+    {
+        TransactionApprovalStatus.Pending => "На утверждении",
+        TransactionApprovalStatus.Rejected => "Отклонена",
+        _ => "Утверждена"
+    };
 }

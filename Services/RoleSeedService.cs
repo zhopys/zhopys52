@@ -18,6 +18,9 @@ public static class RoleSeedService
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         foreach (var user in userManager.Users.ToList())
         {
+            if (!string.IsNullOrWhiteSpace(user.WorkspaceOwnerUserId))
+                continue;
+
             var roles = await userManager.GetRolesAsync(user);
             if (roles.Count == 0)
                 await userManager.AddToRoleAsync(user, AppRoles.Owner);

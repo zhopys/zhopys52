@@ -11,7 +11,9 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject ICategorizationService CategorizationService
 @inject ITransactionService TransactionService
+@inject ICounterpartyService CounterpartyService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDataScopeService DataScope
 @inject IJSRuntime JsRuntime
 @attribute [Authorize]
 
@@ -85,7 +87,18 @@
                             </div>
                             <div>
                                 <label class="label">Контрагент</label>
-                                <InputText class="input" @bind-Value="_newTransaction.Counterparty" />
+                                <InputSelect class="input" @bind-Value="_newCounterpartyKey" @bind-Value:after="OnNewCounterpartyChanged">
+                                    <option value="">— не указан —</option>
+                                    @foreach (var cp in counterparties)
+                                    {
+                                        <option value="@($"id:{cp.Id}")">@cp.Name</option>
+                                    }
+                                    <option value="manual">Ввести вручную…</option>
+                                </InputSelect>
+                                @if (_newCounterpartyKey == "manual")
+                                {
+                                    <InputText class="input mt-1" placeholder="Название контрагента" @bind-Value="_newCounterpartyManual" />
+                                }
                             </div>
                         </div>
                         <div style="margin-top:1rem;display:flex;gap:.5rem">
@@ -136,7 +149,18 @@
                             </div>
                             <div>
                                 <label class="label">Контрагент</label>
-                                <InputText class="input" @bind-Value="_editTransaction.Counterparty" />
+                                <InputSelect class="input" @bind-Value="_editCounterpartyKey" @bind-Value:after="OnEditCounterpartyChanged">
+                                    <option value="">— не указан —</option>
+                                    @foreach (var cp in counterparties)
+                                    {
+                                        <option value="@($"id:{cp.Id}")">@cp.Name</option>
+                                    }
+                                    <option value="manual">Ввести вручную…</option>
+                                </InputSelect>
+                                @if (_editCounterpartyKey == "manual")
+                                {
+                                    <InputText class="input mt-1" placeholder="Название контрагента" @bind-Value="_editCounterpartyManual" />
+                                }
                             </div>
                         </div>
                         <div style="margin-top:1rem;display:flex;gap:.5rem">
@@ -153,7 +177,7 @@
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.5rem;align-items:end">
                     <div>
                         <label class="label">Поиск</label>
-                        <input type="text" class="input" placeholder="Описание..." @bind="_searchQuery" @bind:event="oninput" @bind:after="ResetPage" />
+                        <input type="text" class="input" placeholder="Описание, категория, контрагент…" @bind="_searchQuery" @bind:event="oninput" @bind:after="ResetPage" />
                     </div>
                     <div>
                         <label class="label">Категория</label>
@@ -253,13 +277,11 @@
             </div>
         </div>
 
-        @if (_selectedTxId > 0 && !string.IsNullOrEmpty(_userId))
-        {
-            <TransactionDetailsPanel TransactionId="@_selectedTxId"
-                                     UserId="@_userId"
-                                     AuthorName="@_authorName"
-                                     OnClose="CloseDetails" />
-        }
+<TransactionDetailsPanel TransactionId="@_selectedTxId"
+                         UserId="@(_userId ?? string.Empty)"
+                         AuthorName="@_authorName"
+                         IsOpen="@(_selectedTxId != 0)"
+                         OnClose="CloseDetails" />
 
 @code {
     private const int PageSize = 25;
@@ -271,6 +293,12 @@
     private List<Transaction> transactions = new();
     private List<string> categoryNames = new();
     private List<Project> userProjects = new();
+    private List<CounterpartyRecord> counterparties = new();
+
+    private string _newCounterpartyKey = "";
+    private string _newCounterpartyManual = "";
+    private string _editCounterpartyKey = "";
+    private string _editCounterpartyManual = "";
 
     private bool showAddModal;
     private bool showEditModal;
@@ -309,14 +337,16 @@
 
         _userId = user.Id;
         _authorName = user.Email;
+        var dataOwnerId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
         await CategorizationService.EnsureDefaultCategoriesAsync();
         categoryNames = await CategorizationService.GetCategoryNamesAsync();
 
         userProjects = await DbContext.Projects
-            .Where(p => p.UserId == user.Id || p.IsDefault)
+            .Where(p => p.UserId == dataOwnerId || p.IsDefault)
             .OrderBy(p => p.Name)
             .ToListAsync();
 
+        counterparties = await CounterpartyService.ListAsync(user.Id);
         await ReloadAsync();
     }
 
@@ -334,7 +364,13 @@
     {
         var q = source.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(_searchQuery))
-            q = q.Where(t => t.Description.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+        {
+            var s = _searchQuery.Trim();
+            q = q.Where(t =>
+                t.Description.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                t.Category.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                (t.Counterparty != null && t.Counterparty.Contains(s, StringComparison.OrdinalIgnoreCase)));
+        }
         if (!string.IsNullOrWhiteSpace(_filterCategory))
             q = q.Where(t => t.Category == _filterCategory);
         if (_filterType == "income") q = q.Where(t => t.Amount > 0);
@@ -347,10 +383,51 @@
 
     private void OpenAddModal()
     {
-        _newTransaction = new Transaction { Date = DateTime.Today };
+        _newTransaction = new Transaction { Date = DateTime.Today, UserId = _userId ?? "" };
         _newProjectId = null;
+        _newCounterpartyKey = "";
+        _newCounterpartyManual = "";
         _suggestedCategory = string.Empty;
         showAddModal = true;
+    }
+
+    private void OnNewCounterpartyChanged()
+    {
+        if (_newCounterpartyKey != "manual")
+            _newCounterpartyManual = "";
+    }
+
+    private void OnEditCounterpartyChanged()
+    {
+        if (_editCounterpartyKey != "manual")
+            _editCounterpartyManual = "";
+    }
+
+    private void ApplyCounterpartyToModel(Transaction tx, string key, string manual)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            tx.CounterpartyId = null;
+            tx.Counterparty = null;
+            return;
+        }
+
+        if (key.StartsWith("id:", StringComparison.Ordinal) && int.TryParse(key.AsSpan(3), out var id))
+        {
+            tx.CounterpartyId = id;
+            tx.Counterparty = counterparties.FirstOrDefault(c => c.Id == id)?.Name;
+            return;
+        }
+
+        if (key == "manual" && !string.IsNullOrWhiteSpace(manual))
+        {
+            tx.CounterpartyId = null;
+            tx.Counterparty = manual.Trim();
+            return;
+        }
+
+        tx.CounterpartyId = null;
+        tx.Counterparty = null;
     }
 
     private void OnNewFieldChanged()
@@ -371,7 +448,11 @@
             if (int.TryParse(_newProjectId, out var pid)) _newTransaction.ProjectId = pid;
             else _newTransaction.ProjectId = null;
 
+            ApplyCounterpartyToModel(_newTransaction, _newCounterpartyKey, _newCounterpartyManual);
+            _newTransaction.UserId = _userId;
+
             await TransactionService.CreateAsync(_newTransaction, _userId);
+            counterparties = await CounterpartyService.ListAsync(_userId);
             ShowSuccess($"Транзакция добавлена: {_newTransaction.Description}");
             showAddModal = false;
             _newTransaction = new Transaction { Date = DateTime.Today };
@@ -410,6 +491,7 @@
             Description = t.Description,
             Category = t.Category,
             Counterparty = t.Counterparty,
+            CounterpartyId = t.CounterpartyId,
             UserId = t.UserId,
             ProjectId = t.ProjectId,
             PaymentMethod = t.PaymentMethod,
@@ -417,6 +499,21 @@
             IsConfirmed = t.IsConfirmed
         };
         _editProjectId = t.ProjectId?.ToString();
+        if (t.CounterpartyId.HasValue)
+        {
+            _editCounterpartyKey = $"id:{t.CounterpartyId.Value}";
+            _editCounterpartyManual = "";
+        }
+        else if (!string.IsNullOrWhiteSpace(t.Counterparty))
+        {
+            _editCounterpartyKey = "manual";
+            _editCounterpartyManual = t.Counterparty;
+        }
+        else
+        {
+            _editCounterpartyKey = "";
+            _editCounterpartyManual = "";
+        }
         showEditModal = true;
     }
 
@@ -428,7 +525,9 @@
             if (int.TryParse(_editProjectId, out var pid)) _editTransaction.ProjectId = pid;
             else _editTransaction.ProjectId = null;
 
+            ApplyCounterpartyToModel(_editTransaction, _editCounterpartyKey, _editCounterpartyManual);
             await TransactionService.UpdateAsync(_editTransaction, _userId);
+            counterparties = await CounterpartyService.ListAsync(_userId);
             ShowSuccess("Транзакция обновлена");
             showEditModal = false;
             await ReloadAsync();

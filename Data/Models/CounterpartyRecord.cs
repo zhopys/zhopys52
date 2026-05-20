@@ -37,5 +37,9 @@ public class CounterpartyRecord
     [StringLength(500)]
     public string? Notes { get; set; }
 
+    /// <summary>URL логотипа или аватара (https://…).</summary>
+    [StringLength(500)]
+    public string? LogoUrl { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

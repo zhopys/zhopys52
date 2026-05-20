@@ -1,0 +1,10 @@
+<div class="detail-field">
+    <div class="detail-field-label">@Label</div>
+    <div class="detail-field-value @ValueClass">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? ValueClass { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

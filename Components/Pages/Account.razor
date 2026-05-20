@@ -7,7 +7,6 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
-@using MiniFinance.Services
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -16,622 +15,339 @@
 @inject IJSRuntime JSRuntime
 @attribute [Authorize]
 
-<PageTitle>Профиль - MiniFinance</PageTitle>
+<PageTitle>Профиль — MiniFinance</PageTitle>
 
 <AuthorizeView>
     <Authorized>
-        <div class="page-header" style="margin-bottom:2rem">
-            <div class="title">
-                <h1 style="font-size:1.5rem;font-weight:600;margin-bottom:.25rem">Профиль</h1>
-                <div class="meta text-muted">
-                    <span style="font-weight:500">@currentUser?.UserName</span>
-                    <span style="margin:0 .5rem">•</span>
-                    <span>Участник с @(userCreatedDate?.ToString("MMMM yyyy", new System.Globalization.CultureInfo("ru-RU")) ?? "неизвестно")</span>
-                </div>
-            </div>
-        </div>
-
-        @if (showMessage)
+        @if (currentUser == null)
         {
-            <div class="alert alert-success">@message</div>
-        }
-
-        @if (showError)
-        {
-            <div class="alert alert-danger">@errorMessage</div>
-        }
-
-        @if (_isLoading)
-        {
-            <div class="center py-5">
-                <div class="spinner"></div>
-                <p class="text-muted mt-3">Загрузка статистики...</p>
-            </div>
+            <div class="loading-state"><div class="spinner"></div></div>
         }
         else
         {
-            <!-- KPI Cards -->
-            <div class="card-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2rem">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">Всего доходов</div>
-                        <div class="metric-value" style="color:var(--success)">@_totalIncome.ToString("N0") Br</div>
-                        <div class="metric-hint">@_incomeTransactions транзакций</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">Всего расходов</div>
-                        <div class="metric-value" style="color:var(--danger)">@_totalExpense.ToString("N0") Br</div>
-                        <div class="metric-hint">@_expenseTransactions транзакций</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">Баланс</div>
-                        <div class="metric-value" style="color:@(_balance >= 0 ? "var(--success)" : "var(--danger)")">@_balance.ToString("N0") Br</div>
-                        <div class="metric-hint">@(_savingsRate.ToString("F1"))% накоплений</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">Средняя транзакция</div>
-                        <div class="metric-value">@_avgTransaction.ToString("N0") Br</div>
-                        <div class="metric-hint">за все время</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">Всего транзакций</div>
-                        <div class="metric-value">@totalTransactions</div>
-                        <div class="metric-hint">@_activeDays активных дней</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-body">
-                        <div class="metric-label">В среднем за месяц</div>
-                        <div class="metric-value">@_avgPerMonth.ToString("F0")</div>
-                        <div class="metric-hint">транзакций</div>
-                    </div>
+            <div class="page-header">
+                <div class="title">
+                    <h1>Профиль</h1>
+                    <div class="meta text-muted">@DisplayName · @userEmail</div>
                 </div>
             </div>
 
-            <!-- Activity Chart -->
-            <div class="card mb-4">
-                <div class="card-header">Активность по месяцам</div>
-                <div class="card-body">
-                    <div style="height:300px;position:relative">
-                        <canvas id="activityChart"></canvas>
-                    </div>
-                </div>
-            </div>
+            @if (showMessage) { <div class="alert alert-success mb-3">@message</div> }
+            @if (showError) { <div class="alert alert-error mb-3">@errorMessage</div> }
 
-            <div class="card-grid" style="grid-template-columns:1fr 1fr;margin-bottom:2rem">
-                <!-- Top Categories -->
-                <div class="card">
-                    <div class="card-header">Топ категорий расходов</div>
-                    <div class="card-body">
-                        @if (_topCategories.Any())
-                        {
-                            <div style="display:flex;flex-direction:column;gap:1rem">
-                                @foreach (var cat in _topCategories.Take(5))
-                                {
+            <div class="hub-layout">
+                <nav class="hub-nav card">
+                    <button type="button" class="hub-nav-item @(_tab == "personal" ? "active" : "")" @onclick='() => _tab = "personal"'>Личные данные</button>
+                    <button type="button" class="hub-nav-item @(_tab == "security" ? "active" : "")" @onclick='() => _tab = "security"'>Безопасность</button>
+                    <button type="button" class="hub-nav-item @(_tab == "notifications" ? "active" : "")" @onclick='() => _tab = "notifications"'>Уведомления</button>
+                    <button type="button" class="hub-nav-item @(_tab == "data" ? "active" : "")" @onclick='() => _tab = "data"'>Данные</button>
+                </nav>
+
+                <div class="hub-content">
+                    @if (_tab == "personal")
+                    {
+                        <div class="card mb-3">
+                            <div class="card-header">Личная информация</div>
+                            <div class="card-body">
+                                <EditForm Model="@profileModel" OnValidSubmit="SaveProfile" Context="profileForm">
+                                    <DataAnnotationsValidator />
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label class="form-label">Имя</label>
+                                            <InputText class="form-input" @bind-Value="profileModel.FirstName" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Фамилия</label>
+                                            <InputText class="form-input" @bind-Value="profileModel.LastName" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Email</label>
+                                            <InputText type="email" class="form-input" @bind-Value="profileModel.Email" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Телефон</label>
+                                            <InputText class="form-input" @bind-Value="profileModel.Phone" placeholder="+375..." />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Логин</label>
+                                            <input class="form-input" value="@currentUser.UserName" disabled />
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                                    </div>
+                                </EditForm>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">Сводка учёта</div>
+                            <div class="card-body">
+                                <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
                                     <div>
-                                        <div style="display:flex;justify-content:space-between;margin-bottom:.375rem">
-                                            <span style="font-size:13px;font-weight:500">@cat.Category</span>
-                                            <span style="font-size:13px;font-weight:600;color:var(--danger)">@cat.Amount.ToString("N0") Br</span>
+                                        <div class="small text-muted">Баланс</div>
+                                        <div class="fw-bold @(_balance >= 0 ? "text-success" : "text-danger")">@_balance.ToString("N0") Br</div>
+                                    </div>
+                                    <div>
+                                        <div class="small text-muted">Операций</div>
+                                        <div class="fw-bold">@totalTransactions</div>
+                                    </div>
+                                    <div>
+                                        <div class="small text-muted">С нами с</div>
+                                        <div class="fw-bold">@(userCreatedDate?.ToString("dd.MM.yyyy") ?? "—")</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (_tab == "security")
+                    {
+                        <div class="card mb-3">
+                            <div class="card-header">Пароль</div>
+                            <div class="card-body">
+                                @if (!isChangingPassword)
+                                {
+                                    <p class="text-muted small mb-3">Рекомендуется менять пароль раз в 3–6 месяцев.</p>
+                                    <button class="btn btn-outline" @onclick="() => isChangingPassword = true">Изменить пароль</button>
+                                }
+                                else
+                                {
+                                    <EditForm Model="@passwordModel" OnValidSubmit="ChangePassword" Context="passwordForm">
+                                        <DataAnnotationsValidator />
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label class="form-label">Текущий пароль</label>
+                                                <InputText type="password" class="form-input" @bind-Value="passwordModel.OldPassword" />
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Новый пароль</label>
+                                                <InputText type="password" class="form-input" @bind-Value="passwordModel.NewPassword" />
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Подтверждение</label>
+                                                <InputText type="password" class="form-input" @bind-Value="passwordModel.ConfirmPassword" />
+                                            </div>
                                         </div>
-                                        <div style="background:var(--surface-hover);height:6px;border-radius:3px;overflow:hidden">
-                                            <div style="background:var(--accent);height:100%;width:@(cat.Percentage)%;transition:width 0.3s ease"></div>
+                                        <div class="mt-3" style="display:flex;gap:8px">
+                                            <button type="submit" class="btn btn-primary">Сохранить пароль</button>
+                                            <button type="button" class="btn btn-outline" @onclick="CancelChangePassword">Отмена</button>
                                         </div>
+                                    </EditForm>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">Двухфакторная аутентификация (2FA)</div>
+                            <div class="card-body">
+                                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+                                    <div>
+                                        <div class="fw-bold">@(_twoFactorEnabled ? "Включена" : "Отключена")</div>
+                                        <div class="small text-muted">
+                                            @if (_twoFactorEnabled)
+                                            {
+                                                <span>Дополнительная защита через приложение-аутентификатор</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Google Authenticator, Microsoft Authenticator и др.</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <a href="/Account/Manage/TwoFactorAuthentication" class="btn btn-primary">Настроить 2FA</a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (_tab == "notifications")
+                    {
+                        <div class="card">
+                            <div class="card-header">Email-уведомления</div>
+                            <div class="card-body">
+                                <div class="form-grid">
+                                    <label class="form-check" style="display:flex;align-items:center;gap:8px">
+                                        <input type="checkbox" @bind="enableNotifications" />
+                                        <span>Включить email-уведомления</span>
+                                    </label>
+                                    <label class="form-check" style="display:flex;align-items:center;gap:8px">
+                                        <input type="checkbox" @bind="notifyTaxes" />
+                                        <span>Налоги и сроки уплаты</span>
+                                    </label>
+                                    <label class="form-check" style="display:flex;align-items:center;gap:8px">
+                                        <input type="checkbox" @bind="notifyBills" />
+                                        <span>Счета к оплате</span>
+                                    </label>
+                                    <label class="form-check" style="display:flex;align-items:center;gap:8px">
+                                        <input type="checkbox" @bind="notifyCashGaps" />
+                                        <span>Прогноз кассовых разрывов</span>
+                                    </label>
+                                    <div class="form-group">
+                                        <label class="form-label">Напоминать за (дней до срока)</label>
+                                        <select class="form-input" @bind="notificationDaysBefore">
+                                            <option value="7">7 дней</option>
+                                            <option value="3">3 дня</option>
+                                            <option value="1">1 день</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <button class="btn btn-primary" @onclick="SaveNotifications">Сохранить</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="card mb-3">
+                            <div class="card-header">Экспорт данных (GDPR)</div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3">Скачайте все свои транзакции, напоминания, налоги и проекты в формате JSON.</p>
+                                <a href="/api/account/export" class="btn btn-outline" target="_blank" rel="noopener">Скачать JSON</a>
+                            </div>
+                        </div>
+
+                        <div class="card mb-3" style="border-color:var(--danger)">
+                            <div class="card-header" style="color:var(--danger)">Удаление аккаунта</div>
+                            <div class="card-body">
+                                <p class="small text-muted mb-3">Действие необратимо. Сначала экспортируйте данные.</p>
+                                @if (!_showDeleteConfirm)
+                                {
+                                    <button class="btn btn-outline-danger" @onclick="() => _showDeleteConfirm = true">Удалить аккаунт</button>
+                                }
+                                else
+                                {
+                                    <div class="form-group mb-2">
+                                        <label class="form-label">Подтвердите паролем</label>
+                                        <input type="password" class="form-input" @bind="_deletePassword" />
+                                    </div>
+                                    <div style="display:flex;gap:8px">
+                                        <button class="btn btn-danger" @onclick="DeleteAccount" disabled="@_deleting">Удалить навсегда</button>
+                                        <button class="btn btn-outline" @onclick="() => _showDeleteConfirm = false">Отмена</button>
                                     </div>
                                 }
                             </div>
-                        }
-                        else
-                        {
-                            <p class="text-muted small">Нет данных о расходах</p>
-                        }
-                    </div>
-                </div>
-
-                <!-- Achievements -->
-                <div class="card">
-                    <div class="card-header">Достижения</div>
-                    <div class="card-body">
-                        <div style="display:flex;flex-direction:column;gap:.75rem">
-                            @foreach (var achievement in _achievements)
-                            {
-                                <div style="padding:12px;background:var(--surface-hover);border-radius:var(--radius);border-left:3px solid var(--accent)">
-                                    <div style="font-weight:600;font-size:13px;margin-bottom:2px">@achievement.Title</div>
-                                    <div class="small text-muted" style="line-height:1.5">@achievement.Description</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Profile Info & Settings -->
-            <div class="card-grid" style="grid-template-columns:1fr 1fr;margin-bottom:2rem">
-                <!-- Profile Info Card -->
-                <div class="card">
-                    <div class="card-header">Информация о профиле</div>
-                    <div class="card-body">
-                        <div style="display:flex;flex-direction:column;gap:1rem">
-                            <div>
-                                <div class="label">Имя пользователя</div>
-                                <div style="font-size:14px;font-weight:500">@currentUser?.UserName</div>
-                            </div>
-                            <div>
-                                <div class="label">Email</div>
-                                <div style="font-size:14px;font-weight:500">@userEmail</div>
-                            </div>
-                            <div>
-                                <div class="label">Регистрация</div>
-                                <div class="text-muted small">@(userCreatedDate?.ToString("dd.MM.yyyy HH:mm") ?? "Неизвестно")</div>
-                            </div>
-                            <div>
-                                <div class="label">Последняя активность</div>
-                                <div class="text-muted small">@(lastActivityDate?.ToString("dd.MM.yyyy HH:mm") ?? "Нет данных")</div>
-                            </div>
-                            <div style="padding-top:.75rem;border-top:1px solid var(--border)">
-                                <button class="btn btn-outline" @onclick="ToggleEditProfile" style="width:100%">Редактировать профиль</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="card">
-                    <div class="card-header">Быстрые действия</div>
-                    <div class="card-body">
-                        <div style="display:flex;flex-direction:column;gap:.5rem">
-                            <a class="btn btn-outline" href="/transactions">
-                                Добавить транзакцию
-                            </a>
-                            <a class="btn btn-outline" href="/reports">
-                                Посмотреть отчёты
-                            </a>
-                            <a class="btn btn-outline" href="/import">
-                                Импортировать CSV
-                            </a>
-                            <button class="btn btn-outline" @onclick="ExportUserData">
-                                Экспорт всех данных
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Edit Profile Section -->
-            @if (isEditingProfile)
-            {
-                <div class="card mb-4">
-                    <div class="card-header">Редактирование профиля</div>
-                    <div class="card-body">
-                        <EditForm Model="@editModel" OnValidSubmit="@SaveProfileChanges" Context="editFormContext">
-                            <DataAnnotationsValidator />
-                            <ValidationSummary class="text-danger" />
-
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
-                                <div>
-                                    <label class="label">Имя пользователя</label>
-                                    <InputText class="input" @bind-Value="editModel.UserName" disabled />
-                                    <div class="small text-muted" style="margin-top:.25rem">Не может быть изменено</div>
-                                </div>
-                                <div>
-                                    <label class="label">Email</label>
-                                    <InputText type="email" class="input" @bind-Value="editModel.Email" />
-                                </div>
-                            </div>
-
-                            <div style="display:flex;gap:.5rem">
-                                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
-                                <button type="button" class="btn btn-outline" @onclick="CancelEditProfile">Отмена</button>
-                            </div>
-                        </EditForm>
-                    </div>
-                </div>
-            }
-
-            <!-- Security Card -->
-            <div class="card mb-4">
-                <div class="card-header">Безопасность</div>
-                <div class="card-body">
-                    <div style="display:flex;flex-direction:column;gap:1rem">
-                        <div>
-                            <div style="display:flex;align-items:center;justify-content:space-between">
-                                <div>
-                                    <div style="font-weight:600;font-size:14px;margin-bottom:2px">Пароль</div>
-                                    <div class="small text-muted">Изменить пароль учётной записи</div>
-                                </div>
-                                <button class="btn btn-outline" @onclick="ToggleChangePassword">Изменить пароль</button>
-                            </div>
                         </div>
 
-                        @if (isChangingPassword)
-                        {
-                            <div style="padding-top:1rem;border-top:1px solid var(--border)">
-                                <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                                    <EditForm Model="@passwordModel" OnValidSubmit="@ChangePassword" Context="pwFormContext">
-                                        <DataAnnotationsValidator />
-                                        <ValidationSummary class="text-danger" />
-
-                                        <div style="display:flex;flex-direction:column;gap:1rem">
-                                            <div>
-                                                <label class="label">Текущий пароль</label>
-                                                <InputText type="password" class="input" @bind-Value="passwordModel.OldPassword" />
-                                            </div>
-                                            <div>
-                                                <label class="label">Новый пароль</label>
-                                                <InputText type="password" class="input" @bind-Value="passwordModel.NewPassword" />
-                                            </div>
-                                            <div>
-                                                <label class="label">Подтверждение пароля</label>
-                                                <InputText type="password" class="input" @bind-Value="passwordModel.ConfirmPassword" />
-                                            </div>
-
-                                            <div style="display:flex;gap:.5rem;padding-top:.5rem">
-                                                <button type="submit" class="btn btn-primary">Изменить пароль</button>
-                                                <button type="button" class="btn btn-outline" @onclick="CancelChangePassword">Отмена</button>
-                                            </div>
-                                        </div>
-                                    </EditForm>
-                                </div>
+                        <div class="card">
+                            <div class="card-body" style="display:flex;justify-content:space-between;align-items:center">
+                                <span class="text-muted small">Завершить текущую сессию</span>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="Logout">Выйти</button>
                             </div>
-                        }
-                    </div>
-                </div>
-            </div>
-
-            <!-- Danger Zone -->
-            <div class="card" style="border-color:var(--danger)">
-                <div class="card-header" style="color:var(--danger)">Зона опасности</div>
-                <div class="card-body">
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <div>
-                            <div style="font-weight:600;font-size:14px;margin-bottom:2px">Выход из системы</div>
-                            <div class="small text-muted">Завершить текущую сессию</div>
                         </div>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="Logout">Выход</button>
-                    </div>
+                    }
                 </div>
             </div>
         }
     </Authorized>
     <NotAuthorized>
-        <div class="center py-5">
-            <h2>Доступ запрещён</h2>
-            <p class="text-muted">Вы должны войти в систему, чтобы просмотреть профиль.</p>
-            <a class="btn btn-primary" href="/account/login">Вход в систему</a>
+        <div class="empty-state">
+            <a href="/login" class="btn btn-primary">Войти</a>
         </div>
     </NotAuthorized>
 </AuthorizeView>
 
-<script>
-    let activityChart = null;
-
-    window.renderActivityChart = function(labels, data) {
-        const ctx = document.getElementById('activityChart');
-        if (!ctx) return;
-
-        if (activityChart) {
-            activityChart.destroy();
-        }
-
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const textColor = isDark ? '#8b949e' : '#656d76';
-        const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-        const accentColor = isDark ? '#a78bfa' : '#7c3aed';
-        const accentBg = isDark ? 'rgba(167,139,250,0.5)' : 'rgba(124,58,237,0.5)';
-
-        activityChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Транзакции',
-                    data: data,
-                    backgroundColor: accentBg,
-                    borderColor: accentColor,
-                    borderWidth: 2,
-                    borderRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        backgroundColor: isDark ? '#161b22' : '#ffffff',
-                        titleColor: isDark ? '#e6edf3' : '#1f2328',
-                        bodyColor: isDark ? '#8b949e' : '#656d76',
-                        borderColor: isDark ? '#30363d' : '#d0d7de',
-                        borderWidth: 1
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            color: textColor,
-                            precision: 0
-                        },
-                        grid: {
-                            color: gridColor
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            color: textColor
-                        },
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
-    };
-</script>
-
 @code {
     private ApplicationUser? currentUser;
-    private string userEmail = string.Empty;
+    private string userEmail = "";
+    private string DisplayName => string.IsNullOrWhiteSpace($"{profileModel.FirstName} {profileModel.LastName}".Trim())
+        ? currentUser?.UserName ?? ""
+        : $"{profileModel.FirstName} {profileModel.LastName}".Trim();
+
+    private string _tab = "personal";
+    private bool showMessage;
+    private string message = "";
+    private bool showError;
+    private string errorMessage = "";
+
+    private bool isChangingPassword;
+    private bool _twoFactorEnabled;
+    private bool enableNotifications = true;
+    private bool notifyTaxes = true;
+    private bool notifyBills = true;
+    private bool notifyCashGaps = true;
+    private int notificationDaysBefore = 3;
+
+    private bool _showDeleteConfirm;
+    private string _deletePassword = "";
+    private bool _deleting;
+
+    private decimal _balance;
+    private int totalTransactions;
     private DateTime? userCreatedDate;
-    private int totalTransactions = 0;
-    private DateTime? lastActivityDate;
 
-    private bool isEditingProfile = false;
-    private bool isChangingPassword = false;
-    private bool _isLoading = true;
-
-    private bool showMessage = false;
-    private string message = string.Empty;
-    private bool showError = false;
-    private string errorMessage = string.Empty;
-
-    // Statistics
-    private decimal _totalIncome = 0;
-    private decimal _totalExpense = 0;
-    private decimal _balance = 0;
-    private int _incomeTransactions = 0;
-    private int _expenseTransactions = 0;
-    private decimal _savingsRate = 0;
-    private decimal _avgTransaction = 0;
-    private int _activeDays = 0;
-    private decimal _avgPerMonth = 0;
-
-    private List<CategoryStat> _topCategories = new();
-    private List<Achievement> _achievements = new();
-    private List<MonthlyActivity> _monthlyActivity = new();
-
-    private EditProfileModel editModel = new();
+    private ProfileModel profileModel = new();
     private ChangePasswordModel passwordModel = new();
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        currentUser = await UserManager.GetUserAsync(authState.User);
-
-        if (currentUser != null)
-        {
-            userEmail = currentUser.Email ?? string.Empty;
-            userCreatedDate = currentUser.Id != null ? DateTime.UtcNow : null;
-
-            await LoadStatistics();
-
-            editModel.UserName = currentUser.UserName ?? string.Empty;
-            editModel.Email = currentUser.Email ?? string.Empty;
-        }
-
-        _isLoading = false;
-    }
-
-    private async Task LoadStatistics()
-    {
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUser = await UserManager.GetUserAsync(auth.User);
         if (currentUser == null) return;
 
-        var transactions = await DbContext.Transactions
-            .Where(t => t.UserId == currentUser.Id)
-            .ToListAsync();
-
-        totalTransactions = transactions.Count;
-
-        _totalIncome = transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
-        _totalExpense = Math.Abs(transactions.Where(t => t.Amount < 0).Sum(t => t.Amount));
-        _balance = _totalIncome - _totalExpense;
-        _incomeTransactions = transactions.Count(t => t.Amount > 0);
-        _expenseTransactions = transactions.Count(t => t.Amount < 0);
-
-        if (_totalIncome > 0)
+        userEmail = currentUser.Email ?? "";
+        userCreatedDate = currentUser.CreatedAt ?? DateTime.UtcNow;
+        profileModel = new ProfileModel
         {
-            _savingsRate = (_balance / _totalIncome) * 100;
-        }
+            FirstName = currentUser.FirstName ?? "",
+            LastName = currentUser.LastName ?? "",
+            Email = currentUser.Email ?? "",
+            Phone = currentUser.PhoneNumber ?? ""
+        };
 
-        if (totalTransactions > 0)
-        {
-            _avgTransaction = transactions.Average(t => Math.Abs(t.Amount));
-        }
+        enableNotifications = currentUser.EnableNotifications;
+        notifyTaxes = currentUser.NotifyTaxes;
+        notifyBills = currentUser.NotifyBills;
+        notifyCashGaps = currentUser.NotifyCashGaps;
+        notificationDaysBefore = currentUser.NotificationDaysBefore;
+        _twoFactorEnabled = await UserManager.GetTwoFactorEnabledAsync(currentUser);
 
-        _activeDays = transactions.Select(t => t.Date.Date).Distinct().Count();
-
-        lastActivityDate = transactions.Any()
-            ? transactions.OrderByDescending(t => t.Date).First().Date
-            : null;
-
-        // Calculate months active
-        if (transactions.Any())
-        {
-            var firstTransaction = transactions.Min(t => t.Date);
-            var monthsActive = Math.Max(1, (int)((DateTime.Now - firstTransaction).TotalDays / 30));
-            _avgPerMonth = (decimal)totalTransactions / monthsActive;
-        }
-
-        // Top categories
-        _topCategories = transactions
-            .Where(t => t.Amount < 0)
-            .GroupBy(t => t.Category)
-            .Select(g => new CategoryStat
-            {
-                Category = g.Key,
-                Amount = Math.Abs(g.Sum(t => t.Amount)),
-                Count = g.Count()
-            })
-            .OrderByDescending(c => c.Amount)
-            .Take(5)
-            .ToList();
-
-        var maxAmount = _topCategories.Any() ? _topCategories.Max(c => c.Amount) : 1;
-        foreach (var cat in _topCategories)
-        {
-            cat.Percentage = maxAmount > 0 ? (cat.Amount / maxAmount) * 100 : 0;
-        }
-
-        // Monthly activity
-        _monthlyActivity = transactions
-            .GroupBy(t => new { t.Date.Year, t.Date.Month })
-            .Select(g => new MonthlyActivity
-            {
-                Month = new DateTime(g.Key.Year, g.Key.Month, 1),
-                Count = g.Count()
-            })
-            .OrderBy(m => m.Month)
-            .TakeLast(12)
-            .ToList();
-
-        // Generate achievements
-        GenerateAchievements();
+        var txs = await DbContext.Transactions.Where(t => t.UserId == currentUser.Id).ToListAsync();
+        totalTransactions = txs.Count;
+        _balance = txs.Sum(t => t.Amount);
     }
 
-    private void GenerateAchievements()
+    private async Task SaveProfile()
     {
-        _achievements.Clear();
-
-        if (totalTransactions >= 100)
-        {
-            _achievements.Add(new Achievement
-            {
-                Title = "Активный пользователь",
-                Description = $"{totalTransactions} транзакций записано"
-            });
-        }
-
-        if (_activeDays >= 30)
-        {
-            _achievements.Add(new Achievement
-            {
-                Title = "Постоянство",
-                Description = $"{_activeDays} активных дней"
-            });
-        }
-
-        if (_savingsRate > 20)
-        {
-            _achievements.Add(new Achievement
-            {
-                Title = "Мастер накоплений",
-                Description = $"{_savingsRate:F1}% сбережений"
-            });
-        }
-
-        if (_balance > 100000)
-        {
-            _achievements.Add(new Achievement
-            {
-                Title = "Финансовая стабильность",
-                Description = "Баланс более 100К"
-            });
-        }
-
-        if (_achievements.Count == 0)
-        {
-            _achievements.Add(new Achievement
-            {
-                Title = "Начало пути",
-                Description = "Продолжайте вести учёт финансов"
-            });
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_isLoading && _monthlyActivity.Any())
-        {
-            await RenderActivityChart();
-        }
-    }
-
-    private async Task RenderActivityChart()
-    {
-        try
-        {
-            var labels = _monthlyActivity.Select(m => m.Month.ToString("MMM yyyy", new System.Globalization.CultureInfo("ru-RU"))).ToArray();
-            var data = _monthlyActivity.Select(m => m.Count).ToArray();
-
-            await JSRuntime.InvokeVoidAsync("renderActivityChart", labels, data);
-        }
-        catch { }
-    }
-
-    private void ToggleEditProfile()
-    {
-        isEditingProfile = !isEditingProfile;
-    }
-
-    private void CancelEditProfile()
-    {
-        isEditingProfile = false;
-        if (currentUser != null)
-        {
-            editModel.Email = currentUser.Email ?? string.Empty;
-        }
-    }
-
-    private async Task SaveProfileChanges()
-    {
+        if (currentUser == null) return;
         showError = false;
-        showMessage = false;
+        currentUser.FirstName = profileModel.FirstName?.Trim();
+        currentUser.LastName = profileModel.LastName?.Trim();
+        currentUser.Email = profileModel.Email?.Trim();
+        currentUser.PhoneNumber = profileModel.Phone?.Trim();
 
-        if (currentUser == null)
+        var result = await UserManager.UpdateAsync(currentUser);
+        if (result.Succeeded)
         {
-            errorMessage = "Пользователь не найден.";
-            showError = true;
-            return;
+            message = "Профиль сохранён";
+            showMessage = true;
+            userEmail = currentUser.Email ?? "";
         }
-
-        try
+        else
         {
-            currentUser.Email = editModel.Email;
-            var result = await UserManager.UpdateAsync(currentUser);
-
-            if (result.Succeeded)
-            {
-                message = "Профиль успешно обновлён.";
-                showMessage = true;
-                isEditingProfile = false;
-                userEmail = editModel.Email;
-            }
-            else
-            {
-                errorMessage = "Ошибка при обновлении профиля: " + string.Join(", ", result.Errors.Select(e => e.Description));
-                showError = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Ошибка: {ex.Message}";
+            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
             showError = true;
         }
     }
 
-    private void ToggleChangePassword()
+    private async Task SaveNotifications()
     {
-        isChangingPassword = !isChangingPassword;
+        if (currentUser == null) return;
+        currentUser.EnableNotifications = enableNotifications;
+        currentUser.NotifyTaxes = notifyTaxes;
+        currentUser.NotifyBills = notifyBills;
+        currentUser.NotifyCashGaps = notifyCashGaps;
+        currentUser.NotificationDaysBefore = notificationDaysBefore;
+        var result = await UserManager.UpdateAsync(currentUser);
+        if (result.Succeeded)
+        {
+            message = "Настройки уведомлений сохранены";
+            showMessage = true;
+        }
+        else
+        {
+            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            showError = true;
+        }
     }
 
     private void CancelChangePassword()
@@ -642,54 +358,51 @@
 
     private async Task ChangePassword()
     {
-        showError = false;
-        showMessage = false;
-
-        if (currentUser == null)
+        if (currentUser == null) return;
+        var result = await UserManager.ChangePasswordAsync(currentUser, passwordModel.OldPassword, passwordModel.NewPassword);
+        if (result.Succeeded)
         {
-            errorMessage = "Пользователь не найден.";
-            showError = true;
-            return;
+            message = "Пароль изменён";
+            showMessage = true;
+            isChangingPassword = false;
+            passwordModel = new();
         }
-
-        try
+        else
         {
-            var result = await UserManager.ChangePasswordAsync(currentUser, passwordModel.OldPassword, passwordModel.NewPassword);
-
-            if (result.Succeeded)
-            {
-                message = "Пароль успешно изменён.";
-                showMessage = true;
-                isChangingPassword = false;
-                passwordModel = new();
-            }
-            else
-            {
-                errorMessage = "Ошибка при изменении пароля: " + string.Join(", ", result.Errors.Select(e => e.Description));
-                showError = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Ошибка: {ex.Message}";
+            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
             showError = true;
         }
     }
 
-    private async Task ExportUserData()
+    private async Task DeleteAccount()
     {
         if (currentUser == null) return;
-
+        _deleting = true;
+        showError = false;
         try
         {
-            NavigationManager.NavigateTo($"/reports/export/csv?start=&end=&tab=transactions", forceLoad: true);
-            message = "Экспорт данных начат.";
-            showMessage = true;
+            if (!await UserManager.CheckPasswordAsync(currentUser, _deletePassword))
+            {
+                errorMessage = "Неверный пароль";
+                showError = true;
+                return;
+            }
+
+            var result = await UserManager.DeleteAsync(currentUser);
+            if (result.Succeeded)
+            {
+                await SignInManager.SignOutAsync();
+                NavigationManager.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+                showError = true;
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            errorMessage = $"Ошибка экспорта: {ex.Message}";
-            showError = true;
+            _deleting = false;
         }
     }
 
@@ -699,47 +412,22 @@
         NavigationManager.NavigateTo("/login", forceLoad: true);
     }
 
-    // Models
-    public class EditProfileModel
+    public class ProfileModel
     {
-        public string UserName { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Email обязателен")]
-        [EmailAddress(ErrorMessage = "Некорректный email")]
-        public string Email { get; set; } = string.Empty;
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+        public string Phone { get; set; } = "";
     }
 
     public class ChangePasswordModel
     {
-        [Required(ErrorMessage = "Текущий пароль обязателен")]
-        public string OldPassword { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Новый пароль обязателен")]
-        [StringLength(100, ErrorMessage = "Пароль должен быть от {2} до {1} символов", MinimumLength = 6)]
-        public string NewPassword { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Подтверждение пароля обязательно")]
-        [Compare("NewPassword", ErrorMessage = "Пароли не совпадают")]
-        public string ConfirmPassword { get; set; } = string.Empty;
-    }
-
-    public class CategoryStat
-    {
-        public string Category { get; set; } = string.Empty;
-        public decimal Amount { get; set; }
-        public int Count { get; set; }
-        public decimal Percentage { get; set; }
-    }
-
-    public class Achievement
-    {
-        public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-    }
-
-    public class MonthlyActivity
-    {
-        public DateTime Month { get; set; }
-        public int Count { get; set; }
+        [Required]
+        public string OldPassword { get; set; } = "";
+        [Required, StringLength(100, MinimumLength = 3)]
+        public string NewPassword { get; set; } = "";
+        [Required, Compare(nameof(NewPassword))]
+        public string ConfirmPassword { get; set; } = "";
     }
 }

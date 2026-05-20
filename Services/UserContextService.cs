@@ -8,8 +8,13 @@ namespace MiniFinance.Services;
 public class UserContextService : IUserContextService
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IDataScopeService _dataScope;
 
-    public UserContextService(UserManager<ApplicationUser> userManager) => _userManager = userManager;
+    public UserContextService(UserManager<ApplicationUser> userManager, IDataScopeService dataScope)
+    {
+        _userManager = userManager;
+        _dataScope = dataScope;
+    }
 
     public async Task<UserContext> GetContextAsync(string userId)
     {
@@ -18,12 +23,15 @@ public class UserContextService : IUserContextService
             ? (await _userManager.GetRolesAsync(user)).ToList()
             : new List<string>();
 
-        if (roles.Count == 0)
+        if (roles.Count == 0 && string.IsNullOrWhiteSpace(user?.WorkspaceOwnerUserId))
             roles.Add(AppRoles.Owner);
+
+        var dataUserId = await _dataScope.GetDataOwnerUserIdAsync(userId);
 
         return new UserContext
         {
             UserId = userId,
+            DataUserId = dataUserId,
             Roles = roles,
             Department = user?.Department,
             ActiveProjectId = user?.ActiveProjectId
@@ -31,8 +39,8 @@ public class UserContextService : IUserContextService
     }
 
     public bool CanAccessSettings(UserContext ctx) => ctx.IsOwner;
-    public bool CanManageTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsManager;
-    public bool CanApproveTransactions(UserContext ctx) => ctx.IsOwner;
+    public bool CanManageTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
+    public bool CanApproveTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant;
     public bool CanViewReports(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
 
     public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx)

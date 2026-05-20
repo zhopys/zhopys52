@@ -6,11 +6,17 @@ namespace MiniFinance.Services;
 public class TransactionDataStatusService : ITransactionDataStatusService
 {
     private readonly ApplicationDbContext _db;
+    private readonly IDataScopeService _dataScope;
 
-    public TransactionDataStatusService(ApplicationDbContext db) => _db = db;
+    public TransactionDataStatusService(ApplicationDbContext db, IDataScopeService dataScope)
+    {
+        _db = db;
+        _dataScope = dataScope;
+    }
 
     public async Task<DataStatusDto> GetStatusAsync(string userId, DateTime? periodStart = null, DateTime? periodEnd = null)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var total = await _db.Transactions.CountAsync(t => t.UserId == userId);
 
         var lastTx = await _db.Transactions

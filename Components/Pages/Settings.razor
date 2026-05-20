@@ -9,371 +9,200 @@
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDataScopeService DataScope
+@inject IUserContextService UserContext
 @inject IJSRuntime JS
-@inject MiniFinance.Services.INotificationEmailService EmailService
 @attribute [Authorize]
 
-<PageTitle>Настройки - MiniFinance</PageTitle>
+<PageTitle>Настройки — MiniFinance</PageTitle>
 
 <AuthorizeView>
     <Authorized>
         <div class="page-header">
             <div class="title">
                 <h1>Настройки</h1>
-                <div class="meta text-muted">Параметры организации и внешний вид</div>
+                <div class="meta text-muted">Организация, прогноз кассы и оформление</div>
             </div>
         </div>
 
-        @if (showMessage)
-        {
-            <div class="alert alert-success">@_message</div>
-        }
+        @if (showMessage) { <div class="alert alert-success mb-3">@_message</div> }
+        @if (showError) { <div class="alert alert-error mb-3">@_errorMessage</div> }
 
-        @if (showError)
-        {
-            <div class="alert alert-error">@_errorMessage</div>
-        }
+        <div class="hub-layout">
+            <nav class="hub-nav card">
+                <button type="button" class="hub-nav-item @(_tab == "general" ? "active" : "")" @onclick='() => _tab = "general"'>Основные</button>
+                <button type="button" class="hub-nav-item @(_tab == "appearance" ? "active" : "")" @onclick='() => _tab = "appearance"'>Внешний вид</button>
+            </nav>
 
-        <!-- Organization settings -->
-        <div class="card mb-3">
-            <div class="card-header">Организация</div>
-            <div class="card-body">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
-                    <div>
-                        <label class="label">Название компании</label>
-                        <input class="input" @bind="companyName" placeholder="ООО &quot;Компания&quot;" />
-                    </div>
-                    <div>
-                        <label class="label">УНП</label>
-                        <input class="input" @bind="unp" placeholder="123456789" />
-                    </div>
-                    <div>
-                        <label class="label">Система налогообложения</label>
-                        <select class="input" @bind="taxSystem">
-                            <option value="USN">УСН</option>
-                            <option value="OSN">ОСН</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <button class="btn btn-primary" @onclick="SaveSettings">Сохранить</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Integration -->
-        <div class="card mb-3">
-            <div class="card-header">Интеграция</div>
-            <div class="card-body">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
-                    <div>
-                        <label class="label">API-ключ</label>
-                        <input class="input" @bind="apiKey" placeholder="Ваш API-ключ" />
-                    </div>
-                    <div>
-                        <label class="label">URL интеграции</label>
-                        <input class="input" @bind="integrationUrl" placeholder="https://api.example.com" />
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <button class="btn btn-primary" @onclick="SaveIntegration">Сохранить интеграцию</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Notifications -->
-        <div class="card mb-3">
-            <div class="card-header">Уведомления</div>
-            <div class="card-body">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem">
-                    <div>
-                        <label class="label" style="display:flex;align-items:center;gap:8px">
-                            <input type="checkbox" @bind="enableNotifications" />
-                            Email-уведомления
-                        </label>
-                    </div>
-                    <div>
-                        <label class="label">Дней до срока</label>
-                        <input class="input" type="number" min="1" max="30" @bind="notificationDaysBefore" />
-                    </div>
-                </div>
-                <div class="mt-3" style="display:flex;gap:0.5rem;align-items:center">
-                    <button class="btn btn-primary" @onclick="SaveNotificationSettings" disabled="@_savingNotifications">
-                        @if (_savingNotifications) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
-                        Сохранить
-                    </button>
-                    <button class="btn btn-outline" @onclick="SendTestEmail" disabled="@_sendingEmail">
-                        @if (_sendingEmail) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
-                        Отправить тестовое письмо
-                    </button>
-                </div>
-                @if (!string.IsNullOrEmpty(emailStatus))
+            <div class="hub-content">
+                @if (_tab == "general")
                 {
-                    <div class="alert @(emailSuccess ? "alert-success" : "alert-error") mt-3">@emailStatus</div>
-                }
-            </div>
-        </div>
+                    <div class="card mb-3">
+                        <div class="card-header">Организация</div>
+                        <div class="card-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Название компании</label>
+                                    <input class="form-input" @bind="companyName" placeholder='ООО "Компания"' />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">УНП</label>
+                                    <input class="form-input" @bind="unp" placeholder="123456789" />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Система налогообложения</label>
+                                    <select class="form-input" @bind="taxSystem">
+                                        <option value="USN">УСН</option>
+                                        <option value="OSN">ОСН</option>
+                                    </select>
+                                    <span class="small text-muted">Используется в разделе «Налоги»</span>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Минимальный остаток (BYN)</label>
+                                    <input type="number" class="form-input" @bind="minCashBalance" step="100" min="0" />
+                                    <span class="small text-muted">Порог на графике прогноза кассы и предупреждениях</span>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button class="btn btn-primary" @onclick="SaveGeneral" disabled="@_saving">Сохранить</button>
+                            </div>
+                        </div>
+                    </div>
 
-        <!-- Appearance -->
-        <div class="card">
-            <div class="card-header">Внешний вид</div>
-            <div class="card-body">
-                <div style="display:flex;align-items:center;gap:1rem">
-                    <span class="text-muted">Тема:</span>
-                    <button class="btn btn-outline" @onclick="ToggleTheme">
-                        @(isDark ? "Светлая" : "Тёмная")
-                    </button>
-                </div>
+                    @* Команда — временно скрыто
+                    <div class="card">
+                        <div class="card-header">Команда</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Пользователи и роли — на отдельной странице.</p>
+                            <a href="/team" class="btn btn-outline">Открыть «Команда»</a>
+                        </div>
+                    </div>
+                    *@
+                }
+                else
+                {
+                    <div class="card">
+                        <div class="card-header">Тема интерфейса</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Сохраняется в браузере на этом устройстве.</p>
+                            <div style="display:flex;gap:12px;flex-wrap:wrap">
+                                <button class="btn btn-outline" @onclick="() => SetTheme(false)">Светлая</button>
+                                <button class="btn btn-outline" @onclick="() => SetTheme(true)">Тёмная</button>
+                                <button class="btn btn-primary" @onclick="ToggleTheme">
+                                    Сейчас: @(isDark ? "тёмная" : "светлая")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     </Authorized>
 </AuthorizeView>
 
 @code {
-    private string companyName = string.Empty;
-    private string unp = string.Empty;
+    private string _tab = "general";
+    private string _userId = "";
+    private string companyName = "";
+    private string unp = "";
     private string taxSystem = "USN";
-    private string apiKey = string.Empty;
-    private string integrationUrl = string.Empty;
-    private bool isDark = false;
-    private bool showMessage = false;
-    private bool showError = false;
-    private string _message = string.Empty;
-    private string _errorMessage = string.Empty;
-    private bool enableNotifications = true;
-    private int notificationDaysBefore = 3;
-    private string emailStatus = string.Empty;
-    private bool emailSuccess = false;
-    private bool _savingNotifications;
-    private bool _sendingEmail;
+    private decimal minCashBalance = 1000;
+    private bool isDark;
+    private bool showMessage;
+    private bool showError;
+    private string _message = "";
+    private string _errorMessage = "";
+    private bool _saving;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user != null)
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
+        _userId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+
+        var settings = await DbContext.OrganizationSettings.FirstOrDefaultAsync(s => s.UserId == _userId);
+        if (settings != null)
         {
-            enableNotifications = user.EnableNotifications;
-            notificationDaysBefore = user.NotificationDaysBefore;
-
-            try
-            {
-                var settings = await DbContext.OrganizationSettings
-                    .FirstOrDefaultAsync(s => s.UserId == user.Id);
-
-                if (settings != null)
-                {
-                    companyName = settings.CompanyName;
-                    unp = settings.UNP;
-                    taxSystem = settings.TaxSystem.ToString();
-                    apiKey = settings.ApiKey ?? string.Empty;
-                    integrationUrl = settings.IntegrationUrl ?? string.Empty;
-                }
-            }
-            catch
-            {
-                // Table may not exist yet
-            }
+            companyName = settings.CompanyName;
+            unp = settings.UNP;
+            taxSystem = settings.TaxSystem.ToString();
+            minCashBalance = settings.MinCashBalance;
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            try
-            {
-                isDark = await JS.InvokeAsync<bool>("window.matchMedia('(prefers-color-scheme: dark)').matches");
-                StateHasChanged();
-            }
-            catch { /* JS interop may not be ready */ }
-        }
-    }
-
-    private async Task SaveSettings()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
-        {
-            parsedTax = TaxSystem.USN;
-        }
-
+        if (!firstRender) return;
         try
         {
-            var settings = await DbContext.OrganizationSettings
-                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+            isDark = await JS.InvokeAsync<string>("eval", "document.documentElement.getAttribute('data-theme')") == "dark";
+            StateHasChanged();
+        }
+        catch { }
+    }
 
+    private async Task SaveGeneral()
+    {
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user != null)
+        {
+            var ctx = await UserContext.GetContextAsync(user.Id);
+            if (!UserContext.CanAccessSettings(ctx))
+            {
+                _errorMessage = "Изменять настройки организации может только владелец";
+                showError = true;
+                return;
+            }
+        }
+
+        _saving = true;
+        showError = false;
+        try
+        {
+            if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
+                parsedTax = TaxSystem.USN;
+
+            var settings = await DbContext.OrganizationSettings.FirstOrDefaultAsync(s => s.UserId == _userId);
             if (settings == null)
             {
-                settings = new OrganizationSettings
-                {
-                    UserId = user.Id,
-                    CompanyName = companyName,
-                    UNP = unp,
-                    TaxSystem = parsedTax
-                };
+                settings = new OrganizationSettings { UserId = _userId };
                 DbContext.OrganizationSettings.Add(settings);
             }
-            else
-            {
-                settings.CompanyName = companyName;
-                settings.UNP = unp;
-                settings.TaxSystem = parsedTax;
-                DbContext.OrganizationSettings.Update(settings);
-            }
+
+            settings.CompanyName = companyName.Trim();
+            settings.UNP = unp.Trim();
+            settings.TaxSystem = parsedTax;
+            settings.MinCashBalance = minCashBalance;
 
             await DbContext.SaveChangesAsync();
             ShowMessage("Настройки сохранены");
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Ошибка: {ex.Message}";
-            showError = true;
-            showMessage = false;
-        }
-    }
-
-    private async Task SaveIntegration()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
-        {
-            parsedTax = TaxSystem.USN;
-        }
-
-        try
-        {
-            var settings = await DbContext.OrganizationSettings
-                .FirstOrDefaultAsync(s => s.UserId == user.Id);
-
-            if (settings == null)
-            {
-                settings = new OrganizationSettings
-                {
-                    UserId = user.Id,
-                    CompanyName = companyName,
-                    UNP = unp,
-                    TaxSystem = parsedTax,
-                    ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim(),
-                    IntegrationUrl = string.IsNullOrWhiteSpace(integrationUrl) ? null : integrationUrl.Trim()
-                };
-                DbContext.OrganizationSettings.Add(settings);
-            }
-            else
-            {
-                settings.ApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
-                settings.IntegrationUrl = string.IsNullOrWhiteSpace(integrationUrl) ? null : integrationUrl.Trim();
-                DbContext.OrganizationSettings.Update(settings);
-            }
-
-            await DbContext.SaveChangesAsync();
-            ShowMessage("Настройки интеграции сохранены");
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Ошибка: {ex.Message}";
-            showError = true;
-            showMessage = false;
-        }
-    }
-
-    private async Task SaveNotificationSettings()
-    {
-        _savingNotifications = true;
-        showError = false;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = await UserManager.GetUserAsync(authState.User);
-            if (user == null) return;
-
-            user.EnableNotifications = enableNotifications;
-            user.NotificationDaysBefore = notificationDaysBefore;
-            var result = await UserManager.UpdateAsync(user);
-
-            if (result.Succeeded)
-            {
-                ShowMessage("Настройки уведомлений сохранены");
-            }
-            else
-            {
-                _errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
-                showError = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Ошибка: {ex.Message}";
+            _errorMessage = ex.Message;
             showError = true;
         }
         finally
         {
-            _savingNotifications = false;
-            await InvokeAsync(StateHasChanged);
+            _saving = false;
         }
     }
 
-    private async Task SendTestEmail()
+    private async Task SetTheme(bool dark)
     {
-        _sendingEmail = true;
-        emailStatus = string.Empty;
-        emailSuccess = false;
-        showError = false;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = await UserManager.GetUserAsync(authState.User);
-            if (user == null || string.IsNullOrEmpty(user.Email))
-            {
-                emailStatus = "Email не найден в профиле пользователя";
-                emailSuccess = false;
-                return;
-            }
-
-            await EmailService.SendTestEmailAsync(user.Email);
-            emailStatus = "Тестовое письмо отправлено";
-            emailSuccess = true;
-        }
-        catch (Exception ex)
-        {
-            emailStatus = $"Ошибка отправки: {ex.Message}";
-            emailSuccess = false;
-        }
-        finally
-        {
-            _sendingEmail = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task ToggleTheme()
-    {
-        isDark = !isDark;
-        var theme = isDark ? "dark" : "light";
+        isDark = dark;
+        var theme = dark ? "dark" : "light";
         await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{theme}'); try {{ localStorage.setItem('theme', '{theme}'); }} catch(e) {{}}");
     }
+
+    private async Task ToggleTheme() => await SetTheme(!isDark);
 
     private void ShowMessage(string msg)
     {
         _message = msg;
         showMessage = true;
         showError = false;
-        _ = InvokeAsync(async () =>
-        {
-            StateHasChanged();
-            await Task.Delay(3000);
-            showMessage = false;
-            StateHasChanged();
-        });
     }
 }

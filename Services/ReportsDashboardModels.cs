@@ -76,6 +76,7 @@ public sealed class CashForecastChartDto
     public bool HasRisk { get; init; }
     public string RiskLevel { get; init; } = "safe";
     public decimal MinBalance { get; init; }
+    public decimal MinCashThreshold { get; init; }
     public IReadOnlyList<ForecastChartPointDto> Points { get; init; } = Array.Empty<ForecastChartPointDto>();
     public IReadOnlyList<CashGapDto> Gaps { get; init; } = Array.Empty<CashGapDto>();
 }

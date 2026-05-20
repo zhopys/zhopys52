@@ -12,7 +12,6 @@
 @inject IReportAnalyticsService AnalyticsService
 @inject IExtendedReportService ExtendedReportService
 @inject IBalanceReportService BalanceReportService
-@inject IAccountingIntegrationService AccountingService
 @inject ITransactionService TransactionService
 @inject ICategorizationService CategorizationService
 @inject ApplicationDbContext DbContext
@@ -114,7 +113,6 @@
                 <DataSourcesCard Status="@_snapshot.DataStatus"
                                  Refreshing="@_refreshing"
                                  OnRefreshRequested="ReloadAsync" />
-                <AccountingIntegrationCard Integration="@_snapshot.Accounting" OnExportRequested="TriggerAccountingExport" />
             </div>
 
             <TaxCalendarWidget Alerts="@_snapshot.CriticalReminders" />
@@ -125,6 +123,7 @@
                                     OnCategorySelected="FilterByCategory" />
                 <CashGapForecastChart Forecast="@_snapshot.Forecast"
                                       HorizonDays="@_forecastDays"
+                                      MinCashThreshold="@_snapshot.Forecast.MinCashThreshold"
                                       OnHorizonChanged="ChangeForecastHorizon" />
             </div>
 
@@ -482,13 +481,6 @@
     private async Task ChangeForecastHorizon(int days)
     {
         _forecastDays = days;
-        await ReloadAsync();
-    }
-
-    private async Task TriggerAccountingExport()
-    {
-        var f = BuildFilters();
-        await AccountingService.ForceExportAsync(_userId, f.Start, f.End);
         await ReloadAsync();
     }
 

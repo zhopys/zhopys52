@@ -10,6 +10,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IForecastingService ForecastingService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 <div class="main">
@@ -82,10 +83,29 @@
 
                 <div style="display: grid; grid-template-columns: 1fr; @(GetWideLayoutStyles()) gap: 24px;">
                     <div style="min-width: 0;">
-                        <div class="card mb-4">
-                            <div class="card-header">Динамика остатков (Базовый сценарий)</div>
-                            <div class="card-body" style="padding: 0;">
-                                @RenderChart(forecast.BaseScenario.Points)
+                        <div class="card chart-panel mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span>Динамика остатков (Базовый сценарий)</span>
+                                <div class="small text-muted d-flex gap-3 flex-wrap">
+                                    <span><span class="chart-legend-dot" style="background:var(--chart-teal)"></span> Остаток</span>
+                                    <span><span class="chart-legend-dot" style="background:rgba(239,68,68,.5)"></span> Разрыв</span>
+                                    @if (minCashThreshold > 0)
+                                    {
+                                        <span><span class="chart-legend-dot" style="background:rgba(245,158,11,.8)"></span> Порог @minCashThreshold.ToString("N0") Br</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (forecast.BaseScenario.Points.Any())
+                                {
+                                    <div class="chart-canvas-wrap" style="height:260px">
+                                        <canvas id="@_balanceChartId" aria-label="Динамика остатков"></canvas>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="empty-state small">Нет точек для графика</div>
+                                }
                             </div>
                         </div>
 
@@ -187,8 +207,15 @@
     private int incomeDelayDays;
     private decimal minCashThreshold = 1000;
     private AdvancedCashForecast forecast = new();
+    private readonly string _balanceChartId = $"cashForecastBalance_{Guid.NewGuid():N}";
 
     protected override async Task OnInitializedAsync() => await LoadForecast();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isLoading && hasData)
+            await RenderBalanceChartAsync();
+    }
 
     private async Task LoadForecast() {
         isLoading = true;
@@ -219,7 +246,39 @@
         }
         finally {
             isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task RenderBalanceChartAsync()
+    {
+        var points = forecast.BaseScenario.Points;
+        if (points == null || points.Count == 0) return;
+
+        try
+        {
+            var labels = points.Select(p => p.Date.ToString("dd.MM")).ToArray();
+            var balances = points.Select(p => (double)p.Balance).ToArray();
+            var gapRanges = BuildGapIndexRanges(points, forecast.Gaps);
+            await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart",
+                _balanceChartId, labels, balances, gapRanges, (double)minCashThreshold);
+        }
+        catch { }
+    }
+
+    private static int[][] BuildGapIndexRanges(List<ScenarioPoint> points, List<CashGap> gaps)
+    {
+        if (points.Count == 0 || gaps.Count == 0) return [];
+
+        return gaps.Select(g =>
+        {
+            var endDate = (g.EndDate ?? g.StartDate).Date;
+            var startIdx = points.FindIndex(p => p.Date.Date >= g.StartDate.Date);
+            if (startIdx < 0) startIdx = 0;
+            var endIdx = points.FindIndex(p => p.Date.Date >= endDate);
+            if (endIdx < 0) endIdx = points.Count - 1;
+            return new[] { startIdx, Math.Max(startIdx, endIdx) };
+        }).ToArray();
     }
 
     private string GetDaysToGap() {
@@ -230,44 +289,6 @@
     }
 
     private string GetWideLayoutStyles() => "grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));";
-
-    private RenderFragment RenderChart(List<ScenarioPoint> points) => __builder => {
-        if (points == null || !points.Any()) return;
-        var max = points.Max(p => p.Balance);
-        var min = points.Min(p => p.Balance);
-        var range = Math.Max((double)(max - min), 1.0);
-        var h = 180;
-
-        <div style="padding: 24px 0 12px 0; background: var(--surface);">
-            <svg width="100%" height="@(h + 20)" viewBox="0 0 @points.Count @(h + 20)" preserveAspectRatio="none" style="overflow:visible">
-                <defs>
-                    <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.2" />
-                        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
-                    </linearGradient>
-                </defs>
-                @{ 
-                    string pathLine = ""; 
-                    for (int i = 0; i < points.Count; i++) {
-                        var y = h - (double)((points[i].Balance - min) / (decimal)range * h);
-                        pathLine += (i == 0 ? "M" : "L") + $"{i} {y} ";
-                    }
-                    string pathArea = pathLine + $" L {points.Count - 1} {h + 20} L 0 {h + 20} Z";
-                }
-                <path d="@pathArea" fill="url(#chartFill)" />
-                <path d="@pathLine" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-                
-                @if (min < 0) {
-                    var zy = h - (double)((0 - min) / (decimal)range * h);
-                    <line x1="0" y1="@zy" x2="@points.Count" y2="@zy" stroke="var(--danger)" stroke-width="1" stroke-dasharray="4" vector-effect="non-scaling-stroke" />
-                }
-            </svg>
-            <div class="d-flex justify-content-between px-4 mt-3 small muted fw-bold">
-                <span>@points.First().Date.ToString("dd MMM")</span>
-                <span>@points.Last().Date.ToString("dd MMM")</span>
-            </div>
-        </div>
-    };
 
     private string GetRiskClass() => forecast.RiskLevel switch {
         "critical" or "high" => "alert-danger",
@@ -307,14 +328,19 @@
 }
 
 <style>
-    /* Локальные исправления для SVG и сеток */
     .table thead th { border-top: none; }
     .kpi-card { transition: transform 0.2s; }
     .kpi-card:hover { transform: translateY(-2px); }
-    
+    .chart-legend-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+
     @@media (min-width: 992px) {
-        .main {
-            padding: 32px 48px; /* Чуть больше воздуха на десктопе */
-        }
+        .main { padding: 32px 48px; }
     }
 </style>

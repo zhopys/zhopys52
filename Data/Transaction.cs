@@ -34,11 +34,10 @@ namespace MiniFinance.Data.Models
         [StringLength(200, MinimumLength = 1, ErrorMessage = "Описание до 200 символов")]
         public string Description { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Укажите категорию")]
         [StringLength(50)]
         public string Category { get; set; } = string.Empty;
 
-        [Required]
+        /// <summary>Заполняется в сервисе при сохранении, не валидируется в форме.</summary>
         public string UserId { get; set; } = string.Empty;
 
         public ApplicationUser? User { get; set; }

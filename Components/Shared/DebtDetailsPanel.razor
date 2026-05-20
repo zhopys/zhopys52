@@ -1,0 +1,121 @@
+@using MiniFinance.Services
+@inject IDebtService DebtService
+
+<DetailsDrawer IsOpen="@IsOpen" Title="@(_detail?.Debt.CounterpartyName ?? "Долг")"
+               Subtitle="@(_detail != null ? TypeLabel(_detail.Debt.Type) : null)" OnClose="OnClose">
+    <Actions>
+        @if (_detail != null && !_detail.Debt.IsSettled && _detail.Remaining > 0)
+        {
+            <button type="button" class="btn btn-sm btn-primary" @onclick="PayFull">Погасить полностью</button>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_error != null)
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_detail != null)
+        {
+            var d = _detail.Debt;
+            <div class="detail-progress mb-3">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>Погашено @_detail.ProgressPercent%</span>
+                    <span class="text-muted">Остаток: @_detail.Remaining.ToString("N2") Br</span>
+                </div>
+                <div class="detail-progress-bar">
+                    <div class="detail-progress-fill" style="width:@(_detail.ProgressPercent)%"></div>
+                </div>
+            </div>
+
+            <DetailFields Columns="2">
+                <DetailField Label="Сумма долга">@d.Amount.ToString("N2") Br</DetailField>
+                <DetailField Label="Оплачено">@d.PaidAmount.ToString("N2") Br</DetailField>
+                <DetailField Label="Срок">@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
+                <DetailField Label="Статус">
+                    @if (d.IsSettled) { <span class="badge badge-success">Погашен</span> }
+                    else if (d.DueDate < DateTime.Today) { <span class="badge badge-danger">Просрочен</span> }
+                    else { <span class="badge badge-info">Открыт</span> }
+                </DetailField>
+            </DetailFields>
+
+            @if (!string.IsNullOrWhiteSpace(d.Description))
+            {
+                <DetailField Label="Описание" ValueClass="mt-2">
+                    <div class="small">@d.Description</div>
+                </DetailField>
+            }
+
+            <h4 class="detail-section-title">Связанные платежи</h4>
+            @if (!_detail.RelatedTransactions.Any())
+            {
+                <p class="text-muted small">Платежи по долгу появятся после погашения</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>Дата</th><th>Описание</th><th class="text-end">Сумма</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _detail.RelatedTransactions)
+                        {
+                            <tr>
+                                <td>@t.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@t.Description</td>
+                                <td class="text-end @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+        else if (_loading)
+        {
+            <div class="text-muted small">Загрузка…</div>
+        }
+    </ChildContent>
+</DetailsDrawer>
+
+@code {
+    [Parameter] public int DebtId { get; set; }
+    [Parameter] public string UserId { get; set; } = "";
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private DebtDetailDto? _detail;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen || DebtId <= 0 || string.IsNullOrEmpty(UserId))
+        {
+            _detail = null;
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _detail = await DebtService.GetDetailAsync(DebtId, UserId); }
+        catch (Exception ex) { _detail = null; _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task PayFull()
+    {
+        if (_detail == null || _detail.Remaining <= 0) return;
+        try
+        {
+            await DebtService.RecordPaymentAsync(DebtId, _detail.Remaining, UserId);
+            await LoadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private static string TypeLabel(DebtType t) =>
+        t == DebtType.Receivable ? "Дебиторка — нам должны" : "Кредиторка — мы должны";
+}

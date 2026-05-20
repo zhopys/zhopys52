@@ -101,6 +101,7 @@
     var profitChartInstance = null;
     var donutChartInstance = null;
     var forecastChartInstance = null;
+    var forecastChartsByCanvas = {};
 
     function chartColors() {
         var dark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -267,36 +268,61 @@
                 }
             });
         },
-        renderForecastChart: function (canvasId, labels, balances, gapStarts, gapEnds) {
+        renderForecastChart: function (canvasId, labels, balances, gapRanges, minThreshold) {
             var canvas = document.getElementById(canvasId);
             if (!canvas || typeof Chart === 'undefined') return;
-            if (forecastChartInstance) { forecastChartInstance.destroy(); forecastChartInstance = null; }
+
+            if (forecastChartsByCanvas[canvasId]) {
+                forecastChartsByCanvas[canvasId].destroy();
+                delete forecastChartsByCanvas[canvasId];
+            }
+            if (forecastChartInstance) {
+                forecastChartInstance.destroy();
+                forecastChartInstance = null;
+            }
+
             var c = chartColors();
-            var pointColors = balances.map(function (v) { return v < 0 ? 'rgba(239, 68, 68, 0.9)' : c.teal; });
-            var segmentColors = balances.map(function (v, i) {
-                if (v >= 0) return 'rgba(0, 212, 170, 0.15)';
-                return 'rgba(239, 68, 68, 0.2)';
-            });
-            forecastChartInstance = new Chart(canvas.getContext('2d'), {
+            var threshold = typeof minThreshold === 'number' ? minThreshold : 0;
+            gapRanges = gapRanges || [];
+
+            function formatBr(v) {
+                if (typeof v !== 'number' || isNaN(v)) return v;
+                var abs = Math.abs(v);
+                if (abs >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+                if (abs >= 10000) return (v / 1000).toFixed(0) + 'k';
+                return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+            }
+
+            var yMin = Math.min.apply(null, balances.concat([0, threshold]));
+            var yMax = Math.max.apply(null, balances.concat([threshold, 0]));
+            var pad = Math.max((yMax - yMin) * 0.08, 500);
+            yMin = Math.floor((yMin - pad) / 100) * 100;
+            yMax = Math.ceil((yMax + pad) / 100) * 100;
+
+            var chart = new Chart(canvas.getContext('2d'), {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Прогноз баланса',
+                        label: 'Остаток (базовый сценарий)',
                         data: balances,
                         borderColor: c.teal,
-                        backgroundColor: function (context) {
-                            var v = context.parsed && context.parsed.y;
-                            return v < 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0, 212, 170, 0.12)';
-                        },
+                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
                         fill: true,
-                        tension: 0.35,
-                        borderWidth: 2,
+                        tension: 0.3,
+                        borderWidth: 2.5,
                         pointRadius: 0,
-                        pointHoverRadius: 4,
+                        pointHoverRadius: 5,
+                        pointHitRadius: 12,
                         segment: {
                             borderColor: function (ctx) {
-                                return ctx.p1.parsed.y < 0 || ctx.p0.parsed.y < 0 ? 'rgba(239, 68, 68, 0.85)' : c.teal;
+                                var y0 = ctx.p0.parsed.y;
+                                var y1 = ctx.p1.parsed.y;
+                                return (y0 < 0 || y1 < 0) ? 'rgba(239, 68, 68, 0.9)' : c.teal;
+                            },
+                            backgroundColor: function (ctx) {
+                                var y1 = ctx.p1.parsed.y;
+                                return y1 < 0 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(0, 212, 170, 0.08)';
                             }
                         }
                     }]
@@ -305,31 +331,98 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
+                    layout: { padding: { top: 8, right: 12, bottom: 4, left: 4 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
+                            backgroundColor: c.tooltipBg,
+                            borderColor: c.tooltipBorder,
+                            borderWidth: 1,
+                            titleColor: c.text,
+                            bodyColor: c.text,
                             callbacks: {
                                 label: function (ctx) {
                                     var v = ctx.parsed.y;
-                                    var s = typeof v === 'number' ? v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' Br' : v;
-                                    if (v < 0) s += ' ⚠ разрыв';
+                                    var s = formatBr(v) + ' Br';
+                                    if (v < 0) s += ' · разрыв';
+                                    else if (threshold > 0 && v < threshold) s += ' · ниже порога';
                                     return s;
                                 }
                             }
                         }
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { color: c.text, maxTicksLimit: 8 } },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: c.text, maxTicksLimit: 10, maxRotation: 0 }
+                        },
                         y: {
+                            min: yMin,
+                            max: yMax,
                             grid: { color: c.grid },
                             ticks: {
                                 color: c.text,
-                                callback: function (v) { return (v / 1000).toFixed(0) + 'k'; }
+                                callback: function (v) { return formatBr(v); }
                             }
                         }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'cashForecastOverlays',
+                    beforeDatasetsDraw: function (ch) {
+                        var ctx = ch.ctx;
+                        var x = ch.scales.x;
+                        var area = ch.chartArea;
+                        if (!x || !area) return;
+
+                        gapRanges.forEach(function (range) {
+                            if (!range || range.length < 2) return;
+                            var i0 = Math.max(0, Math.min(range[0], labels.length - 1));
+                            var i1 = Math.max(i0, Math.min(range[1], labels.length - 1));
+                            var px0 = x.getPixelForValue(i0);
+                            var px1 = x.getPixelForValue(i1);
+                            ctx.save();
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.14)';
+                            ctx.fillRect(px0, area.top, px1 - px0, area.bottom - area.top);
+                            ctx.restore();
+                        });
+                    },
+                    afterDatasetsDraw: function (ch) {
+                        var ctx = ch.ctx;
+                        var y = ch.scales.y;
+                        var area = ch.chartArea;
+                        if (!y || !area) return;
+
+                        var drawHLine = function (value, color, dash, label) {
+                            var py = y.getPixelForValue(value);
+                            if (py < area.top || py > area.bottom) return;
+                            ctx.save();
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 1;
+                            ctx.setLineDash(dash || []);
+                            ctx.beginPath();
+                            ctx.moveTo(area.left, py);
+                            ctx.lineTo(area.right, py);
+                            ctx.stroke();
+                            if (label) {
+                                ctx.fillStyle = color;
+                                ctx.font = '11px system-ui, sans-serif';
+                                ctx.textAlign = 'right';
+                                ctx.fillText(label, area.right - 4, py - 4);
+                            }
+                            ctx.restore();
+                        };
+
+                        drawHLine(0, 'rgba(239, 68, 68, 0.55)', [6, 4], '0 Br');
+                        if (threshold > 0) {
+                            drawHLine(threshold, 'rgba(245, 158, 11, 0.75)', [4, 4], 'Порог ' + formatBr(threshold));
+                        }
+                    }
+                }]
             });
+
+            forecastChartsByCanvas[canvasId] = chart;
+            forecastChartInstance = chart;
         },
         renderWeekdayChart: function (canvasId, labels, values) {
             var canvas = document.getElementById(canvasId);
@@ -370,6 +463,10 @@
             if (profitChartInstance) { profitChartInstance.destroy(); profitChartInstance = null; }
             if (donutChartInstance) { donutChartInstance.destroy(); donutChartInstance = null; }
             if (forecastChartInstance) { forecastChartInstance.destroy(); forecastChartInstance = null; }
+            Object.keys(forecastChartsByCanvas).forEach(function (id) {
+                if (forecastChartsByCanvas[id]) forecastChartsByCanvas[id].destroy();
+            });
+            forecastChartsByCanvas = {};
             if (window._weekdayChartInstance) { window._weekdayChartInstance.destroy(); window._weekdayChartInstance = null; }
         }
     };

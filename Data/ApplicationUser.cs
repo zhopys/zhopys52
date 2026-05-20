@@ -33,5 +33,9 @@ namespace MiniFinance.Data
         public bool NotifyCashGaps { get; set; } = true;
 
         public bool NotifyBills { get; set; } = true;
+
+        /// <summary>Если задан — финансовые данные берутся у владельца организации (общая команда).</summary>
+        [StringLength(450)]
+        public string? WorkspaceOwnerUserId { get; set; }
     }
 }

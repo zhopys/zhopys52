@@ -1,0 +1,8 @@
+<div class="detail-fields @(Columns == 2 ? "detail-fields-2" : "")">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public int Columns { get; set; } = 1;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

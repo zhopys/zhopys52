@@ -8,15 +8,20 @@ public class PaymentCalendarService : IPaymentCalendarService
 {
     private readonly ApplicationDbContext _db;
     private readonly ITaxService _taxService;
+    private readonly ITransactionService _transactionService;
+    private readonly IDataScopeService _dataScope;
 
-    public PaymentCalendarService(ApplicationDbContext db, ITaxService taxService)
+    public PaymentCalendarService(ApplicationDbContext db, ITaxService taxService, ITransactionService transactionService, IDataScopeService dataScope)
     {
         _db = db;
         _taxService = taxService;
+        _transactionService = transactionService;
+        _dataScope = dataScope;
     }
 
     public async Task<PaymentCalendarDto> BuildMonthAsync(string userId, int year, int month)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var monthStart = new DateTime(year, month, 1);
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
         var today = DateTime.Today;
@@ -89,6 +94,7 @@ public class PaymentCalendarService : IPaymentCalendarService
 
     public async Task<PaymentCalendarItemDto> AddPaymentAsync(PaymentCreateRequest request, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         if (request.Amount <= 0)
             throw new ArgumentException("Сумма должна быть больше нуля");
 
@@ -120,6 +126,7 @@ public class PaymentCalendarService : IPaymentCalendarService
 
     public async Task<PaymentBulkPayResult> MarkPaidBulkAsync(IEnumerable<string> itemKeys, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var keys = itemKeys.Distinct().ToList();
         var success = 0;
         var skipped = 0;
@@ -178,15 +185,14 @@ public class PaymentCalendarService : IPaymentCalendarService
         var reminder = await _db.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId);
         if (reminder == null || reminder.IsPaid) return false;
 
-        _db.Transactions.Add(new Transaction
+        await _transactionService.CreateAsync(new Transaction
         {
             Date = DateTime.Today,
             Amount = -Math.Abs(reminder.Amount),
             Description = reminder.Name,
-            Category = string.IsNullOrWhiteSpace(reminder.Category) ? "Прочее" : reminder.Category,
-            UserId = userId,
-            CreatedAt = DateTime.UtcNow
-        });
+            Category = reminder.Category ?? "",
+            ProjectId = reminder.ProjectId
+        }, userId);
 
         if (reminder.Frequency == ReminderFrequency.OneTime)
         {
@@ -215,15 +221,15 @@ public class PaymentCalendarService : IPaymentCalendarService
         debt.IsSettled = true;
 
         var isInflow = debt.Type == DebtType.Receivable;
-        _db.Transactions.Add(new Transaction
+        await _transactionService.CreateAsync(new Transaction
         {
             Date = DateTime.Today,
             Amount = isInflow ? remaining : -remaining,
             Description = $"{(isInflow ? "Поступление" : "Оплата")}: {debt.CounterpartyName}",
             Category = isInflow ? "Доход" : "Прочее",
-            UserId = userId,
-            CreatedAt = DateTime.UtcNow
-        });
+            CounterpartyId = debt.CounterpartyId,
+            Counterparty = debt.CounterpartyName
+        }, userId);
 
         await _db.SaveChangesAsync();
         return true;

@@ -8,9 +8,11 @@
 @using MiniFinance.Data.Models
 @using MiniFinance.Services
 @inject ApplicationDbContext DbContext
+@inject ITransactionService TransactionService
 @inject IJSRuntime JsRuntime
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDataScopeService DataScope
 @inject MiniFinance.Services.INotificationEmailService EmailService
 @attribute [Authorize]
 
@@ -372,7 +374,10 @@
         var user = await UserManager.GetUserAsync(authState.User);
         if (user != null)
         {
-            _projects = await DbContext.Projects.ToListAsync();
+            var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+            _projects = await DbContext.Projects
+                .Where(p => p.UserId == dataId || p.IsDefault)
+                .ToListAsync();
         }
     }
 
@@ -382,8 +387,9 @@
         var user = await UserManager.GetUserAsync(authState.User);
         if (user != null)
         {
+            var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             _reminders = await DbContext.Reminders
-                .Where(r => r.UserId == user.Id)
+                .Where(r => r.UserId == dataId)
                 .ToListAsync();
 
             _upcomingCount = _reminders.Count(r => !r.IsArchived && !r.IsPaid && r.Date >= DateTime.Today);
@@ -594,17 +600,14 @@
         var user = await UserManager.GetUserAsync(authState.User);
         if (user == null) return;
 
-        var tx = new Transaction
+        await TransactionService.CreateAsync(new Transaction
         {
             Date = r.Date,
             Amount = -Math.Abs(r.Amount),
             Description = $"Оплата: {r.Name}",
             Category = r.Category ?? string.Empty,
-            ProjectId = r.ProjectId,
-            UserId = user.Id
-        };
-
-        DbContext.Transactions.Add(tx);
+            ProjectId = r.ProjectId
+        }, user.Id);
 
         if (r.Frequency == ReminderFrequency.OneTime)
         {

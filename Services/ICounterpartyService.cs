@@ -16,5 +16,10 @@ public sealed class CounterpartyDetailDto
     public CounterpartyRecord Record { get; init; } = new();
     public decimal TotalIncome { get; init; }
     public decimal TotalExpense { get; init; }
+    public decimal NetBalance => TotalIncome - TotalExpense;
+    public int TransactionCount { get; init; }
     public IReadOnlyList<Transaction> Transactions { get; init; } = Array.Empty<Transaction>();
+    public IReadOnlyList<Debt> OpenDebts { get; init; } = Array.Empty<Debt>();
+    public decimal OpenReceivable { get; init; }
+    public decimal OpenPayable { get; init; }
 }

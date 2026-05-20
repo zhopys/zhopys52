@@ -1,0 +1,67 @@
+@using MiniFinance.Services
+@inject ITaxService TaxService
+
+<DetailsDrawer IsOpen="@IsOpen" Title="@(_tax?.Name ?? "Налог")" OnClose="OnClose">
+    <Actions>
+        @if (_tax != null && !_tax.IsPaid)
+        {
+            <button type="button" class="btn btn-sm btn-primary" @onclick="MarkPaid">Отметить оплаченным</button>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_tax != null)
+        {
+            <DetailFields Columns="2">
+                <DetailField Label="Сумма">@_tax.Amount.ToString("N2") Br</DetailField>
+                <DetailField Label="Уплачено">@_tax.PaidAmount.ToString("N2") Br</DetailField>
+                <DetailField Label="Срок">@_tax.DueDate.ToString("dd.MM.yyyy")</DetailField>
+                <DetailField Label="Статус">
+                    <span class="badge @StatusBadge(_tax)">@TaxCalculatorHelper.GetPaymentStatusLabel(_tax)</span>
+                </DetailField>
+                @if (_tax.PaidDate.HasValue)
+                {
+                    <DetailField Label="Дата оплаты">@_tax.PaidDate.Value.ToString("dd.MM.yyyy")</DetailField>
+                }
+                @if (!string.IsNullOrWhiteSpace(_tax.ReceiptNote))
+                {
+                    <DetailField Label="Документ">@_tax.ReceiptNote</DetailField>
+                }
+            </DetailFields>
+            @if (!_tax.IsPaid && _tax.Amount - _tax.PaidAmount > 0)
+            {
+                <p class="small text-muted mt-2">Остаток к уплате: @((_tax.Amount - _tax.PaidAmount).ToString("N2")) Br</p>
+            }
+        }
+    </ChildContent>
+</DetailsDrawer>
+
+@code {
+    [Parameter] public int TaxId { get; set; }
+    [Parameter] public string UserId { get; set; } = "";
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private TaxPayment? _tax;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen || TaxId <= 0) { _tax = null; return; }
+        var list = await TaxService.GetTaxesAsync(UserId);
+        _tax = list.FirstOrDefault(t => t.Id == TaxId);
+    }
+
+    private async Task MarkPaid()
+    {
+        await TaxService.MarkAsPaidAsync(TaxId, UserId);
+        await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    private static string StatusBadge(TaxPayment t)
+    {
+        if (t.IsPaid) return "badge-success";
+        if (t.DueDate.Date < DateTime.Today) return "badge-danger";
+        return "badge-info";
+    }
+}

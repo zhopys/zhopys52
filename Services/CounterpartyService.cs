@@ -7,16 +7,26 @@ namespace MiniFinance.Services;
 public class CounterpartyService : ICounterpartyService
 {
     private readonly ApplicationDbContext _db;
+    private readonly IDataScopeService _dataScope;
 
-    public CounterpartyService(ApplicationDbContext db) => _db = db;
+    public CounterpartyService(ApplicationDbContext db, IDataScopeService dataScope)
+    {
+        _db = db;
+        _dataScope = dataScope;
+    }
 
-    public Task<List<CounterpartyRecord>> ListAsync(string userId) =>
-        _db.Counterparties.Where(c => c.UserId == userId).OrderBy(c => c.Name).ToListAsync();
+    public async Task<List<CounterpartyRecord>> ListAsync(string userId)
+    {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
+        return await _db.Counterparties.Where(c => c.UserId == userId).OrderBy(c => c.Name).ToListAsync();
+    }
 
     public async Task<CounterpartyRecord> CreateAsync(CounterpartyRecord record, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         record.UserId = userId;
         record.Name = record.Name.Trim();
+        record.LogoUrl = NormalizeLogoUrl(record.LogoUrl);
         record.CreatedAt = DateTime.UtcNow;
         _db.Counterparties.Add(record);
         await _db.SaveChangesAsync();
@@ -25,9 +35,11 @@ public class CounterpartyService : ICounterpartyService
 
     public async Task<CounterpartyRecord> UpdateAsync(CounterpartyRecord record, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var existing = await _db.Counterparties.FirstOrDefaultAsync(c => c.Id == record.Id && c.UserId == userId);
         if (existing == null) throw new KeyNotFoundException();
 
+        var oldName = existing.Name;
         existing.Name = record.Name.Trim();
         existing.Type = record.Type;
         existing.ContactPerson = record.ContactPerson;
@@ -35,20 +47,29 @@ public class CounterpartyService : ICounterpartyService
         existing.Phone = record.Phone;
         existing.TaxId = record.TaxId;
         existing.Notes = record.Notes;
+        existing.LogoUrl = NormalizeLogoUrl(record.LogoUrl);
+
+        if (!string.Equals(oldName, existing.Name, StringComparison.Ordinal))
+            await EntityLinkageHelper.SyncCounterpartyNameAsync(_db, existing.Id, existing.Name);
+
         await _db.SaveChangesAsync();
         return existing;
     }
 
     public async Task DeleteAsync(int id, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var c = await _db.Counterparties.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
         if (c == null) return;
+
+        await EntityLinkageHelper.UnlinkCounterpartyAsync(_db, id);
         _db.Counterparties.Remove(c);
         await _db.SaveChangesAsync();
     }
 
     public async Task<CounterpartyDetailDto> GetDetailAsync(int id, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var record = await _db.Counterparties.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId)
             ?? throw new KeyNotFoundException();
 
@@ -59,12 +80,37 @@ public class CounterpartyService : ICounterpartyService
             .Take(200)
             .ToListAsync();
 
+        var debts = await _db.Debts
+            .Where(d => d.UserId == userId && !d.IsSettled &&
+                (d.CounterpartyId == id || d.CounterpartyName == record.Name))
+            .OrderBy(d => d.DueDate)
+            .ToListAsync();
+
         return new CounterpartyDetailDto
         {
             Record = record,
             TotalIncome = txs.Where(t => t.Amount > 0).Sum(t => t.Amount),
             TotalExpense = Math.Abs(txs.Where(t => t.Amount < 0).Sum(t => t.Amount)),
-            Transactions = txs
+            TransactionCount = txs.Count,
+            Transactions = txs,
+            OpenDebts = debts,
+            OpenReceivable = debts.Where(d => d.Type == DebtType.Receivable).Sum(d => d.Amount - d.PaidAmount),
+            OpenPayable = debts.Where(d => d.Type == DebtType.Payable).Sum(d => d.Amount - d.PaidAmount)
         };
+    }
+
+    public static string GetDisplayLogoUrl(CounterpartyRecord record) =>
+        !string.IsNullOrWhiteSpace(record.LogoUrl)
+            ? record.LogoUrl.Trim()
+            : $"https://ui-avatars.com/api/?name={Uri.EscapeDataString(record.Name)}&background=7c3aed&color=fff&size=64&bold=true";
+
+    private static string? NormalizeLogoUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var t = url.Trim();
+        return t.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+               || t.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            ? t
+            : null;
     }
 }

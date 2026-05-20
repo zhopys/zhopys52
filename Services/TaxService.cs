@@ -7,11 +7,19 @@ namespace MiniFinance.Services;
 public class TaxService : ITaxService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ITransactionService _transactionService;
+    private readonly IDataScopeService _dataScope;
 
-    public TaxService(ApplicationDbContext db) => _db = db;
+    public TaxService(ApplicationDbContext db, ITransactionService transactionService, IDataScopeService dataScope)
+    {
+        _db = db;
+        _transactionService = transactionService;
+        _dataScope = dataScope;
+    }
 
     public async Task<List<TaxPayment>> GetTaxesAsync(string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         return await _db.TaxPayments
             .Where(t => t.UserId == userId)
             .OrderBy(t => t.IsPaid)
@@ -21,6 +29,7 @@ public class TaxService : ITaxService
 
     public async Task<TaxPageContextDto> GetPageContextAsync(string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var taxes = await GetTaxesAsync(userId);
         var today = DateTime.Today;
         var yearStart = new DateTime(today.Year, 1, 1);
@@ -64,6 +73,7 @@ public class TaxService : ITaxService
 
     public async Task MarkAsPaidAsync(int taxId, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var tax = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == taxId && t.UserId == userId);
         if (tax == null || tax.IsPaid) return;
 
@@ -74,6 +84,7 @@ public class TaxService : ITaxService
 
     public async Task MarkPartialPaidAsync(int taxId, decimal amount, string? receiptNote, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         if (amount <= 0) throw new ArgumentException("Сумма должна быть больше нуля");
 
         var tax = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == taxId && t.UserId == userId);
@@ -85,17 +96,15 @@ public class TaxService : ITaxService
         if (!string.IsNullOrWhiteSpace(receiptNote))
             tax.ReceiptNote = receiptNote.Trim();
 
-        _db.Transactions.Add(new Transaction
+        await _transactionService.CreateAsync(new Transaction
         {
             Date = DateTime.Today,
             Amount = -pay,
             Description = $"Налог: {tax.Name}" + (tax.PaidAmount < tax.Amount ? " (частично)" : ""),
             Category = "Налоги",
-            UserId = userId,
-            CreatedAt = DateTime.UtcNow,
             IsMandatory = true,
             Notes = receiptNote
-        });
+        }, userId);
 
         if (tax.PaidAmount >= tax.Amount)
         {
@@ -115,6 +124,7 @@ public class TaxService : ITaxService
 
     public async Task UpdateTaxAsync(TaxPayment tax, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var existing = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == tax.Id && t.UserId == userId);
         if (existing == null || existing.IsPaid) return;
 
@@ -126,6 +136,7 @@ public class TaxService : ITaxService
 
     public async Task DeleteTaxAsync(int taxId, string userId)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var tax = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == taxId && t.UserId == userId);
         if (tax == null) return;
 

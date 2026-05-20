@@ -7,6 +7,8 @@
 @using MiniFinance.Data.Models
 @using MiniFinance.Services
 @inject IDebtService DebtService
+@inject ICounterpartyService CounterpartyService
+@inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize]
@@ -41,6 +43,15 @@
     </div>
 }
 
+@if (!string.IsNullOrEmpty(_formError))
+{
+    <div class="alert alert-danger mb-3">@_formError</div>
+}
+@if (!string.IsNullOrEmpty(_payMessage))
+{
+    <div class="alert @(_payError ? "alert-danger" : "alert-success") mb-3">@_payMessage</div>
+}
+
 @if (_showForm)
 {
     <div class="card mb-3">
@@ -54,7 +65,21 @@
                         <option value="@DebtType.Payable">Мы должны (кредиторка)</option>
                     </select>
                 </div>
-                <div><label class="label">Контрагент *</label><input class="input" @bind="_form.CounterpartyName" /></div>
+                <div>
+                    <label class="label">Контрагент *</label>
+                    <select class="input" @bind="_counterpartyKey" @bind:after="OnCounterpartyKeyChanged">
+                        <option value="">— выберите —</option>
+                        @foreach (var cp in _counterparties)
+                        {
+                            <option value="@($"id:{cp.Id}")">@cp.Name</option>
+                        }
+                        <option value="manual">Ввести вручную…</option>
+                    </select>
+                    @if (_counterpartyKey == "manual")
+                    {
+                        <input class="input mt-1" placeholder="Название" @bind="_counterpartyManual" />
+                    }
+                </div>
                 <div><label class="label">Сумма *</label><input type="number" class="input" @bind="_form.Amount" /></div>
                 <div><label class="label">Срок</label><input type="date" class="input" @bind="_dueDate" /></div>
             </div>
@@ -85,7 +110,8 @@
                             <td class="text-end">@d.Amount.ToString("N0")</td>
                             <td class="text-end">@d.PaidAmount.ToString("N0")</td>
                             <td>@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</td>
-                            <td class="text-end">
+                            <td class="text-end" style="white-space:nowrap">
+                                <button class="btn btn-sm btn-outline" @onclick="() => OpenDetail(d.Id)">Подробнее</button>
                                 <button class="btn btn-sm btn-outline" @onclick="() => Pay(d)">Погасить</button>
                             </td>
                         </tr>
@@ -96,13 +122,24 @@
     </div>
 </div>
 
+<DebtDetailsPanel DebtId="@_detailId" UserId="@_userId" IsOpen="@_detailOpen"
+                 OnClose="CloseDetail" OnChanged="ReloadAsync" />
+
 @code {
     private string _userId = "";
+    private int _detailId;
+    private bool _detailOpen;
     private List<Debt>? _debts;
+    private List<CounterpartyRecord> _counterparties = new();
     private DebtSummaryDto? _summary;
     private bool _showForm;
     private Debt _form = new() { Type = DebtType.Receivable };
     private DateTime? _dueDate;
+    private string _counterpartyKey = "";
+    private string _counterpartyManual = "";
+    private string _formError = "";
+    private string _payMessage = "";
+    private bool _payError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -110,6 +147,7 @@
         var user = await UserManager.GetUserAsync(auth.User);
         if (user == null) return;
         _userId = user.Id;
+        _counterparties = await CounterpartyService.ListAsync(_userId);
         await ReloadAsync();
     }
 
@@ -119,20 +157,90 @@
         _summary = await DebtService.GetSummaryAsync(_userId);
     }
 
-    private void OpenCreate() { _form = new Debt { Type = DebtType.Receivable }; _dueDate = null; _showForm = true; }
+    private void OpenCreate()
+    {
+        _form = new Debt { Type = DebtType.Receivable };
+        _dueDate = null;
+        _counterpartyKey = "";
+        _counterpartyManual = "";
+        _showForm = true;
+    }
+
+    private void OnCounterpartyKeyChanged()
+    {
+        if (_counterpartyKey != "manual")
+            _counterpartyManual = "";
+    }
+
+    private void ApplyCounterpartyToDebt()
+    {
+        if (string.IsNullOrEmpty(_counterpartyKey))
+            throw new InvalidOperationException("Выберите контрагента.");
+
+        if (_counterpartyKey.StartsWith("id:", StringComparison.Ordinal) && int.TryParse(_counterpartyKey.AsSpan(3), out var id))
+        {
+            _form.CounterpartyId = id;
+            _form.CounterpartyName = _counterparties.FirstOrDefault(c => c.Id == id)?.Name ?? "";
+            return;
+        }
+
+        if (_counterpartyKey == "manual" && !string.IsNullOrWhiteSpace(_counterpartyManual))
+        {
+            _form.CounterpartyId = null;
+            _form.CounterpartyName = _counterpartyManual.Trim();
+            return;
+        }
+
+        throw new InvalidOperationException("Укажите контрагента.");
+    }
 
     private async Task Save()
     {
-        _form.DueDate = _dueDate;
-        await DebtService.CreateAsync(_form, _userId);
-        _showForm = false;
-        await ReloadAsync();
+        _formError = "";
+        try
+        {
+            ApplyCounterpartyToDebt();
+            _form.DueDate = _dueDate;
+            await DebtService.CreateAsync(_form, _userId);
+            _counterparties = await CounterpartyService.ListAsync(_userId);
+            _showForm = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
     }
+
+    private void OpenDetail(int id) { _detailId = id; _detailOpen = true; }
+    private void CloseDetail() { _detailId = 0; _detailOpen = false; }
 
     private async Task Pay(Debt d)
     {
+        _payMessage = "";
         var remaining = d.Amount - d.PaidAmount;
-        await DebtService.RecordPaymentAsync(d.Id, remaining, _userId);
-        await ReloadAsync();
+        if (remaining <= 0)
+        {
+            _payMessage = "Долг уже погашен";
+            _payError = true;
+            return;
+        }
+
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Погасить {remaining:N0} Br по контрагенту «{d.CounterpartyName}»? Будет создана транзакция.");
+        if (!ok) return;
+
+        try
+        {
+            await DebtService.RecordPaymentAsync(d.Id, remaining, _userId);
+            _payMessage = $"Долг погашен: {d.CounterpartyName} — {remaining:N0} Br";
+            _payError = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _payMessage = ex.Message;
+            _payError = true;
+        }
     }
 }

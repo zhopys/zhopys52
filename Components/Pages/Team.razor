@@ -1,3 +1,25 @@
+@* Страница «Команда» временно скрыта из UI. Полная реализация сохранена в комментарии ниже. *@
+@page "/team"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+<PageTitle>Команда — MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Команда и роли</h1>
+        <div class="meta text-muted">Раздел временно недоступен</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <p class="text-muted mb-0">Управление участниками и ролями будет включено позже. Код страницы и сервисов в проекте сохранён.</p>
+    </div>
+</div>
+
+@*
 @page "/team"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
@@ -5,9 +27,10 @@
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Data
 @using MiniFinance.Services
+@inject ITeamService TeamService
 @inject UserManager<ApplicationUser> UserManager
-@inject RoleManager<IdentityRole> RoleManager
 @inject AuthenticationStateProvider Auth
+@inject IJSRuntime JS
 @attribute [Authorize(Policy = "OwnerOnly")]
 
 <PageTitle>Команда и роли — MiniFinance</PageTitle>
@@ -15,38 +38,96 @@
 <div class="page-header">
     <div class="title">
         <h1>Команда и роли</h1>
-        <div class="meta text-muted">Владелец · Бухгалтер · Менеджер</div>
+        <div class="meta text-muted">Участники, роли и доступ к разделам</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" @onclick="() => _showInvite = !_showInvite">
+            @(_showInvite ? "Скрыть форму" : "Добавить участника")
+        </button>
     </div>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <p class="small text-muted mb-3">
-            <strong>Владелец</strong> — полный доступ, настройки, утверждение расходов.
-            <strong>Бухгалтер</strong> — отчёты и транзакции, без настроек.
-            <strong>Менеджер</strong> — свой отдел/проект; новые расходы требуют утверждения.
+        <p class="small text-muted mb-0">
+            <strong>Владелец</strong> — полный доступ и настройки.
+            <strong>Бухгалтер</strong> — отчёты и транзакции.
+            <strong>Менеджер</strong> — свой отдел; расходы могут требовать утверждения.
         </p>
         @if (!string.IsNullOrEmpty(_message))
         {
-            <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+            <div class="alert @(_isError ? "alert-danger" : "alert-success") mt-3 mb-0">@_message</div>
         }
     </div>
 </div>
 
+@if (_showInvite)
+{
+    <div class="card mb-3">
+        <div class="card-header">Новый участник</div>
+        <div class="card-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Email *</label>
+                    <input class="form-input" type="email" @bind="_invite.Email" placeholder="user@company.by" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Пароль *</label>
+                    <input class="form-input" type="password" @bind="_invite.Password" placeholder="мин. 3 символа" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Роль</label>
+                    <select class="form-input" @bind="_invite.Role">
+                        @foreach (var r in AppRoles.All)
+                        {
+                            <option value="@r">@RoleLabel(r)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Имя</label>
+                    <input class="form-input" @bind="_invite.FirstName" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Фамилия</label>
+                    <input class="form-input" @bind="_invite.LastName" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Отдел</label>
+                    <input class="form-input" @bind="_invite.Department" placeholder="Финансы, Разработка…" />
+                </div>
+            </div>
+            <div class="mt-3" style="display:flex;gap:.5rem">
+                <button class="btn btn-primary" @onclick="InviteMember" disabled="@_busy">Создать участника</button>
+                <button class="btn btn-outline" @onclick="() => _showInvite = false">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
 <div class="card">
-    <div class="card-header">Пользователи</div>
+    <div class="card-header">Участники (@_members.Count)</div>
     <div class="card-body" style="padding:0">
         <table class="table">
             <thead>
-                <tr><th>Email</th><th>Роль</th><th>Отдел</th><th></th></tr>
+                <tr>
+                    <th>Участник</th>
+                    <th>Роль</th>
+                    <th>Отдел</th>
+                    <th class="text-muted">Создан</th>
+                    <th></th>
+                </tr>
             </thead>
             <tbody>
-                @foreach (var u in _users)
+                @foreach (var m in _members)
                 {
                     <tr>
-                        <td>@u.Email</td>
                         <td>
-                            <select class="input input-sm" value="@GetRole(u)" @onchange="e => SetRole(u, e)">
+                            <strong>@(DisplayName(m))</strong>
+                            <div class="small text-muted">@m.Email</div>
+                        </td>
+                        <td>
+                            <select class="input input-sm" value="@m.Role" @onchange="e => SetRole(m, e)" disabled="@(m.Id == _currentUserId && _members.Count(u => u.Role == AppRoles.Owner) <= 1)">
                                 @foreach (var r in AppRoles.All)
                                 {
                                     <option value="@r">@RoleLabel(r)</option>
@@ -54,10 +135,20 @@
                             </select>
                         </td>
                         <td>
-                            <input class="input input-sm" value="@(u.Department ?? "")"
-                                   @onchange="e => SetDepartment(u, e.Value?.ToString())" />
+                            <input class="input input-sm" value="@(m.Department ?? "")"
+                                   @onchange="e => SetDepartment(m, e.Value?.ToString())" />
                         </td>
-                        <td class="text-muted small">@(u.Id == _currentUserId ? "вы" : "")</td>
+                        <td class="small text-muted">@(m.CreatedAt?.ToLocalTime().ToString("dd.MM.yyyy") ?? "—")</td>
+                        <td class="text-end" style="white-space:nowrap">
+                            @if (m.Id == _currentUserId)
+                            {
+                                <span class="badge badge-info">Вы</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveMember(m)">Удалить</button>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -66,10 +157,13 @@
 </div>
 
 @code {
-    private List<ApplicationUser> _users = new();
+    private List<TeamMemberDto> _members = new();
     private string _currentUserId = "";
     private string? _message;
     private bool _isError;
+    private bool _showInvite;
+    private bool _busy;
+    private InviteMemberRequest _invite = new() { Role = AppRoles.Manager };
 
     protected override async Task OnInitializedAsync()
     {
@@ -77,29 +171,62 @@
         var me = await UserManager.GetUserAsync(auth.User);
         if (me == null) return;
         _currentUserId = me.Id;
-        _users = UserManager.Users.OrderBy(u => u.Email).ToList();
+        await LoadAsync();
     }
 
-    private string GetRole(ApplicationUser u)
+    private async Task LoadAsync() => _members = await TeamService.ListMembersAsync();
+
+    private async Task InviteMember()
     {
-        var roles = UserManager.GetRolesAsync(u).GetAwaiter().GetResult();
-        return roles.FirstOrDefault() ?? AppRoles.Owner;
+        _busy = true;
+        _message = null;
+        var (ok, err) = await TeamService.InviteMemberAsync(_invite, _currentUserId);
+        _busy = false;
+        if (ok)
+        {
+            _message = $"Участник {_invite.Email.Trim()} добавлен";
+            _isError = false;
+            _invite = new InviteMemberRequest { Role = AppRoles.Manager };
+            _showInvite = false;
+            await LoadAsync();
+        }
+        else
+        {
+            _message = err;
+            _isError = true;
+        }
     }
 
-    private async Task SetRole(ApplicationUser u, ChangeEventArgs e)
+    private async Task SetRole(TeamMemberDto m, ChangeEventArgs e)
     {
         var role = e.Value?.ToString() ?? AppRoles.Owner;
-        var current = await UserManager.GetRolesAsync(u);
-        await UserManager.RemoveFromRolesAsync(u, current);
-        await UserManager.AddToRoleAsync(u, role);
-        _message = $"Роль обновлена: {u.Email}";
-        _isError = false;
+        var (ok, err) = await TeamService.SetRoleAsync(m.Id, role, _currentUserId);
+        _message = ok ? $"Роль обновлена: {m.Email}" : err;
+        _isError = !ok;
+        await LoadAsync();
     }
 
-    private async Task SetDepartment(ApplicationUser u, string? dept)
+    private async Task SetDepartment(TeamMemberDto m, string? dept)
     {
-        u.Department = string.IsNullOrWhiteSpace(dept) ? null : dept.Trim();
-        await UserManager.UpdateAsync(u);
+        var (ok, err) = await TeamService.SetDepartmentAsync(m.Id, dept);
+        if (!ok) { _message = err; _isError = true; }
+        else await LoadAsync();
+    }
+
+    private async Task RemoveMember(TeamMemberDto m)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Удалить участника {m.Email}? Его данные в системе останутся привязаны к аккаунту."))
+            return;
+        var (ok, err) = await TeamService.RemoveMemberAsync(m.Id, _currentUserId);
+        _message = ok ? $"Удалён: {m.Email}" : err;
+        _isError = !ok;
+        await LoadAsync();
+    }
+
+    private static string DisplayName(TeamMemberDto m)
+    {
+        var n = $"{m.FirstName} {m.LastName}".Trim();
+        return string.IsNullOrEmpty(n) ? m.Email : n;
     }
 
     private static string RoleLabel(string r) => r switch
@@ -109,3 +236,4 @@
         _ => "Владелец"
     };
 }
+*@

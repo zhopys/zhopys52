@@ -45,6 +45,7 @@
 @code {
     [Parameter] public CashForecastChartDto Forecast { get; set; } = new();
     [Parameter] public int HorizonDays { get; set; } = 90;
+    [Parameter] public decimal MinCashThreshold { get; set; }
     [Parameter] public EventCallback<int> OnHorizonChanged { get; set; }
 
     private readonly string _canvasId = $"forecastLine_{Guid.NewGuid():N}";
@@ -64,11 +65,20 @@
         if (!Forecast.Points.Any()) return;
         try
         {
-            var labels = Forecast.Points.Select(p => p.Date.ToString("dd.MM")).ToArray();
-            var balances = Forecast.Points.Select(p => (double)p.Balance).ToArray();
-            var gapStarts = Forecast.Gaps.Select(g => g.Start.ToString("yyyy-MM-dd")).ToArray();
-            var gapEnds = Forecast.Gaps.Select(g => (g.End ?? g.Start).ToString("yyyy-MM-dd")).ToArray();
-            await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart", _canvasId, labels, balances, gapStarts, gapEnds);
+            var points = Forecast.Points.ToList();
+            var labels = points.Select(p => p.Date.ToString("dd.MM")).ToArray();
+            var balances = points.Select(p => (double)p.Balance).ToArray();
+            var gapRanges = Forecast.Gaps.Select(g =>
+            {
+                var endDate = (g.End ?? g.Start).Date;
+                var startIdx = points.FindIndex(p => p.Date.Date >= g.Start.Date);
+                if (startIdx < 0) startIdx = 0;
+                var endIdx = points.FindIndex(p => p.Date.Date >= endDate);
+                if (endIdx < 0) endIdx = points.Count - 1;
+                return new[] { startIdx, Math.Max(startIdx, endIdx) };
+            }).ToArray();
+            await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart",
+                _canvasId, labels, balances, gapRanges, (double)MinCashThreshold);
         }
         catch { }
     }

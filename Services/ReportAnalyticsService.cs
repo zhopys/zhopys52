@@ -18,6 +18,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
     private readonly ITransactionDataStatusService _dataStatusService;
     private readonly IAccountingIntegrationService _accountingService;
     private readonly ICategorizationService _categorizationService;
+    private readonly IDataScopeService _dataScope;
 
     public ReportAnalyticsService(
         ApplicationDbContext db,
@@ -25,7 +26,8 @@ public class ReportAnalyticsService : IReportAnalyticsService
         IForecastingService forecastingService,
         ITransactionDataStatusService dataStatusService,
         IAccountingIntegrationService accountingService,
-        ICategorizationService categorizationService)
+        ICategorizationService categorizationService,
+        IDataScopeService dataScope)
     {
         _db = db;
         _reportService = reportService;
@@ -33,10 +35,12 @@ public class ReportAnalyticsService : IReportAnalyticsService
         _dataStatusService = dataStatusService;
         _accountingService = accountingService;
         _categorizationService = categorizationService;
+        _dataScope = dataScope;
     }
 
     public async Task<ReportAnalyticsSnapshot> BuildSnapshotAsync(string userId, ReportFilters filters)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         filters.ForecastDays = filters.ForecastDays switch { 30 => 30, 60 => 60, _ => 90 };
 
         var allTransactions = await _db.Transactions
@@ -79,6 +83,10 @@ public class ReportAnalyticsService : IReportAnalyticsService
               + reminders.Where(r => r.Date <= filters.End.AddDays(filters.ForecastDays)).Sum(r => r.Amount)
             : 0;
 
+        var orgSettings = await _db.OrganizationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+        var minCashThreshold = orgSettings?.MinCashBalance ?? 1000;
+
         var currentBalance = allTransactions.Where(t => t.Date <= DateTime.Today).Sum(t => t.Amount);
         var freeCash = currentBalance - taxReserve;
 
@@ -104,7 +112,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
             MonthlyCashflow = BuildMonthlyCashflow(allTransactions, filters.End),
             Projects = BuildProjectRows(periodTx, projects),
             ProfitabilityMatrix = BuildProfitabilityMatrix(periodTx, projects),
-            Forecast = BuildForecast(allTransactions, reminders, taxPayments, filters.ForecastDays, taxReserve),
+            Forecast = BuildForecast(allTransactions, reminders, taxPayments, filters.ForecastDays, taxReserve, minCashThreshold),
             UncategorizedTransactions = BuildUncategorized(periodTx)
         };
     }
@@ -329,9 +337,11 @@ public class ReportAnalyticsService : IReportAnalyticsService
         List<Reminder> reminders,
         List<TaxPayment> taxPayments,
         int days,
-        decimal taxReserve)
+        decimal taxReserve,
+        decimal minCashThreshold)
     {
-        var advanced = _forecastingService.ForecastCashGapsAdvanced(transactions, reminders, taxPayments, days);
+        var advanced = _forecastingService.ForecastCashGapsAdvanced(
+            transactions, reminders, taxPayments, days, 0, 0, minCashThreshold);
         var points = advanced.BaseScenario.Points.Select(p => new ForecastChartPointDto
         {
             Date = p.Date,
@@ -346,6 +356,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
             HasRisk = advanced.HasRisk || (advanced.CurrentBalance - taxReserve) < 0,
             RiskLevel = advanced.RiskLevel,
             MinBalance = advanced.MinBalance,
+            MinCashThreshold = minCashThreshold,
             Points = points,
             Gaps = advanced.Gaps.Select(g => new CashGapDto
             {

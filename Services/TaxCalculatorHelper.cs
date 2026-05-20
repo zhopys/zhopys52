@@ -2,11 +2,19 @@ using MiniFinance.Data.Models;
 
 namespace MiniFinance.Services;
 
+public sealed class TaxCalcLine
+{
+    public string Name { get; init; } = "";
+    public decimal Amount { get; init; }
+}
+
 public sealed class TaxCalculationResult
 {
     public decimal TaxAmount { get; init; }
     public string Description { get; init; } = "";
     public decimal EffectiveRate { get; init; }
+    public string SuggestedPaymentName { get; init; } = "УСН";
+    public IReadOnlyList<TaxCalcLine> Lines { get; init; } = Array.Empty<TaxCalcLine>();
 }
 
 public static class TaxCalculatorHelper
@@ -37,20 +45,28 @@ public static class TaxCalculatorHelper
         {
             TaxAmount = Math.Round(amount, 2),
             EffectiveRate = rate,
-            Description = $"УСН {baseLabel}: {income:N0} Br → налог {amount:N2} Br"
+            SuggestedPaymentName = "УСН",
+            Description = $"УСН {baseLabel}: {income:N0} Br → налог {amount:N2} Br",
+            Lines = [new TaxCalcLine { Name = "УСН", Amount = Math.Round(amount, 2) }]
         };
     }
 
     private static TaxCalculationResult CalculateOsn(decimal income)
     {
-        var vat = income * 20m / 120m;
-        var profitTax = (income - vat) * 0.20m;
+        var vat = Math.Round(income * 20m / 120m, 2);
+        var profitTax = Math.Round((income - vat) * 0.20m, 2);
         var total = vat + profitTax;
         return new TaxCalculationResult
         {
-            TaxAmount = Math.Round(total, 2),
+            TaxAmount = total,
             EffectiveRate = income > 0 ? Math.Round(total / income * 100, 1) : 0,
-            Description = $"ОСН (оценка): НДС ~{vat:N0} Br + налог на прибыль ~{profitTax:N0} Br"
+            SuggestedPaymentName = "НДС",
+            Description = $"ОСН (оценка): НДС ~{vat:N0} Br + налог на прибыль ~{profitTax:N0} Br",
+            Lines =
+            [
+                new TaxCalcLine { Name = "НДС", Amount = vat },
+                new TaxCalcLine { Name = "Подоходный", Amount = profitTax }
+            ]
         };
     }
 

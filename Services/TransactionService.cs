@@ -11,21 +11,29 @@ namespace MiniFinance.Services
         private readonly ILogger<TransactionService> _logger;
         private readonly ICategorizationService _categorizationService;
         private readonly IUserContextService _userContext;
+        private readonly IDataScopeService _dataScope;
 
         public TransactionService(ApplicationDbContext db, ILogger<TransactionService> logger,
-            ICategorizationService categorizationService, IUserContextService userContext)
+            ICategorizationService categorizationService, IUserContextService userContext, IDataScopeService dataScope)
         {
             _db = db;
             _logger = logger;
             _categorizationService = categorizationService;
             _userContext = userContext;
+            _dataScope = dataScope;
         }
+
+        private Task<string> OwnerIdAsync(string userId) => _dataScope.GetDataOwnerUserIdAsync(userId);
 
         public async Task<Transaction> CreateAsync(Transaction transaction, string userId)
         {
-            await ValidateTransactionAsync(transaction, userId, isNew: true);
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("Пользователь не определён.", nameof(userId));
 
-            transaction.UserId = userId;
+            var ownerId = await OwnerIdAsync(userId);
+            await ValidateTransactionAsync(transaction, ownerId, isNew: true);
+
+            transaction.UserId = ownerId;
             transaction.CreatedAt = DateTime.UtcNow;
             transaction.UpdatedAt = null;
 
@@ -61,27 +69,24 @@ namespace MiniFinance.Services
 
         public async Task<Transaction> UpdateAsync(Transaction transaction, string userId)
         {
-            await ValidateTransactionAsync(transaction, userId, isNew: false);
-
-            var existing = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var existing = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == ownerId);
             if (existing == null)
                 throw new KeyNotFoundException("Транзакция не найдена или доступ запрещён.");
 
             existing.Date = transaction.Date.Date;
             existing.Amount = transaction.Amount;
             existing.Description = transaction.Description.Trim();
-            existing.Category = string.IsNullOrWhiteSpace(transaction.Category)
-                ? _categorizationService.CategorizeTransaction(transaction.Description, transaction.Amount)
-                : transaction.Category.Trim();
-            existing.Counterparty = transaction.Counterparty;
+            existing.Category = transaction.Category;
             existing.ProjectId = transaction.ProjectId;
             existing.PaymentMethod = transaction.PaymentMethod;
             existing.IsMandatory = transaction.IsMandatory;
             existing.IsConfirmed = transaction.IsConfirmed;
             existing.Notes = transaction.Notes;
             existing.CounterpartyId = transaction.CounterpartyId;
-            if (!string.IsNullOrWhiteSpace(transaction.Counterparty))
-                existing.Counterparty = transaction.Counterparty.Trim();
+            existing.Counterparty = transaction.Counterparty;
+
+            await ValidateTransactionAsync(existing, ownerId, isNew: false);
             existing.UpdatedAt = DateTime.UtcNow;
 
             try
@@ -102,11 +107,18 @@ namespace MiniFinance.Services
             if (string.IsNullOrWhiteSpace(category))
                 throw new ArgumentException("Категория не может быть пустой.", nameof(category));
 
-            var existing = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var existing = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == id && t.UserId == ownerId);
             if (existing == null)
                 throw new KeyNotFoundException("Транзакция не найдена или доступ запрещён.");
 
-            existing.Category = category.Trim();
+            var cat = await _categorizationService.EnsureCategoryAsync(category.Trim(), existing.Amount);
+            existing.Category = cat.Name;
+            if (cat.Type == CategoryType.Expense && existing.Amount > 0)
+                existing.Amount = -Math.Abs(existing.Amount);
+            else if (cat.Type == CategoryType.Income && existing.Amount < 0)
+                existing.Amount = Math.Abs(existing.Amount);
+
             existing.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return existing;
@@ -114,7 +126,8 @@ namespace MiniFinance.Services
 
         public async Task DeleteAsync(int id, string userId)
         {
-            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null)
                 throw new KeyNotFoundException("Транзакция не найдена или доступ запрещён.");
 
@@ -131,13 +144,24 @@ namespace MiniFinance.Services
             }
         }
 
-        public async Task<Transaction?> GetAsync(int id, string userId) =>
-            await _db.Transactions.Include(x => x.Project)
-                .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+        public async Task<Transaction?> GetAsync(int id, string userId)
+        {
+            var ownerId = await OwnerIdAsync(userId);
+            var ctx = await _userContext.GetContextAsync(userId);
+            var q = _db.Transactions
+                .Include(x => x.Project)
+                .Include(x => x.CounterpartyEntity)
+                .Where(x => x.Id == id && x.UserId == ownerId);
+            q = _userContext.FilterTransactionsForRole(q, ctx);
+            return await q.FirstOrDefaultAsync();
+        }
 
         public async Task<List<Transaction>> ListAsync(string userId, TransactionListFilter? filter = null)
         {
-            var q = _db.Transactions.AsQueryable().Where(t => t.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var ctx = await _userContext.GetContextAsync(userId);
+            var q = _db.Transactions.Include(t => t.Project).AsQueryable().Where(t => t.UserId == ownerId);
+            q = _userContext.FilterTransactionsForRole(q, ctx);
 
             if (filter != null)
             {
@@ -193,7 +217,8 @@ namespace MiniFinance.Services
             if (!_userContext.CanApproveTransactions(ctx))
                 throw new UnauthorizedAccessException("Нет прав на утверждение.");
 
-            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null) throw new KeyNotFoundException();
             t.ApprovalStatus = TransactionApprovalStatus.Approved;
             t.IsConfirmed = true;
@@ -207,7 +232,8 @@ namespace MiniFinance.Services
             if (!_userContext.CanApproveTransactions(ctx))
                 throw new UnauthorizedAccessException("Нет прав на отклонение.");
 
-            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null) throw new KeyNotFoundException();
             t.ApprovalStatus = TransactionApprovalStatus.Rejected;
             t.IsConfirmed = false;
@@ -215,16 +241,20 @@ namespace MiniFinance.Services
             await _db.SaveChangesAsync();
         }
 
-        public Task<List<Transaction>> ListPendingApprovalAsync(string userId) =>
-            _db.Transactions
-                .Where(t => t.UserId == userId && t.ApprovalStatus == TransactionApprovalStatus.Pending)
+        public async Task<List<Transaction>> ListPendingApprovalAsync(string userId)
+        {
+            var ownerId = await OwnerIdAsync(userId);
+            return await _db.Transactions
+                .Where(t => t.UserId == ownerId && t.ApprovalStatus == TransactionApprovalStatus.Pending)
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
+        }
 
         public async Task<HashSet<string>> GetExistingHashesAsync(string userId)
         {
+            var ownerId = await OwnerIdAsync(userId);
             var rows = await _db.Transactions
-                .Where(t => t.UserId == userId)
+                .Where(t => t.UserId == ownerId)
                 .Select(t => new { t.Date, t.Amount, t.Description })
                 .ToListAsync();
 
@@ -255,27 +285,17 @@ namespace MiniFinance.Services
                 ? _categorizationService.CategorizeTransaction(transaction.Description, transaction.Amount)
                 : transaction.Category.Trim();
 
-            var cat = await _db.Categories.FirstOrDefaultAsync(c => c.Name == categoryName);
-            if (cat == null)
-                throw new TransactionValidationException($"Категория «{categoryName}» не найдена. Создайте её на странице «Категории».");
+            var cat = await _categorizationService.EnsureCategoryAsync(categoryName, transaction.Amount);
 
             if (cat.Type == CategoryType.Expense && transaction.Amount > 0)
-                throw new TransactionValidationException("Для категории расхода сумма должна быть отрицательной.");
+                transaction.Amount = -Math.Abs(transaction.Amount);
+            else if (cat.Type == CategoryType.Income && transaction.Amount < 0)
+                transaction.Amount = Math.Abs(transaction.Amount);
 
-            if (cat.Type == CategoryType.Income && transaction.Amount < 0)
-                throw new TransactionValidationException("Для категории дохода сумма должна быть положительной.");
+            transaction.Category = cat.Name;
 
-            transaction.Category = categoryName;
-
-            if (transaction.ProjectId.HasValue)
-            {
-                var proj = await _db.Projects.FirstOrDefaultAsync(p => p.Id == transaction.ProjectId.Value);
-                if (proj == null)
-                    throw new TransactionValidationException("Указанный проект не найден.");
-
-                if (!proj.IsDefault && proj.UserId != userId)
-                    throw new TransactionValidationException("Проект не принадлежит текущему пользователю.");
-            }
+            await EntityLinkageHelper.ValidateProjectAsync(_db, transaction.ProjectId, userId);
+            await EntityLinkageHelper.ApplyCounterpartyToTransactionAsync(_db, transaction, userId);
         }
 
     }

@@ -8,7 +8,16 @@ public interface IDebtService
     Task<DebtSummaryDto> GetSummaryAsync(string userId);
     Task<Debt> CreateAsync(Debt debt, string userId);
     Task<Debt> RecordPaymentAsync(int id, decimal amount, string userId);
+    Task<DebtDetailDto> GetDetailAsync(int id, string userId);
     Task DeleteAsync(int id, string userId);
+}
+
+public sealed class DebtDetailDto
+{
+    public Debt Debt { get; init; } = new();
+    public decimal Remaining { get; init; }
+    public int ProgressPercent { get; init; }
+    public IReadOnlyList<Transaction> RelatedTransactions { get; init; } = Array.Empty<Transaction>();
 }
 
 public sealed class DebtSummaryDto

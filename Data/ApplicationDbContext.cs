@@ -16,6 +16,7 @@ namespace MiniFinance.Data
         public DbSet<Reminder> Reminders { get; set; }
         public DbSet<Project> Projects { get; set; }
         public DbSet<TaxPayment> TaxPayments { get; set; }
+        public DbSet<TaxAutoRule> TaxAutoRules { get; set; }
         public DbSet<OrganizationSettings> OrganizationSettings { get; set; }
         public DbSet<Tag> Tags { get; set; }
         public DbSet<TransactionTag> TransactionTags { get; set; }

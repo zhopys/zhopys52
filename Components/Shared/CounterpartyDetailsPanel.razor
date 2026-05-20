@@ -1,0 +1,157 @@
+@using MiniFinance.Services
+@inject ICounterpartyService CounterpartyService
+@using CounterpartySvc = MiniFinance.Services.CounterpartyService
+
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" OnClose="OnClose">
+    <HeaderContent>
+        @if (_detail != null)
+        {
+            <div class="d-flex align-items-center gap-2">
+                <img src="@CounterpartySvc.GetDisplayLogoUrl(_detail.Record)" alt="" class="cp-avatar" width="40" height="40" referrerpolicy="no-referrer" />
+                <div>
+                    <h3 class="mb-0">@_detail.Record.Name</h3>
+                    <div class="small text-muted">@TypeLabel(_detail.Record.Type)</div>
+                </div>
+            </div>
+        }
+        else if (_loading)
+        {
+            <span>Загрузка…</span>
+        }
+    </HeaderContent>
+    <Actions>
+        @if (_detail != null)
+        {
+            <button type="button" class="btn btn-sm btn-outline" @onclick="EditClicked">Изменить</button>
+            <a href="/transactions?counterparty=@Uri.EscapeDataString(_detail.Record.Name)" class="btn btn-sm btn-outline">Все операции</a>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_error != null)
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_detail != null)
+        {
+            <div class="detail-kpi-row mb-3">
+                <div class="detail-kpi">
+                    <span class="detail-kpi-label">Доход</span>
+                    <span class="detail-kpi-value text-success">@_detail.TotalIncome.ToString("N2") Br</span>
+                </div>
+                <div class="detail-kpi">
+                    <span class="detail-kpi-label">Расход</span>
+                    <span class="detail-kpi-value text-danger">@_detail.TotalExpense.ToString("N2") Br</span>
+                </div>
+                <div class="detail-kpi">
+                    <span class="detail-kpi-label">Сальдо</span>
+                    <span class="detail-kpi-value @(_detail.NetBalance >= 0 ? "text-success" : "text-danger")">@_detail.NetBalance.ToString("N2") Br</span>
+                </div>
+                <div class="detail-kpi">
+                    <span class="detail-kpi-label">Операций</span>
+                    <span class="detail-kpi-value">@_detail.TransactionCount</span>
+                </div>
+            </div>
+
+            <DetailFields Columns="2">
+                <DetailField Label="Контакт">@(_detail.Record.ContactPerson ?? "—")</DetailField>
+                <DetailField Label="Email">@(_detail.Record.Email ?? "—")</DetailField>
+                <DetailField Label="Телефон">@(_detail.Record.Phone ?? "—")</DetailField>
+                <DetailField Label="УНП">@(_detail.Record.TaxId ?? "—")</DetailField>
+            </DetailFields>
+            @if (!string.IsNullOrWhiteSpace(_detail.Record.Notes))
+            {
+                <DetailField Label="Заметки" ValueClass="mt-2">
+                    <div class="small">@_detail.Record.Notes</div>
+                </DetailField>
+            }
+
+            @if (_detail.OpenDebts.Any())
+            {
+                <h4 class="detail-section-title">Открытые долги</h4>
+                <table class="table table-sm">
+                    <thead><tr><th>Тип</th><th class="text-end">Остаток</th><th>Срок</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _detail.OpenDebts)
+                        {
+                            <tr>
+                                <td>@(d.Type == DebtType.Receivable ? "Нам должны" : "Мы должны")</td>
+                                <td class="text-end">@((d.Amount - d.PaidAmount).ToString("N2")) Br</td>
+                                <td>@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <h4 class="detail-section-title">Последние операции</h4>
+            @if (!_detail.Transactions.Any())
+            {
+                <p class="text-muted small">Нет связанных транзакций</p>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>Дата</th><th>Описание</th><th>Категория</th><th class="text-end">Сумма</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _detail.Transactions.Take(30))
+                        {
+                            <tr>
+                                <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@t.Description</td>
+                                <td><span class="badge">@t.Category</span></td>
+                                <td class="text-end @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </ChildContent>
+</DetailsDrawer>
+
+@code {
+    [Parameter] public int CounterpartyId { get; set; }
+    [Parameter] public string UserId { get; set; } = "";
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
+
+    private CounterpartyDetailDto? _detail;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen || CounterpartyId <= 0 || string.IsNullOrEmpty(UserId))
+        {
+            _detail = null;
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _detail = await CounterpartyService.GetDetailAsync(CounterpartyId, UserId);
+        }
+        catch (Exception ex)
+        {
+            _detail = null;
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private Task EditClicked() => OnEdit.InvokeAsync(CounterpartyId);
+
+    private static string TypeLabel(CounterpartyType t) => t switch
+    {
+        CounterpartyType.Client => "Клиент",
+        CounterpartyType.Supplier => "Поставщик",
+        _ => "Клиент и поставщик"
+    };
+}

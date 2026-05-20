@@ -6,7 +6,10 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Logging
 @inject ICsvParser CsvParser
+@inject ILogger<Import> Logger
+@inject IBankPdfStatementParser BankPdfParser
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
@@ -17,96 +20,159 @@
 <PageTitle>Импорт транзакций - MiniFinance</PageTitle>
 
 <div class="page-header" style="margin-bottom: 1.5rem;">
-            <div class="title">
-                <h1>Импорт транзакций</h1>
-                <div class="meta text-muted">CSV с разделителем «;» или «,», кодировка UTF-8</div>
+    <div class="title">
+        <h1>Импорт транзакций</h1>
+        <div class="meta text-muted">CSV или PDF-выписка (BYN, белорусские банки)</div>
+    </div>
+</div>
+
+<div class="hub-nav card mb-3" style="display:flex;gap:8px;padding:8px">
+    <button type="button" class="hub-nav-item @(_mode == "csv" ? "active" : "")" @onclick='() => SwitchMode("csv")'>CSV</button>
+    <button type="button" class="hub-nav-item @(_mode == "pdf" ? "active" : "")" @onclick='() => SwitchMode("pdf")'>PDF выписка</button>
+</div>
+
+@if (_mode == "csv")
+{
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">Импорт CSV</div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <p><code>Date;Amount;Description;Category</code></p>
+                <p>Пример: <code>2025-01-15;-1500.00;Аренда офиса;Аренда</code></p>
+                <p>Сумма: положительная — доход, отрицательная — расход.</p>
             </div>
-        </div>
 
-        <div class="card" style="margin-bottom: 1.5rem;">
-            <div class="card-header">Формат CSV</div>
-            <div class="card-body">
-                <div class="alert alert-info">
-                    <p><code>Date;Amount;Description;Category</code></p>
-                    <p>Пример: <code>2025-01-15;-1500.00;Аренда офиса;Аренда</code></p>
-                    <p>Сумма: положительная — доход, отрицательная — расход. Дубликаты (дата+сумма+описание) пропускаются.</p>
+            <EditForm Model="@uploadModel" OnValidSubmit="@HandleCsvImport">
+                <div style="margin-bottom: 1rem;">
+                    <label class="label">Файл CSV:</label>
+                    <InputFile class="input" OnChange="@OnFileSelected" accept=".csv,text/csv" />
                 </div>
+                @RenderImportActions("Предпросмотр CSV")
+            </EditForm>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-header">Импорт PDF (банковская выписка)</div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <p>Поддерживается выписка в BYN с таблицей операций (AKBB и аналоги): дата, тип, место, валюта, приход/расход, MCC.</p>
+                <p>Комиссии «Плата за перевод…» связываются с предыдущим переводом. Операции в USD/EUR сохраняют сумму в BYN и курс в примечании.</p>
+            </div>
 
-                <EditForm Model="@uploadModel" OnValidSubmit="@HandleImport">
-                    <div style="margin-bottom: 1rem;">
-                        <label class="label">Выберите файл:</label>
-                        <InputFile class="input" OnChange="@OnFileSelected" accept=".csv,text/csv" />
-                    </div>
+            <EditForm Model="@uploadModel" OnValidSubmit="@HandlePdfImport">
+                <div style="margin-bottom: 1rem;">
+                    <label class="label">Файл PDF:</label>
+                    <InputFile class="input" OnChange="@OnFileSelected" accept=".pdf,application/pdf" />
+                </div>
+                @RenderImportActions("Разобрать PDF")
+            </EditForm>
 
-                    @if (!string.IsNullOrEmpty(message))
-                    {
-                        <div class="alert @(isError ? "alert-danger" : "alert-success")" style="margin-bottom: 1rem;">
-                            @message
-                            @if (importErrors.Any())
+            @if (_pdfHeader != null && showPreview)
+            {
+                <div class="card mt-3">
+                    <div class="card-header">Данные счёта</div>
+                    <div class="card-body small">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.5rem">
+                            @if (!string.IsNullOrEmpty(_pdfHeader.OwnerFullName))
                             {
-                                <ul class="mt-2 mb-0 small">
-                                    @foreach (var err in importErrors.Take(10))
-                                    {
-                                        <li>@err</li>
-                                    }
-                                    @if (importErrors.Count > 10)
-                                    {
-                                        <li>…и ещё @(importErrors.Count - 10) ошибок</li>
-                                    }
-                                </ul>
+                                <div><span class="text-muted">Владелец:</span> @_pdfHeader.OwnerFullName</div>
+                            }
+                            @if (!string.IsNullOrEmpty(_pdfHeader.Iban))
+                            {
+                                <div><span class="text-muted">IBAN:</span> @_pdfHeader.Iban</div>
+                            }
+                            @if (_pdfHeader.OpeningBalance.HasValue)
+                            {
+                                <div><span class="text-muted">Остаток на начало:</span> @_pdfHeader.OpeningBalance.Value.ToString("N2") @_pdfHeader.Currency</div>
+                            }
+                            @if (_pdfHeader.ClosingBalance.HasValue)
+                            {
+                                <div><span class="text-muted">Остаток на конец:</span> @_pdfHeader.ClosingBalance.Value.ToString("N2") @_pdfHeader.Currency</div>
+                            }
+                            @if (_pdfHeader.TotalCredits.HasValue)
+                            {
+                                <div><span class="text-muted">Зачислено:</span> @_pdfHeader.TotalCredits.Value.ToString("N2")</div>
+                            }
+                            @if (_pdfHeader.TotalDebits.HasValue)
+                            {
+                                <div><span class="text-muted">Списано:</span> @_pdfHeader.TotalDebits.Value.ToString("N2")</div>
                             }
                         </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(isError ? "alert-danger" : "alert-success") mb-3">@message</div>
+}
+
+@if (showPreview && parsedPreview.Any())
+{
+    <div class="card">
+        <div class="card-header">
+            Предпросмотр (@previewDisplayCount из @totalParsed)
+            @if (skippedDuplicates > 0) { <span class="text-muted small"> · дубликатов: @skippedDuplicates</span> }
+            @if (skippedInvalid > 0) { <span class="text-muted small"> · пропущено: @skippedInvalid</span> }
+        </div>
+        <div class="card-body" style="padding:0">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th class="text-end">Сумма</th>
+                        <th>Описание</th>
+                        <th>Категория</th>
+                        @if (_mode == "pdf") { <th>Контрагент</th> }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in parsedPreview.Take(50))
+                    {
+                        <tr class="@(p.Amount < 0 ? "negative-balance" : null)">
+                            <td>@p.Date.ToString("dd.MM.yyyy")</td>
+                            <td class="text-end">@p.Amount.ToString("N2")</td>
+                            <td>
+                                @p.Description
+                                @if (!string.IsNullOrEmpty(p.Notes))
+                                {
+                                    <div class="small text-muted">@p.Notes</div>
+                                }
+                            </td>
+                            <td>@p.Category</td>
+                            @if (_mode == "pdf")
+                            {
+                                <td>@(p.Counterparty ?? "—")</td>
+                            }
+                        </tr>
                     }
-
-                    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-                        <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
-                            @(isProcessing ? "Разбор..." : "Предпросмотр")
-                        </button>
-                        <button type="button" class="btn btn-outline" @onclick="DownloadSample">Скачать пример CSV</button>
-                    </div>
-                </EditForm>
-
-                @if (showPreview && parsedPreview.Any())
+                </tbody>
+            </table>
+            <div style="padding:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+                <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@isProcessing">
+                    Подтвердить импорт (@totalParsed)
+                </button>
+                <button class="btn btn-outline" @onclick="CancelPreview">Отмена</button>
+                @if (_mode == "csv")
                 {
-                    <div class="card mt-3">
-                        <div class="card-header">
-                            Предпросмотр (@previewDisplayCount из @totalParsed)
-                            @if (skippedDuplicates > 0) { <span class="text-muted small"> · дубликатов: @skippedDuplicates</span> }
-                            @if (skippedInvalid > 0) { <span class="text-muted small"> · ошибок строк: @skippedInvalid</span> }
-                        </div>
-                        <div class="card-body" style="padding:0">
-                            <table class="table">
-                                <thead>
-                                    <tr><th>Дата</th><th class="text-end">Сумма</th><th>Описание</th><th>Категория</th></tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var p in parsedPreview.Take(50))
-                                    {
-                                        <tr class="@(p.Amount < 0 ? "negative-balance" : null)">
-                                            <td>@p.Date.ToString("dd.MM.yyyy")</td>
-                                            <td class="text-end">@p.Amount.ToString("N2")</td>
-                                            <td>@p.Description</td>
-                                            <td>@p.Category</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                            <div style="padding:1rem;display:flex;gap:.5rem">
-                                <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@isProcessing">
-                                    Подтвердить импорт (@totalParsed)
-                                </button>
-                                <button class="btn btn-outline" @onclick="CancelPreview">Отмена</button>
-                            </div>
-                        </div>
-                    </div>
+                    <button type="button" class="btn btn-outline" @onclick="DownloadSample">Пример CSV</button>
                 }
             </div>
         </div>
+    </div>
+}
 
 @code {
     private class UploadModel { }
     private UploadModel uploadModel = new();
 
+    private string _mode = "csv";
     private IBrowserFile? selectedFile;
     private string message = string.Empty;
     private bool isError;
@@ -116,10 +182,19 @@
     private List<Transaction> allPending = new();
     private List<Transaction> parsedPreview = new();
     private List<string> importErrors = new();
+    private AccountStatementHeader? _pdfHeader;
     private int totalParsed;
     private int previewDisplayCount;
     private int skippedDuplicates;
     private int skippedInvalid;
+
+    private void SwitchMode(string mode)
+    {
+        _mode = mode;
+        CancelPreview();
+        selectedFile = null;
+        message = "";
+    }
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -128,13 +203,31 @@
         isError = false;
         showPreview = false;
         allPending.Clear();
+        _pdfHeader = null;
     }
 
-    private async Task HandleImport()
+    private async Task HandleCsvImport() => await ParseFileAsync(csv: true);
+    private async Task HandlePdfImport() => await ParseFileAsync(csv: false);
+
+    private async Task ParseFileAsync(bool csv)
     {
         if (selectedFile == null)
         {
-            message = "Выберите файл CSV";
+            message = csv ? "Выберите файл CSV" : "Выберите файл PDF";
+            isError = true;
+            return;
+        }
+
+        var ext = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
+        if (csv && ext != ".csv")
+        {
+            message = "Для режима CSV нужен файл .csv";
+            isError = true;
+            return;
+        }
+        if (!csv && ext != ".pdf")
+        {
+            message = "Для режима PDF нужен файл .pdf";
             isError = true;
             return;
         }
@@ -158,33 +251,46 @@
             var existingHashes = await TransactionService.GetExistingHashesAsync(user.Id);
 
             await using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
-            var parseResult = await CsvParser.ParseAsync(stream, user.Id, existingHashes);
 
-            allPending = parseResult.Transactions;
+            if (csv)
+            {
+                var parseResult = await CsvParser.ParseAsync(stream, user.Id, existingHashes);
+                allPending = parseResult.Transactions;
+                skippedDuplicates = parseResult.SkippedDuplicates;
+                skippedInvalid = parseResult.SkippedInvalid;
+                importErrors.AddRange(parseResult.Errors.Select(e => $"Строка {e.LineNumber}: {e.Message}"));
+            }
+            else
+            {
+                var pdfResult = await BankPdfParser.ParseAsync(stream, user.Id, existingHashes);
+                allPending = pdfResult.Transactions;
+                _pdfHeader = pdfResult.Statement.Header;
+                skippedDuplicates = pdfResult.SkippedDuplicates;
+                skippedInvalid = pdfResult.SkippedInvalid;
+                importErrors.AddRange(pdfResult.Errors.Select(e => $"Строка {e.LineNumber}: {e.Message}"));
+            }
+
             parsedPreview = allPending;
             totalParsed = allPending.Count;
             previewDisplayCount = Math.Min(50, totalParsed);
-            skippedDuplicates = parseResult.SkippedDuplicates;
-            skippedInvalid = parseResult.SkippedInvalid;
-
-            importErrors.AddRange(parseResult.Errors.Select(e => $"Строка {e.LineNumber}: {e.Message}"));
 
             if (!allPending.Any())
             {
-                message = "Не найдено валидных транзакций. Проверьте формат файла.";
+                message = "Не найдено валидных операций. Проверьте формат выписки.";
                 isError = true;
                 showPreview = false;
                 return;
             }
 
             showPreview = true;
-            message = $"Готово к импорту: {totalParsed} транзакций. Пропущено дубликатов: {skippedDuplicates}, ошибок строк: {skippedInvalid}.";
+            message = $"Готово к импорту: {totalParsed} операций. Дубликатов: {skippedDuplicates}, пропущено: {skippedInvalid}.";
             isError = skippedInvalid > 0;
         }
         catch (Exception ex)
         {
             message = $"Ошибка при разборе: {ex.Message}";
             isError = true;
+            Logger.LogWarning(ex, "Import parse failed");
         }
         finally
         {
@@ -214,6 +320,7 @@
         showPreview = false;
         allPending.Clear();
         parsedPreview.Clear();
+        _pdfHeader = null;
         isProcessing = false;
     }
 
@@ -222,13 +329,29 @@
         showPreview = false;
         allPending.Clear();
         parsedPreview.Clear();
-        message = "Импорт отменён";
+        _pdfHeader = null;
+        message = string.IsNullOrEmpty(message) ? "" : message;
         isError = false;
     }
 
-    private void DownloadSample()
-    {
-        JS.InvokeVoidAsync("downloadFile", "/samples/sample_import.csv", "sample_import.csv");
-    }
-}
+    private void DownloadSample() => JS.InvokeVoidAsync("downloadFile", "/samples/sample_import.csv", "sample_import.csv");
 
+    private RenderFragment RenderImportActions(string submitLabel) => __builder =>
+    {
+        if (importErrors.Any())
+        {
+            <ul class="mt-2 mb-2 small text-danger">
+                @foreach (var err in importErrors.Take(8))
+                {
+                    <li>@err</li>
+                }
+            </ul>
+        }
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
+                @(isProcessing ? "Обработка..." : submitLabel)
+            </button>
+        </div>
+    };
+
+}

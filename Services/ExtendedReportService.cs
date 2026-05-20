@@ -17,15 +17,18 @@ public class ExtendedReportService : IExtendedReportService
 
     private readonly ApplicationDbContext _db;
     private readonly IForecastingService _forecasting;
+    private readonly IDataScopeService _dataScope;
 
-    public ExtendedReportService(ApplicationDbContext db, IForecastingService forecasting)
+    public ExtendedReportService(ApplicationDbContext db, IForecastingService forecasting, IDataScopeService dataScope)
     {
         _db = db;
         _forecasting = forecasting;
+        _dataScope = dataScope;
     }
 
     public async Task<ExtendedAnalyticsDto> BuildAsync(string userId, ReportFilters filters, string? counterparty = null)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var allTx = await _db.Transactions
             .Include(t => t.Project)
             .Where(t => t.UserId == userId)

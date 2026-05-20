@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using MiniFinance.Components.Account;
 
+var seedDiplomaDemo = args.Any(a => a.Equals("--seed-diploma-demo", StringComparison.OrdinalIgnoreCase));
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
@@ -52,6 +53,7 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
 
 // Core services
 builder.Services.AddScoped<ICsvParser, CsvParser>();
+builder.Services.AddScoped<IBankPdfStatementParser, BankPdfStatementParser>();
 builder.Services.AddScoped<ICategorizationService, CategorizationService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IReportService, ReportService>();
@@ -64,6 +66,7 @@ builder.Services.AddScoped<ITransactionDataStatusService, TransactionDataStatusS
 builder.Services.AddScoped<IAccountingIntegrationService, AccountingIntegrationService>();
 builder.Services.AddScoped<IReportPdfService, ReportPdfService>();
 builder.Services.AddScoped<ITaxService, TaxService>();
+builder.Services.AddScoped<ITaxAutoRuleService, TaxAutoRuleService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 builder.Services.AddScoped<ICounterpartyService, CounterpartyService>();
@@ -71,7 +74,9 @@ builder.Services.AddScoped<IDebtService, DebtService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IBalanceReportService, BalanceReportService>();
 builder.Services.AddScoped<IPaymentCalendarService, PaymentCalendarService>();
+builder.Services.AddScoped<IDataScopeService, DataScopeService>();
 builder.Services.AddScoped<IUserContextService, UserContextService>();
+builder.Services.AddScoped<ITeamService, TeamService>(); // UI отключено; сервис оставлен для будущего включения
 builder.Services.AddScoped<MiniFinance.Components.Account.IdentityRedirectManager>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, IdentitySmtpEmailSender>();
 
@@ -935,6 +940,41 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN IsConfirmed INTEGER NOT NULL DEFAULT 1;";
                 cmd.ExecuteNonQuery();
             }
+            if (!columns.Contains("PaymentMethod"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN PaymentMethod INTEGER;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("Counterparty"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN Counterparty TEXT;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("IsMandatory"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN IsMandatory INTEGER NOT NULL DEFAULT 0;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("CounterpartyId"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN CounterpartyId INTEGER;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("Notes"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN Notes TEXT;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("ApprovalStatus"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN ApprovalStatus INTEGER NOT NULL DEFAULT 1;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columns.Contains("SubmittedByUserId"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN SubmittedByUserId TEXT;";
+                cmd.ExecuteNonQuery();
+            }
 
             // Add columns to AspNetUsers if missing
             cmd.CommandText = "PRAGMA table_info('AspNetUsers');";
@@ -1063,6 +1103,22 @@ using (var scope = app.Services.CreateScope())
                 cmd.ExecuteNonQuery();
             }
 
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS TaxAutoRules (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId TEXT NOT NULL,
+                Name TEXT NOT NULL,
+                PaymentName TEXT NOT NULL,
+                Formula TEXT NOT NULL,
+                Period INTEGER NOT NULL DEFAULT 1,
+                DueDayOfMonth INTEGER NOT NULL DEFAULT 25,
+                DueMonthOffset INTEGER NOT NULL DEFAULT 1,
+                IsEnabled INTEGER NOT NULL DEFAULT 1,
+                SortOrder INTEGER NOT NULL DEFAULT 0
+            );";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_TaxAutoRules_UserId ON TaxAutoRules(UserId);";
+            cmd.ExecuteNonQuery();
+
             // Ensure OrganizationSettings table exists
             cmd.CommandText = @"CREATE TABLE IF NOT EXISTS OrganizationSettings (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1149,6 +1205,11 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "ALTER TABLE AspNetUsers ADD COLUMN NotifyBills INTEGER NOT NULL DEFAULT 1;";
                 cmd.ExecuteNonQuery();
             }
+            if (!userColumns.Contains("WorkspaceOwnerUserId"))
+            {
+                cmd.CommandText = "ALTER TABLE AspNetUsers ADD COLUMN WorkspaceOwnerUserId TEXT;";
+                cmd.ExecuteNonQuery();
+            }
 
             cmd.CommandText = @"CREATE TABLE IF NOT EXISTS Tags (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT, UserId TEXT NOT NULL, Name TEXT NOT NULL, Color TEXT);";
@@ -1168,8 +1229,20 @@ using (var scope = app.Services.CreateScope())
             cmd.CommandText = @"CREATE TABLE IF NOT EXISTS Counterparties (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT, UserId TEXT NOT NULL, Name TEXT NOT NULL,
                 Type INTEGER NOT NULL DEFAULT 2, ContactPerson TEXT, Email TEXT, Phone TEXT,
-                TaxId TEXT, Notes TEXT, CreatedAt TEXT NOT NULL);";
+                TaxId TEXT, Notes TEXT, LogoUrl TEXT, CreatedAt TEXT NOT NULL);";
             cmd.ExecuteNonQuery();
+            cmd.CommandText = "PRAGMA table_info('Counterparties');";
+            using (var cpReader = cmd.ExecuteReader())
+            {
+                var cpCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                while (cpReader.Read()) cpCols.Add(cpReader.GetString(1));
+                cpReader.Close();
+                if (!cpCols.Contains("LogoUrl"))
+                {
+                    cmd.CommandText = "ALTER TABLE Counterparties ADD COLUMN LogoUrl TEXT;";
+                    cmd.ExecuteNonQuery();
+                }
+            }
             cmd.CommandText = @"CREATE TABLE IF NOT EXISTS Debts (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT, UserId TEXT NOT NULL, Type INTEGER NOT NULL,
                 CounterpartyName TEXT NOT NULL, CounterpartyId INTEGER, Amount REAL NOT NULL,
@@ -1204,9 +1277,18 @@ using (var scope = app.Services.CreateScope())
         }
         catch { }
 
+        if (connection is Microsoft.Data.Sqlite.SqliteConnection sqliteConn)
+            DatabaseSchemaRepair.ApplySchema(sqliteConn);
+
+        DatabaseSchemaRepair.RepairDataAsync(dbContext, categorization).GetAwaiter().GetResult();
+
         connection.Close();
     }
-    catch { }
+    catch (Exception ex)
+    {
+        var log = scope.ServiceProvider.GetService<ILogger<Program>>();
+        log?.LogWarning(ex, "Database schema migration failed");
+    }
 }
 
 app.MapPost("/api/transactions/{id:int}/attachments", async (
@@ -1249,5 +1331,11 @@ app.MapGet("/api/account/export", async (
 
     return Results.Json(payload);
 }).RequireAuthorization();
+
+if (seedDiplomaDemo)
+{
+    await DiplomaDemoSeedService.RunAsync(app.Services);
+    return;
+}
 
 app.Run();

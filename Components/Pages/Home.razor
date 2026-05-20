@@ -10,73 +10,72 @@
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject IForecastingService ForecastingService
+@inject IDebtService DebtService
+@inject IDataScopeService DataScope
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @attribute [Authorize]
 
 <PageTitle>Главная — MiniFinance</PageTitle>
 
-<AuthorizeView Context="authContext">
+<AuthorizeView>
     <Authorized>
         <div class="dashboard">
             <header class="dashboard-header">
                 <div>
-                    <h1>Обзор капитала</h1>
+                    <h1>Финансовая картина</h1>
                     <div class="dashboard-meta">
-                        <span class="live-pill">Live</span>
+                        <span class="live-pill">Актуально</span>
                         <span>@DateTime.Now.ToString("dd MMMM yyyy · HH:mm", new System.Globalization.CultureInfo("ru-RU"))</span>
                     </div>
                 </div>
                 <div class="page-actions">
-                    <a href="/transactions/create" class="btn btn-primary">
-                        <span>+</span> Новая операция
-                    </a>
+                    <a href="/import" class="btn btn-outline">Импорт</a>
+                    <a href="/transactions" class="btn btn-primary"><span>+</span> Операция</a>
                 </div>
             </header>
 
             @if (isLoading)
             {
-                <div class="loading-state">
-                    <div class="spinner"></div>
-                </div>
+                <div class="loading-state"><div class="spinner"></div></div>
             }
             else
             {
-                @if (cashGaps.Any())
-                {
-                    <div class="alert-glass">
-                        <span class="alert-glass-icon" aria-hidden="true">⚠</span>
-                        <div style="flex: 1">
-                            <div class="fw-bold">Риск кассового разрыва</div>
-                            <div class="small text-muted">Ближайший дефицит — @cashGaps.First().StartDate.ToString("dd MMM yyyy")</div>
-                        </div>
-                        <a href="/cash-forecast" class="btn btn-sm btn-danger">Подробнее</a>
+                <div class="finance-health @HealthClass">
+                    <div class="finance-health-icon" aria-hidden="true">@HealthIcon</div>
+                    <div class="finance-health-body">
+                        <div class="finance-health-title">@HealthTitle</div>
+                        <div class="finance-health-text">@HealthSummary</div>
                     </div>
-                }
+                    @if (cashGaps.Any())
+                    {
+                        <a href="/cash-forecast" class="btn btn-sm btn-danger">Прогноз кассы</a>
+                    }
+                </div>
 
-                <section class="capital-monitor" aria-label="Статус капитала">
+                <section class="capital-monitor" aria-label="Деньги на счетах">
                     <div class="capital-monitor-inner">
                         <div class="capital-monitor-top">
                             <div>
-                                <p class="capital-label">Общий капитал</p>
+                                <p class="capital-label">Доступный баланс</p>
                                 <div class="capital-value @(balance >= 0 ? "positive" : "text-danger")">
                                     @(balance >= 0 ? "" : "−")@Math.Abs(balance).ToString("N0")
                                     <span class="capital-currency">Br</span>
                                 </div>
+                                <p class="small text-muted mt-1">Сумма всех подтверждённых операций</p>
                             </div>
-                            <span class="live-pill">Обновлено сейчас</span>
                         </div>
                         <div class="capital-stats">
                             <div>
                                 <div class="capital-stat-label">Доход за месяц</div>
-                                <div class="capital-stat-value text-success">+@CurrentMonthIncome.ToString("N0") <small class="text-muted">Br</small></div>
+                                <div class="capital-stat-value text-success">+@monthIncome.ToString("N0") <small class="text-muted">Br</small></div>
                             </div>
                             <div>
                                 <div class="capital-stat-label">Расход за месяц</div>
-                                <div class="capital-stat-value text-danger">@CurrentMonthExpense.ToString("N0") <small class="text-muted">Br</small></div>
+                                <div class="capital-stat-value text-danger">@monthExpense.ToString("N0") <small class="text-muted">Br</small></div>
                             </div>
                             <div>
-                                <div class="capital-stat-label">Чистый поток</div>
+                                <div class="capital-stat-label">Чистый поток месяца</div>
                                 <div class="capital-stat-value @(monthNet >= 0 ? "text-success" : "text-danger")">
                                     @(monthNet >= 0 ? "+" : "")@monthNet.ToString("N0") <small class="text-muted">Br</small>
                                 </div>
@@ -85,54 +84,82 @@
                     </div>
                 </section>
 
-                <div class="dashboard-kpi-row">
-                    <div class="dashboard-kpi accent-teal">
-                        <div class="kpi-label">Операций за месяц</div>
-                        <div class="kpi-value">@monthTransactionCount</div>
-                    </div>
-                    <div class="dashboard-kpi accent-blue">
-                        <div class="kpi-label">Средняя операция</div>
-                        <div class="kpi-value" style="font-size: 22px;">@avgTransaction.ToString("N0") <small class="text-muted" style="font-size: 14px">Br</small></div>
-                    </div>
-                    <div class="dashboard-kpi accent-rose">
-                        <div class="kpi-label">Прогноз риска</div>
-                        <div class="kpi-value @(cashGaps.Any() ? "text-danger" : "text-success")" style="font-size: 22px;">
+                <div class="home-kpi-grid">
+                    <a href="/debts" class="home-kpi-card">
+                        <div class="home-kpi-label">Нам должны</div>
+                        <div class="home-kpi-value text-success">@debtReceivable.ToString("N0") Br</div>
+                    </a>
+                    <a href="/debts" class="home-kpi-card">
+                        <div class="home-kpi-label">Мы должны</div>
+                        <div class="home-kpi-value text-danger">@debtPayable.ToString("N0") Br</div>
+                    </a>
+                    <a href="/taxes" class="home-kpi-card">
+                        <div class="home-kpi-label">Налоги к оплате</div>
+                        <div class="home-kpi-value">@upcomingTaxTotal.ToString("N0") Br</div>
+                        <div class="small text-muted">@upcomingTaxes.Count шт.</div>
+                    </a>
+                    <a href="/reminders" class="home-kpi-card">
+                        <div class="home-kpi-label">Платежи (30 дн.)</div>
+                        <div class="home-kpi-value">@upcomingRemindersTotal.ToString("N0") Br</div>
+                        <div class="small text-muted">@upcomingReminders.Count шт.</div>
+                    </a>
+                    <a href="/cash-forecast" class="home-kpi-card">
+                        <div class="home-kpi-label">Риск кассы (90 дн.)</div>
+                        <div class="home-kpi-value @(cashGaps.Any() ? "text-danger" : "text-success")">
                             @(cashGaps.Any() ? "Есть" : "Нет")
                         </div>
-                    </div>
+                    </a>
+                    <a href="/transactions" class="home-kpi-card">
+                        <div class="home-kpi-label">Операций в месяце</div>
+                        <div class="home-kpi-value">@monthTxCount</div>
+                    </a>
                 </div>
 
                 <div class="dashboard-grid">
-                    <div style="min-width: 0;">
+                    <div style="min-width:0">
                         @if (monthlyData.Any())
                         {
                             <div class="card chart-panel mb-4">
                                 <div class="card-header">
-                                    <span>Динамика прибыли</span>
-                                    <div class="chart-legend">
-                                        <span class="chart-legend-item"><span class="chart-legend-dot teal"></span> Прибыль</span>
-                                        <span class="chart-legend-item"><span class="chart-legend-dot blue"></span> Доход</span>
-                                    </div>
+                                    <span>Динамика за 6 месяцев</span>
+                                    <a href="/analytics" class="btn btn-ghost btn-sm">Аналитика →</a>
                                 </div>
                                 <div class="chart-canvas-wrap">
-                                    <canvas id="profitChart" aria-label="График динамики прибыли"></canvas>
+                                    <canvas id="profitChart" aria-label="График"></canvas>
+                                </div>
+                            </div>
+                        }
+
+                        @if (topExpenseCategories.Any())
+                        {
+                            <div class="card mb-4">
+                                <div class="card-header">Куда уходят деньги (текущий месяц)</div>
+                                <div class="card-body">
+                                    @foreach (var cat in topExpenseCategories)
+                                    {
+                                        <div class="home-cat-row">
+                                            <div class="home-cat-head">
+                                                <span>@cat.Name</span>
+                                                <span class="fw-bold text-danger">@cat.Amount.ToString("N0") Br</span>
+                                            </div>
+                                            <div class="home-cat-bar">
+                                                <div class="home-cat-fill" style="width:@cat.Percent%"></div>
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         }
 
                         <div class="card glass-card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span>Последние транзакции</span>
+                            <div class="card-header d-flex justify-content-between">
+                                <span>Последние операции</span>
                                 <a href="/transactions" class="btn btn-ghost btn-sm">Все →</a>
                             </div>
                             <div class="table-responsive tx-table">
                                 <table class="table mb-0">
                                     <thead>
-                                        <tr>
-                                            <th>Дата</th>
-                                            <th>Контрагент</th>
-                                            <th class="text-end">Сумма</th>
-                                        </tr>
+                                        <tr><th>Дата</th><th>Описание</th><th class="text-end">Сумма</th></tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var t in recentTransactions)
@@ -140,17 +167,13 @@
                                             <tr>
                                                 <td class="small text-muted">@t.Date.ToString("dd.MM")</td>
                                                 <td>
-                                                    <div class="fw-bold">@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</div>
-                                                    <div class="small text-muted">@t.Description</div>
+                                                    <div class="fw-bold">@t.Description</div>
+                                                    <div class="small text-muted">@t.Category · @(t.Counterparty ?? "—")</div>
                                                 </td>
                                                 <td class="text-end tx-amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                                     @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2")
                                                 </td>
                                             </tr>
-                                        }
-                                        @if (!recentTransactions.Any())
-                                        {
-                                            <tr><td colspan="3" class="text-center py-4 text-muted">Нет операций</td></tr>
                                         }
                                     </tbody>
                                 </table>
@@ -159,34 +182,37 @@
                     </div>
 
                     <div class="side-stack">
-                        <div class="card glass-card" style="@(upcomingTaxes.Any() ? "border-left: 3px solid var(--warning)" : "")">
-                            <div class="card-header">Налоги к оплате</div>
+                        <div class="card glass-card">
+                            <div class="card-header">Ближайшие обязательства</div>
                             <div class="card-body p-0">
-                                @foreach (var tax in upcomingTaxes.Take(4))
+                                @foreach (var item in upcomingItems.Take(6))
                                 {
                                     <div class="tax-row">
                                         <div>
-                                            <div class="fw-bold small">@tax.Name</div>
-                                            <div class="small text-muted">до @tax.DueDate.ToString("dd.MM.yyyy")</div>
+                                            <div class="fw-bold small">@item.Title</div>
+                                            <div class="small text-muted">@item.Subtitle · @item.Date.ToString("dd.MM")</div>
                                         </div>
                                         <div class="text-end">
-                                            <div class="fw-bold">@tax.Amount.ToString("N0") Br</div>
-                                            <a href="/taxes" class="small" style="color: var(--accent)">Оплатить</a>
+                                            <div class="fw-bold">@item.Amount.ToString("N0") Br</div>
+                                            <a href="@item.Link" class="small">Открыть</a>
                                         </div>
                                     </div>
                                 }
-                                @if (!upcomingTaxes.Any())
+                                @if (!upcomingItems.Any())
                                 {
-                                    <div class="p-3 text-center small text-muted">Налогов не запланировано</div>
+                                    <div class="p-3 text-center small text-muted">Нет срочных платежей на 30 дней</div>
                                 }
                             </div>
                         </div>
 
-                        <div class="cta-glass">
-                            <div class="cta-icon" aria-hidden="true">◈</div>
-                            <h4 class="mb-2" style="font-size: 16px; font-weight: 600;">Финансовая аналитика</h4>
-                            <p class="small text-muted mb-3">Рентабельность, тренды и прогноз кассовых разрывов в реальном времени.</p>
-                            <a href="/analytics" class="btn btn-primary w-100">Открыть аналитику</a>
+                        <div class="home-quick-links card">
+                            <div class="card-header">Быстрые действия</div>
+                            <div class="card-body" style="display:grid;gap:8px">
+                                <a href="/reports" class="btn btn-outline w-100">Отчёты</a>
+                                <a href="/analytics" class="btn btn-outline w-100">Финансовая аналитика</a>
+                                <a href="/payment-calendar" class="btn btn-outline w-100">Платёжный календарь</a>
+                                <a href="/counterparties" class="btn btn-outline w-100">Контрагенты</a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -202,21 +228,36 @@
     private List<MonthlyDataPoint> monthlyData = new();
     private List<CashGap> cashGaps = new();
     private List<TaxPayment> upcomingTaxes = new();
+    private List<Reminder> upcomingReminders = new();
+    private List<UpcomingItem> upcomingItems = new();
+    private List<CategoryRow> topExpenseCategories = new();
 
-    private decimal CurrentMonthIncome => transactions
-        .Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month && t.Amount > 0)
-        .Sum(t => t.Amount);
+    private decimal balance;
+    private decimal monthIncome;
+    private decimal monthExpense;
+    private decimal monthNet;
+    private int monthTxCount;
+    private decimal debtReceivable;
+    private decimal debtPayable;
+    private decimal upcomingTaxTotal;
+    private decimal upcomingRemindersTotal;
 
-    private decimal CurrentMonthExpense => transactions
-        .Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month && t.Amount < 0)
-        .Sum(t => t.Amount);
-
-    private decimal balance => transactions.Sum(t => t.Amount);
-    private decimal monthNet => CurrentMonthIncome + CurrentMonthExpense;
-    private int monthTransactionCount => transactions.Count(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month);
-    private decimal avgTransaction => monthTransactionCount > 0
-        ? Math.Abs(transactions.Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month).Average(t => t.Amount))
-        : 0;
+    private string HealthClass => balance < 0 || cashGaps.Any() ? "health-warn" : monthNet < 0 ? "health-caution" : "health-ok";
+    private string HealthIcon => balance < 0 ? "!" : cashGaps.Any() ? "⚠" : monthNet < 0 ? "↓" : "✓";
+    private string HealthTitle => balance < 0 ? "Отрицательный баланс" : cashGaps.Any() ? "Риск нехватки денег" : monthNet < 0 ? "Месяц в минусе" : "Финансы под контролем";
+    private string HealthSummary
+    {
+        get
+        {
+            if (balance < 0)
+                return $"На счетах минус {Math.Abs(balance):N0} Br. Проверьте операции и план платежей.";
+            if (cashGaps.Any())
+                return $"Прогноз показывает кассовый разрыв с {cashGaps.First().StartDate:dd.MM.yyyy}. Запланируйте поступления.";
+            if (monthNet < 0)
+                return $"В этом месяце расходы превышают доходы на {Math.Abs(monthNet):N0} Br.";
+            return $"Баланс {balance:N0} Br, чистый поток месяца {(monthNet >= 0 ? "+" : "")}{monthNet:N0} Br.";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -225,37 +266,84 @@
 
         if (user != null)
         {
+            var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             transactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id)
+                .Where(t => t.UserId == dataId && t.IsConfirmed)
                 .OrderByDescending(t => t.Date)
                 .ToListAsync();
 
-            recentTransactions = transactions.Take(6).ToList();
+            balance = transactions.Sum(t => t.Amount);
+            var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            var monthTx = transactions.Where(t => t.Date >= monthStart).ToList();
+            monthIncome = monthTx.Where(t => t.Amount > 0).Sum(t => t.Amount);
+            monthExpense = monthTx.Where(t => t.Amount < 0).Sum(t => t.Amount);
+            monthNet = monthIncome + monthExpense;
+            monthTxCount = monthTx.Count;
+
+            recentTransactions = transactions.Take(8).ToList();
+
+            var expenseByCat = monthTx.Where(t => t.Amount < 0)
+                .GroupBy(t => t.Category)
+                .Select(g => new { Name = g.Key, Amount = Math.Abs(g.Sum(t => t.Amount)) })
+                .OrderByDescending(x => x.Amount)
+                .Take(5)
+                .ToList();
+            var maxExp = expenseByCat.FirstOrDefault()?.Amount ?? 1;
+            topExpenseCategories = expenseByCat.Select(x => new CategoryRow
+            {
+                Name = x.Name,
+                Amount = x.Amount,
+                Percent = maxExp > 0 ? (double)(x.Amount / maxExp * 100) : 0
+            }).ToList();
 
             var ruCulture = new System.Globalization.CultureInfo("ru-RU");
-            for (int i = 5; i >= 0; i--)
+            for (var i = 5; i >= 0; i--)
             {
                 var month = DateTime.Today.AddMonths(-i);
-                var monthTx = transactions.Where(t => t.Date.Year == month.Year && t.Date.Month == month.Month).ToList();
-                var income = monthTx.Where(t => t.Amount > 0).Sum(t => t.Amount);
-                var expense = Math.Abs(monthTx.Where(t => t.Amount < 0).Sum(t => t.Amount));
+                var mTx = transactions.Where(t => t.Date.Year == month.Year && t.Date.Month == month.Month).ToList();
                 monthlyData.Add(new MonthlyDataPoint
                 {
                     Label = month.ToString("MMM", ruCulture),
-                    Value = monthTx.Sum(t => t.Amount),
-                    Income = income,
-                    Expense = expense
+                    Value = mTx.Sum(t => t.Amount),
+                    Income = mTx.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                    Expense = Math.Abs(mTx.Where(t => t.Amount < 0).Sum(t => t.Amount))
                 });
             }
 
-            var reminders = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
-            var confirmedTx = transactions.Where(t => t.IsConfirmed).ToList();
-            cashGaps = ForecastingService.DetectCashGaps(confirmedTx, reminders, 90, 0);
+            var reminders = await DbContext.Reminders.Where(r => r.UserId == dataId && !r.IsArchived).ToListAsync();
+            cashGaps = ForecastingService.DetectCashGaps(transactions, reminders, 90, 0);
 
             upcomingTaxes = await DbContext.TaxPayments
-                .Where(t => t.UserId == user.Id && !t.IsPaid && t.DueDate >= DateTime.Today)
+                .Where(t => t.UserId == dataId && !t.IsPaid && t.DueDate >= DateTime.Today && t.DueDate <= DateTime.Today.AddDays(30))
                 .OrderBy(t => t.DueDate)
                 .ToListAsync();
+            upcomingTaxTotal = upcomingTaxes.Sum(t => t.Amount - t.PaidAmount);
+
+            upcomingReminders = await DbContext.Reminders
+                .Where(r => r.UserId == dataId && !r.IsPaid && !r.IsArchived && r.Date >= DateTime.Today && r.Date <= DateTime.Today.AddDays(30))
+                .OrderBy(r => r.Date)
+                .ToListAsync();
+            upcomingRemindersTotal = upcomingReminders.Sum(r => r.Amount);
+
+            var debtSummary = await DebtService.GetSummaryAsync(dataId);
+            debtReceivable = debtSummary.TotalReceivable;
+            debtPayable = debtSummary.TotalPayable;
+
+            upcomingItems = upcomingTaxes.Select(t => new UpcomingItem
+            {
+                Title = t.Name,
+                Subtitle = "Налог",
+                Date = t.DueDate,
+                Amount = t.Amount - t.PaidAmount,
+                Link = "/taxes"
+            }).Concat(upcomingReminders.Select(r => new UpcomingItem
+            {
+                Title = r.Name,
+                Subtitle = "Платёж",
+                Date = r.Date,
+                Amount = r.Amount,
+                Link = "/reminders"
+            })).OrderBy(x => x.Date).ToList();
         }
 
         isLoading = false;
@@ -264,9 +352,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!isLoading && monthlyData.Any())
-        {
             await RenderProfitChart();
-        }
     }
 
     private async Task RenderProfitChart()
@@ -282,11 +368,27 @@
         catch { }
     }
 
-    private class MonthlyDataPoint
+    private sealed class MonthlyDataPoint
     {
-        public string Label { get; set; } = string.Empty;
+        public string Label { get; set; } = "";
         public decimal Value { get; set; }
         public decimal Income { get; set; }
         public decimal Expense { get; set; }
+    }
+
+    private sealed class CategoryRow
+    {
+        public string Name { get; set; } = "";
+        public decimal Amount { get; set; }
+        public double Percent { get; set; }
+    }
+
+    private sealed class UpcomingItem
+    {
+        public string Title { get; set; } = "";
+        public string Subtitle { get; set; } = "";
+        public DateTime Date { get; set; }
+        public decimal Amount { get; set; }
+        public string Link { get; set; } = "";
     }
 }

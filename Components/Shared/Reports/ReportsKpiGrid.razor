@@ -20,7 +20,7 @@
                 <div class="kpi-label">@k.Label</div>
                 @if (!string.IsNullOrWhiteSpace(k.Hint))
                 {
-                    <div class="kpi-hint">@TruncateHint(k.Hint)</div>
+                    <div class="kpi-hint" title="@k.Hint">@k.Hint</div>
                 }
                 <div class="kpi-value">
                     @if (k.Format == "percent")
@@ -55,6 +55,4 @@
         _ => "text-muted"
     };
 
-    private static string TruncateHint(string hint) =>
-        hint.Length <= 72 ? hint : hint[..69] + "…";
 }

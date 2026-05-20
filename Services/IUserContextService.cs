@@ -13,6 +13,8 @@ public interface IUserContextService
 public sealed class UserContext
 {
     public string UserId { get; init; } = "";
+    /// <summary>UserId владельца данных организации (для запросов к БД).</summary>
+    public string DataUserId { get; init; } = "";
     public IReadOnlyList<string> Roles { get; init; } = Array.Empty<string>();
     public string? Department { get; init; }
     public int? ActiveProjectId { get; init; }

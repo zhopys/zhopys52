@@ -10,6 +10,7 @@
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDataScopeService DataScope
 @attribute [Authorize]
 
 <PageTitle>Проекты - MiniFinance</PageTitle>
@@ -680,10 +681,10 @@
             var user = await UserManager.GetUserAsync(authState.User);
 
             if (user == null) return;
-            userId = user.Id;
+            userId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
 
             projects = await DbContext.Projects
-                .Where(p => p.UserId == user.Id || p.IsDefault)
+                .Where(p => p.UserId == userId || p.IsDefault)
                 .OrderBy(p => p.IsDefault ? 0 : 1)
                 .ThenBy(p => p.Status == ProjectStatus.Active ? 0 : 1)
                 .ThenBy(p => p.Name)
@@ -696,7 +697,7 @@
             foreach (var proj in projects)
             {
                 var tx = await DbContext.Transactions
-                    .Where(t => t.ProjectId == proj.Id && t.UserId == user.Id)
+                    .Where(t => t.ProjectId == proj.Id && t.UserId == userId)
                     .ToListAsync();
 
                 projectStats.Add(new ProjectStats
@@ -724,7 +725,7 @@
             }
 
             var userTransactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id)
+                .Where(t => t.UserId == userId)
                 .ToListAsync();
 
             profitabilityMetrics = MiniFinance.Services.ProjectProfitabilityService.ComputeMetrics(projects, userTransactions);
@@ -781,7 +782,7 @@
             {
                 // Create new: check for name uniqueness per user
                 var trimmedName = newProject.Name.Trim();
-                if (await DbContext.Projects.AnyAsync(p => p.UserId == user.Id && p.Name == trimmedName && !p.IsDefault))
+                if (await DbContext.Projects.AnyAsync(p => p.UserId == userId && p.Name == trimmedName && !p.IsDefault))
                 {
                     errorMessage = "У вас уже есть проект с таким названием";
                     showError = true;
@@ -805,7 +806,7 @@
                     Notes = newProject.Notes
                 };
 
-                project.UserId = user.Id;
+                project.UserId = userId;
                 DbContext.Projects.Add(project);
                 message = "Проект создан успешно";
             }
@@ -821,7 +822,7 @@
                 }
 
                 // Ensure ownership: only owner or default projects editable
-                if (proj.UserId != null && proj.UserId != user.Id && !proj.IsDefault)
+                if (proj.UserId != null && proj.UserId != userId && !proj.IsDefault)
                 {
                     errorMessage = "Нет прав на редактирование этого проекта";
                     showError = true;
@@ -831,7 +832,7 @@
                 // Check for duplicate name per user
                 var trimmedName = newProject.Name.Trim();
                 if (proj.Name != trimmedName && 
-                    await DbContext.Projects.AnyAsync(p => p.UserId == user.Id && p.Name == trimmedName && !p.IsDefault))
+                    await DbContext.Projects.AnyAsync(p => p.UserId == userId && p.Name == trimmedName && !p.IsDefault))
                 {
                     errorMessage = "У вас уже есть проект с таким названием";
                     showError = true;
@@ -916,7 +917,7 @@
             var user = await UserManager.GetUserAsync(authState.User);
             if (user == null) return;
 
-            if (p.UserId != null && p.UserId != user.Id && !p.IsDefault)
+            if (p.UserId != null && p.UserId != userId && !p.IsDefault)
             {
                 errorMessage = "Нет прав на удаление этого проекта";
                 showError = true;

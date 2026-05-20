@@ -28,6 +28,11 @@
             </div>
         </div>
 
+        @if (!string.IsNullOrEmpty(_catMessage))
+        {
+            <div class="alert @(_catError ? "alert-danger" : "alert-success") mb-3">@_catMessage</div>
+        }
+
         @if (showAddForm)
         {
             <div class="card mb-3">
@@ -41,8 +46,8 @@
                         <div>
                             <label class="label">Тип</label>
                             <select class="input" @bind="newType">
-                                <option value="Expense">Расход</option>
-                                <option value="Income">Доход</option>
+                                <option value="@CategoryType.Expense">Расход</option>
+                                <option value="@CategoryType.Income">Доход</option>
                             </select>
                         </div>
                         <div>
@@ -105,8 +110,8 @@
                                         @if (editId == cat.Id)
                                         {
                                             <select class="input" @bind="editType" style="width:140px">
-                                                <option value="Expense">Расход</option>
-                                                <option value="Income">Доход</option>
+                                                <option value="@CategoryType.Expense">Расход</option>
+                                                <option value="@CategoryType.Income">Доход</option>
                                             </select>
                                         }
                                         else
@@ -168,6 +173,8 @@
     private string editName = string.Empty;
     private CategoryType editType = CategoryType.Expense;
     private string editKeywords = string.Empty;
+    private string? _catMessage;
+    private bool _catError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -183,28 +190,41 @@
 
     private async Task CreateCategory()
     {
-        if (string.IsNullOrWhiteSpace(newName)) return;
-        var exists = await DbContext.Categories.AnyAsync(c => c.Name == newName);
-        if (exists)
+        _catMessage = null;
+        if (string.IsNullOrWhiteSpace(newName))
         {
-            await JS.InvokeVoidAsync("alert", "Категория уже существует");
+            _catMessage = "Укажите название категории";
+            _catError = true;
             return;
         }
-
-        DbContext.Categories.Add(new Category
+        try
         {
-            Name = newName.Trim(),
-            Type = newType,
-            Keywords = string.IsNullOrWhiteSpace(newKeywords) ? null : newKeywords.Trim(),
-            Icon = string.IsNullOrWhiteSpace(newIcon) ? null : newIcon.Trim(),
-            Color = string.IsNullOrWhiteSpace(newColor) ? null : newColor
-        });
-        await DbContext.SaveChangesAsync();
-        newName = string.Empty;
-        newType = CategoryType.Expense;
-        newKeywords = string.Empty;
-        showAddForm = false;
-        await LoadCategories();
+            var trimmed = newName.Trim();
+            if (await DbContext.Categories.AnyAsync(c => c.Name.ToLower() == trimmed.ToLower()))
+                throw new InvalidOperationException("Категория уже существует");
+
+            DbContext.Categories.Add(new Category
+            {
+                Name = trimmed,
+                Type = newType,
+                Keywords = string.IsNullOrWhiteSpace(newKeywords) ? null : newKeywords.Trim(),
+                Icon = string.IsNullOrWhiteSpace(newIcon) ? null : newIcon.Trim(),
+                Color = string.IsNullOrWhiteSpace(newColor) ? null : newColor
+            });
+            await DbContext.SaveChangesAsync();
+            newName = string.Empty;
+            newType = CategoryType.Expense;
+            newKeywords = string.Empty;
+            showAddForm = false;
+            _catMessage = "Категория добавлена";
+            _catError = false;
+            await LoadCategories();
+        }
+        catch (Exception ex)
+        {
+            _catMessage = ex.Message;
+            _catError = true;
+        }
     }
 
     private void StartEdit(Category c)
@@ -224,14 +244,26 @@
 
     private async Task SaveEdit(int id)
     {
-        var cat = await DbContext.Categories.FindAsync(id);
-        if (cat == null || string.IsNullOrWhiteSpace(editName)) return;
-        cat.Name = editName.Trim();
-        cat.Type = editType;
-        cat.Keywords = string.IsNullOrWhiteSpace(editKeywords) ? null : editKeywords.Trim();
-        await DbContext.SaveChangesAsync();
-        CancelEdit();
-        await LoadCategories();
+        _catMessage = null;
+        if (string.IsNullOrWhiteSpace(editName))
+        {
+            _catMessage = "Укажите название категории";
+            _catError = true;
+            return;
+        }
+        try
+        {
+            await CategorizationService.UpdateCategoryAsync(id, editName, editType, editKeywords);
+            CancelEdit();
+            _catMessage = "Категория сохранена";
+            _catError = false;
+            await LoadCategories();
+        }
+        catch (Exception ex)
+        {
+            _catMessage = ex.Message;
+            _catError = true;
+        }
     }
 
     private async Task ConfirmDelete(int id)

@@ -2,563 +2,276 @@
 @rendermode InteractiveServer
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Components.Shared.Reports
 @using MiniFinance.Services
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
-@inject IReportService ReportService
-@inject IForecastingService ForecastingService
+@inject IReportAnalyticsService AnalyticsService
+@inject IExtendedReportService ExtendedReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
 @attribute [Authorize]
 
 <PageTitle>Финансовая аналитика — MiniFinance</PageTitle>
 
-<div class="main">
-    <AuthorizeView>
-        <Authorized>
-            <div class="page-header">
-                <div class="title">
-                    <ul class="breadcrumb">
-                        <li><a href="/">Главная</a></li>
-                        <li>Аналитика</li>
-                    </ul>
-                    <h1>Финансовая аналитика</h1>
-                    <div class="meta text-muted">Комплексный анализ доходов, расходов и прогнозирование</div>
-                </div>
-                <div class="page-actions">
-                    <select class="form-select input" style="width: auto;" @onchange="OnPeriodChanged" value="@currentPeriod">
-                        <option value="30">30 дней</option>
-                        <option value="90">90 дней</option>
-                        <option value="180">6 месяцев</option>
-                        <option value="365">Год</option>
-                        <option value="0">Все время</option>
-                    </select>
-                    <button class="btn btn-outline" @onclick="RefreshData">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-            </div>
-
-            @if (isLoading)
-            {
-                <div class="loading-state"><div class="spinner"></div></div>
-            }
-            else if (!hasData)
-            {
-                <div class="empty-state">
-                    <div class="empty-state-icon">📈</div>
-                    <div class="empty-state-title">Недостаточно данных</div>
-                    <div class="empty-state-text">Добавьте транзакции для анализа финансов.</div>
-                    <a class="btn btn-primary mt-3" href="/transactions">Добавить операции</a>
-                </div>
-            }
-            else
-            {
-                <!-- Вкладки для переключения между разделами -->
-                <div class="tab-container mb-4">
-                    <div class="tab-header" style="display: flex; border-bottom: 2px solid var(--border); gap: 0;">
-                        <button class="tab-button @(activeTab == "trends" ? "active" : "")" 
-                                @onclick='() => activeTab = "trends"' 
-                                style="padding: 12px 24px; border: none; background: transparent; cursor: pointer; color: @(activeTab == "trends" ? "var(--accent)" : "var(--text-secondary)"); border-bottom: 3px solid @(activeTab == "trends" ? "var(--accent)" : "transparent"); font-weight: @(activeTab == "trends" ? "600" : "400");">
-                            📊 Тренды и роста
-                        </button>
-                        <button class="tab-button @(activeTab == "forecast" ? "active" : "")" 
-                                @onclick='() => activeTab = "forecast"' 
-                                style="padding: 12px 24px; border: none; background: transparent; cursor: pointer; color: @(activeTab == "forecast" ? "var(--accent)" : "var(--text-secondary)"); border-bottom: 3px solid @(activeTab == "forecast" ? "var(--accent)" : "transparent"); font-weight: @(activeTab == "forecast" ? "600" : "400");">
-                            📉 Прогноз разрывов
-                        </button>
-                    </div>
-                </div>
-
-                @if (activeTab == "trends")
-                {
-                    <!-- РАЗДЕЛ 1: ТРЕНДЫ И РОСТ -->
-                    <div class="dashboard-stats mb-4">
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color:var(--accent)">📊</div>
-                            <div class="stat-content">
-                                <div class="stat-label">Маржинальность</div>
-                                <div class="stat-value @(profitMargin > 0 ? "text-success" : "text-danger")">
-                                    @profitMargin.ToString("F1")%
-                                </div>
-                                <div class="trend-badge">@GetProfitabilityHint()</div>
-                            </div>
-                        </div>
-
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color:var(--warning)">💎</div>
-                            <div class="stat-content">
-                                <div class="stat-label">Средний чек</div>
-                                <div class="stat-value">@averageTransaction.ToString("N0") <small>Br</small></div>
-                                <div class="stat-trend">@transactionCount транзакций</div>
-                            </div>
-                        </div>
-
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color:var(--success)">💰</div>
-                            <div class="stat-content">
-                                <div class="stat-label">Чистая прибыль</div>
-                                <div class="stat-value @(netProfit > 0 ? "text-success" : "text-danger")">
-                                    @netProfit.ToString("N0") <small>Br</small>
-                                </div>
-                                <div class="stat-trend">за выбранный период</div>
-                            </div>
-                        </div>
-
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color:var(--info)">🌊</div>
-                            <div class="stat-content">
-                                <div class="stat-label">Cash Flow</div>
-                                <div class="stat-value @(cashFlow > 0 ? "text-info" : "text-danger")">
-                                    @cashFlow.ToString("N0") <small>Br</small>
-                                </div>
-                                <div class="stat-trend">@(cashFlow > 0 ? "Положительный" : "Дефицит")</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 24px;">
-
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span>Рекомендуемая стратегия</span>
-                                @{ var (phase, _) = GetScalingPhase(); }
-                                <span class="badge badge-accent">Этап: @phase</span>
-                            </div>
-                            <div class="card-body">
-                                <div class="phase-actions">
-                                    @foreach (var action in GetScalingPhase().actions)
-                                    {
-                                        <div class="action-item mb-3 p-3" style="border-left: 4px solid var(--accent); background: var(--bg);">
-                                            <div class="action-title fw-bold" style="color: var(--accent)">@action.Title</div>
-                                            <div class="action-description small text-secondary">@action.Description</div>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-header">Драйверы роста (по маржинальности)</div>
-                            <div class="card-body p-0">
-                                <div class="table-responsive">
-                                    <table class="table mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>Категория</th>
-                                                <th>Маржа</th>
-                                                <th class="text-end">Доход</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var cat in topCategories.Take(5))
-                                            {
-                                                <tr>
-                                                    <td>
-                                                        <div class="fw-bold">@cat.Category</div>
-                                                        <div class="small text-muted">@cat.TransactionCount оп.</div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="progress" style="height: 6px; width: 80px; background: var(--border);">
-                                                            <div class="progress-bar-fill" style="width: @Math.Max(5, (int)cat.Profitability)%; background: var(--success);"></div>
-                                                        </div>
-                                                        <span class="small fw-bold">@cat.Profitability.ToString("F0")%</span>
-                                                    </td>
-                                                    <td class="text-end text-success fw-bold">
-                                                        +@cat.Income.ToString("N0")
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <div class="mt-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-
-                        <div class="card insight-card border-top" style="border-top: 3px solid @(profitMargin > 15 ? "var(--success)" : "var(--warning)") !important">
-                            <div class="card-body">
-                                <h3 class="h6 fw-bold mb-3">Здоровье прибыли</h3>
-                                <p class="small text-secondary mb-3">Ваша маржа составляет @profitMargin.ToString("F1")%. Это @(profitMargin > 20 ? "отличный" : "тревожный") показатель для роста.</p>
-                                <ul class="recommendations small ps-3">
-                                    @if (profitMargin >= 30) {
-                                        <li>Идеальное время для найма персонала.</li>
-                                        <li>Рассмотрите возможность захвата новых ниш.</li>
-                                    } else {
-                                        <li>Проверьте "скрытые" расходы в топ-категориях.</li>
-                                        <li>Масштабирование сейчас может сжечь капитал.</li>
-                                    }
-                                </ul>
-                            </div>
-                        </div>
-
-                        <div class="card insight-card border-top" style="border-top: 3px solid var(--warning) !important">
-                            <div class="card-body">
-                                <h3 class="h6 fw-bold mb-3">Потенциал чека</h3>
-                                <p class="small text-secondary mb-3">Средняя сделка — @averageTransaction.ToString("N0") Br. Увеличение чека на 10% даст прирост прибыли в @((netProfit * 0.15m).ToString("N0")) Br.</p>
-                                <ul class="recommendations small ps-3">
-                                    <li>Внедрите пакетные предложения (Bundle).</li>
-                                    <li>Добавьте сопутствующие услуги к лидерам продаж.</li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <div class="card insight-card border-top" style="border-top: 3px solid var(--accent) !important">
-                            <div class="card-body">
-                                <h3 class="h6 fw-bold mb-3">Инвест-потенциал</h3>
-                                @{ decimal inv = netProfit * 0.2m; }
-                                <p class="small text-secondary mb-3">Вы можете безболезненно реинвестировать до <strong>@(inv > 0 ? inv.ToString("N0") : "0") Br</strong> в развитие маркетинга.</p>
-                                <ul class="recommendations small ps-3">
-                                    <li>Фокус на категории: @(topCategories.FirstOrDefault()?.Category ?? "Основные").</li>
-                                    <li>Создайте резервный фонд на 3 месяца.</li>
-                                </ul>
-                            </div>
-                        </div>
-
-                    </div>
-                }
-                else if (activeTab == "forecast")
-                {
-                    <!-- РАЗДЕЛ 2: ПРОГНОЗ РАЗРЫВОВ -->
-                    @if (forecast.HasRisk) {
-                        <div class="alert alert-danger d-flex align-items-center mb-4">
-                            <span style="font-size: 1.5rem; margin-right: 12px;">⚠️</span>
-                            <div>
-                                <div class="fw-bold">Обнаружен риск: @GetRiskLabel(forecast.RiskLevel)</div>
-                                <div class="small">Минимальный остаток составит @forecast.MinBalance.ToString("N0") Br.</div>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="kpi-grid mb-4">
-                        <div class="kpi-card">
-                            <div class="kpi-label">Текущий баланс</div>
-                            <div class="kpi-value">@forecast.CurrentBalance.ToString("N0") <span class="small muted">Br</span></div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-label">Дней до разрыва</div>
-                            <div class="kpi-value @(forecast.Gaps.Any() ? "text-danger" : "text-success")">
-                                @GetDaysToGap()
-                            </div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-label">Итог периода</div>
-                            <div class="kpi-value @(forecast.BaseScenario.FinalBalance < 0 ? "text-danger" : "text-success")">
-                                @forecast.BaseScenario.FinalBalance.ToString("N0")
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr; @(GetWideLayoutStyles()) gap: 24px;">
-                        <div style="min-width: 0;">
-                            <div class="card mb-4">
-                                <div class="card-header">Динамика остатков (Базовый сценарий)</div>
-                                <div class="card-body" style="padding: 0;">
-                                    @RenderChart(forecast.BaseScenario.Points)
-                                </div>
-                            </div>
-
-                            <div class="card">
-                                <div class="card-header">Периоды дефицита средств</div>
-                                <div class="table-responsive">
-                                    <table class="table">
-                                        <thead>
-                                            <tr>
-                                                <th>Период</th>
-                                                <th>Длительность</th>
-                                                <th>Дефицит</th>
-                                                <th class="text-end">Статус</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var gap in forecast.Gaps) {
-                                                <tr>
-                                                    <td class="fw-bold">@gap.StartDate.ToString("dd.MM") — @(gap.EndDate?.ToString("dd.MM") ?? "...")</td>
-                                                    <td>@gap.Duration дн.</td>
-                                                    <td class="text-danger fw-bold">@gap.MinBalance.ToString("N0") Br</td>
-                                                    <td class="text-end">
-                                                        <span class="severity-badge @GetSeverityClass(gap.Severity)">
-                                                            @GetSeverityLabel(gap.Severity)
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            }
-                                            @if (!forecast.Gaps.Any()) {
-                                                <tr>
-                                                    <td colspan="4" class="text-center py-5">
-                                                        <div class="text-success fw-bold">Разрывов не обнаружено</div>
-                                                        <div class="small text-muted">Ваша ликвидность в порядке</div>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div class="card mb-4">
-                                <div class="card-header">Сценарии прогноза</div>
-                                <div class="card-body">
-                                    @foreach (var s in new[] { forecast.OptimisticScenario, forecast.BaseScenario, forecast.PessimisticScenario }) {
-                                        <div class="mb-4">
-                                            <div class="d-flex justify-content-between mb-1" style="font-size: 13px;">
-                                                <span class="text-secondary">@s.Name</span>
-                                                <span class="fw-bold">@s.FinalBalance.ToString("N0") Br</span>
-                                            </div>
-                                            <div style="height: 6px; background: var(--bg); border-radius: 10px; overflow: hidden;">
-                                                <div style="height: 100%; width: @GetScenarioPercent(s.FinalBalance)%; background: @GetScenarioColor(s.Name); transition: width 0.6s ease;"></div>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-
-                            <div class="card shadow-sm" style="background: var(--accent-weak); border-color: var(--accent); border-style: dashed;">
-                                <div class="card-body">
-                                    <h3 style="color: var(--accent); font-size: 15px;" class="mb-2">💡 Рекомендация ИИ</h3>
-                                    <div class="insight-text" style="font-size: 13px; line-height: 1.6;">
-                                        @if (forecast.DaysInRed > 0) {
-                                            <p>Обнаружена нехватка средств в течение <strong>@forecast.DaysInRed дней</strong>.</p>
-                                            <ul class="recommendations small">
-                                                <li>Перенесите оплату налогов или крупных закупок на более поздний срок.</li>
-                                                <li>Проверьте дебиторскую задолженность — время напомнить клиентам об оплате.</li>
-                                            </ul>
-                                        } else {
-                                            <p>Ситуация стабильна. Все обязательства будут выполнены в срок.</p>
-                                            <p class="insight-description">Попробуйте вложить свободные <strong>@((forecast.MinBalance * 0.2m).ToString("N0")) Br</strong> в развитие или краткосрочный депозит.</p>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                }
-            }
-        </Authorized>
-    </AuthorizeView>
+<div class="page-header">
+    <div class="title">
+        <h1>Финансовая аналитика</h1>
+        <div class="meta text-muted">P&amp;L, движение денег, графики и сравнение периодов</div>
+    </div>
+    <div class="page-actions analytics-toolbar">
+        <select class="input" style="width:auto" @bind="_periodType" @bind:after="ReloadAsync">
+            <option value="Month">Месяц</option>
+            <option value="Quarter">Квартал</option>
+            <option value="Year">Год</option>
+            <option value="Custom">Произвольный</option>
+        </select>
+        @if (_periodType == "Custom")
+        {
+            <input type="date" class="input" @bind="_customStart" @bind:after="ReloadAsync" />
+            <span class="text-muted">—</span>
+            <input type="date" class="input" @bind="_customEnd" @bind:after="ReloadAsync" />
+        }
+        else
+        {
+            <input type="month" class="input" value="@_selectedMonthKey" @onchange="OnMonthInputChanged" />
+        }
+        <select class="input" style="width:auto" @bind="_compareMode" @bind:after="ReloadAsync">
+            <option value="mom">Месяц к месяцу</option>
+            <option value="yoy">Год к году</option>
+            <option value="none">Без сравнения</option>
+        </select>
+        <button class="btn btn-outline" @onclick="ReloadAsync" disabled="@_loading">Обновить</button>
+    </div>
 </div>
 
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-error mb-3">@_error</div>
+}
+
+@if (_loading && _snapshot == null)
+{
+    <div class="loading-state"><div class="spinner"></div></div>
+}
+else if (_snapshot != null && !_snapshot.DataStatus.HasData)
+{
+    <div class="empty-state">
+        <div class="empty-state-title">Недостаточно данных</div>
+        <p class="text-muted">Добавьте или импортируйте транзакции для построения отчётов.</p>
+        <div class="page-actions" style="justify-content:center;margin-top:1rem">
+            <a href="/import" class="btn btn-primary">Импорт CSV</a>
+            <a href="/transactions" class="btn btn-outline">Операции</a>
+        </div>
+    </div>
+}
+else if (_snapshot != null)
+{
+    <div class="reports-period-banner mb-3">
+        <span class="reports-period-dates">
+            @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
+        </span>
+    </div>
+
+    <ReportsKpiGrid Metrics="@_snapshot.Kpi" Loading="@_refreshing" />
+
+    <div class="hub-layout mt-3">
+        <nav class="hub-nav card">
+            <button type="button" class="hub-nav-item @(_tab == "pl" ? "active" : "")" @onclick='() => SetTab("pl")'>P&amp;L отчёт</button>
+            <button type="button" class="hub-nav-item @(_tab == "cashflow" ? "active" : "")" @onclick='() => SetTab("cashflow")'>Cash Flow</button>
+            <button type="button" class="hub-nav-item @(_tab == "charts" ? "active" : "")" @onclick='() => SetTab("charts")'>Графики</button>
+            <button type="button" class="hub-nav-item @(_tab == "compare" ? "active" : "")" @onclick='() => SetTab("compare")'>Сравнение</button>
+            <button type="button" class="hub-nav-item @(_tab == "export" ? "active" : "")" @onclick='() => SetTab("export")'>Экспорт</button>
+        </nav>
+
+        <div class="hub-content @(_refreshing ? "hub-refreshing" : "")">
+            @if (_tab == "pl")
+            {
+                <PlReportPanel Report="@_snapshot.ProfitLoss" />
+            }
+            else if (_tab == "cashflow")
+            {
+                <CashFlowPanel Statement="@_snapshot.CashFlow" MonthlyCashflow="@_snapshot.MonthlyCashflow" />
+            }
+            else if (_tab == "charts")
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+                    <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
+                                        SelectedCategory="@_selectedCategory"
+                                        OnCategorySelected="OnCategoryFilter" />
+                    <CashGapForecastChart Forecast="@_snapshot.Forecast" MinCashThreshold="@_snapshot.Forecast.MinCashThreshold" />
+                </div>
+                @if (_extended?.Forecast.Anomalies.Any() == true)
+                {
+                    <div class="card mt-3">
+                        <div class="card-header">Аномалии расходов</div>
+                        <div class="card-body" style="padding:0">
+                            <table class="table mb-0">
+                                <thead>
+                                    <tr><th>Дата</th><th>Описание</th><th>Категория</th><th class="text-end">Сумма</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var a in _extended.Forecast.Anomalies.Take(10))
+                                    {
+                                        <tr>
+                                            <td>@a.Date.ToString("dd.MM.yyyy")</td>
+                                            <td>@a.Description</td>
+                                            <td>@a.Category</td>
+                                            <td class="text-end text-danger">@a.Amount.ToString("N0") Br</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+            else if (_tab == "compare")
+            {
+                <PeriodComparisonPanel Comparison="@(_extended?.PeriodComparison ?? new())" />
+                @if (_compareMode == "none")
+                {
+                    <div class="alert alert-info mt-3">Выберите «Месяц к месяцу» или «Год к году» в фильтрах выше.</div>
+                }
+            }
+            else if (_tab == "export")
+            {
+                <div class="card">
+                    <div class="card-header">Экспорт отчётов</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Период: @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
+                        </p>
+                        <div class="export-actions-grid">
+                            <button class="btn btn-outline" @onclick='() => Export("csv", "full")'>CSV — полный отчёт</button>
+                            <button class="btn btn-outline" @onclick='() => Export("xlsx", "full")'>Excel — полный отчёт</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "pl")'>PDF — P&amp;L</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "cashflow")'>PDF — Cash Flow</button>
+                        </div>
+                        <p class="small text-muted mt-3">
+                            Также доступны отчёты на странице <a href="/reports">Финансовые отчёты</a>.
+                        </p>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @code {
-    private string activeTab = "trends";
-    private bool isLoading = true;
-    private bool hasData = false;
-    private string currentPeriod = "30";
-    private int forecastDays = 90;
+    private string _userId = "";
+    private string _tab = "pl";
+    private bool _loading = true;
+    private bool _refreshing;
+    private string? _error;
 
-    // Данные для трендов
-    private decimal profitMargin = 0;
-    private decimal averageTransaction = 0;
-    private int transactionCount = 0;
-    private decimal netProfit = 0;
-    private decimal cashFlow = 0;
-    private decimal totalIncome = 0;
-    private decimal totalExpense = 0;
-    private List<CategoryMetrics> topCategories = new();
+    private ReportAnalyticsSnapshot? _snapshot;
+    private ExtendedAnalyticsDto? _extended;
 
-    // Данные для прогноза
-    private AdvancedCashForecast forecast = new();
+    private string _periodType = "Month";
+    private string _compareMode = "mom";
+    private string _selectedMonthKey = "";
+    private DateTime _customStart;
+    private DateTime _customEnd;
+    private string? _selectedCategory;
 
-    protected override async Task OnInitializedAsync() => await LoadData();
-
-    private async Task RefreshData() => await LoadData();
-
-    private async Task OnPeriodChanged(ChangeEventArgs e)
+    protected override async Task OnInitializedAsync()
     {
-        currentPeriod = e.Value?.ToString() ?? "30";
-        await LoadData();
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
+        _userId = user.Id;
+        var m = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _selectedMonthKey = $"{m:yyyy-MM}";
+        _customStart = m;
+        _customEnd = m.AddMonths(1).AddDays(-1);
+        await ReloadAsync();
     }
 
-    private async Task LoadData()
+    private async Task OnMonthInputChanged(ChangeEventArgs e)
     {
-        isLoading = true;
+        _selectedMonthKey = e.Value?.ToString() ?? _selectedMonthKey;
+        if (DateTime.TryParse(_selectedMonthKey + "-01", out var d))
+        {
+            _customStart = new DateTime(d.Year, d.Month, 1);
+            _customEnd = _customStart.AddMonths(1).AddDays(-1);
+        }
+        await ReloadAsync();
+    }
+
+    private void SetTab(string tab) => _tab = tab;
+
+    private ReportFilters BuildFilters(string? exportReport = null)
+    {
+        var (start, end) = _periodType == "Custom"
+            ? (_customStart.Date, _customEnd.Date)
+            : ReportFilters.ResolvePeriodRange(
+                DateTime.TryParse(_selectedMonthKey + "-01", out var a) ? a : DateTime.Today,
+                _periodType,
+                _customStart,
+                _customEnd);
+
+        return new ReportFilters
+        {
+            Start = start,
+            End = end,
+            PeriodType = _periodType,
+            CompareMode = _compareMode,
+            ForecastDays = 90,
+            Categories = string.IsNullOrEmpty(_selectedCategory) ? Array.Empty<string>() : new[] { _selectedCategory },
+            ExportReport = exportReport ?? _tab switch
+            {
+                "pl" => "pl",
+                "cashflow" => "cashflow",
+                _ => "full"
+            }
+        };
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (string.IsNullOrEmpty(_userId)) return;
+        _error = null;
+        _loading = _snapshot == null;
+        _refreshing = _snapshot != null;
+        StateHasChanged();
+
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = await UserManager.GetUserAsync(authState.User);
-            if (user == null) return;
-
-            DateTime startDate = currentPeriod == "0" ? DateTime.MinValue : DateTime.Today.AddDays(-int.Parse(currentPeriod));
-
-            var transactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id && t.Date >= startDate)
-                .ToListAsync();
-
-            if (!transactions.Any()) { hasData = false; return; }
-
-            // Загрузка данных для трендов
-            totalIncome = transactions.Where(t => t.Amount > 0).Sum(t => t.Amount);
-            totalExpense = Math.Abs(transactions.Where(t => t.Amount < 0).Sum(t => t.Amount));
-            netProfit = totalIncome - totalExpense;
-            cashFlow = transactions.Sum(t => t.Amount);
-            transactionCount = transactions.Count;
-            profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
-            averageTransaction = transactionCount > 0 ? Math.Abs(transactions.Average(t => t.Amount)) : 0;
-
-            // Группировка по категориям
-            topCategories = transactions
-                .GroupBy(t => t.Category)
-                .Select(g => {
-                    var inc = g.Where(t => t.Amount > 0).Sum(t => t.Amount);
-                    var exp = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount));
-                    return new CategoryMetrics {
-                        Category = g.Key,
-                        Income = inc,
-                        Expense = exp,
-                        TransactionCount = g.Count(),
-                        Profitability = inc > 0 ? ((inc - exp) / inc) * 100 : 0
-                    };
-                })
-                .OrderByDescending(c => c.Profitability)
-                .ToList();
-
-            // Загрузка данных для прогноза
-            var reminders = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
-            var allTransactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id && t.IsConfirmed)
-                .ToListAsync();
-            forecast = ForecastingService.ForecastCashGapsAdvanced(allTransactions, reminders, new List<TaxPayment>(), forecastDays);
-
-            hasData = true;
+            var filters = BuildFilters();
+            _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
+            _extended = await ExtendedReportService.BuildAsync(_userId, filters, null);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading analytics data: {ex.Message}");
+            _error = ex.Message;
         }
-        finally { isLoading = false; }
+        finally
+        {
+            _loading = false;
+            _refreshing = false;
+        }
     }
 
-    private string GetProfitabilityHint() => profitMargin switch {
-        >= 30 => "Отлично",
-        >= 15 => "Стабильно",
-        > 0 => "Низкая",
-        _ => "Убыток"
-    };
-
-    private (string phase, List<ScalingAction> actions) GetScalingPhase()
+    private async Task OnCategoryFilter(string? category)
     {
-        if (netProfit <= 0) return ("Стабилизация", new() {
-            new("Стоп-расходы", "Заморозьте все необязательные траты до выхода в плюс."),
-            new("Анализ цен", "Ваш средний чек может быть ниже себестоимости.")
-        });
-
-        if (profitMargin >= 30) return ("Агрессивный рост", new() {
-            new("Масштабирование", "Увеличивайте рекламный бюджет в 2 раза."),
-            new("Новые кадры", "Пора делегировать операционку.")
-        });
-
-        return ("Оптимизация", new() {
-            new("LTV", "Работайте над повторными продажами."),
-            new("Процессы", "Автоматизируйте рутину перед расширением.")
-        });
+        _selectedCategory = _selectedCategory == category ? null : category;
+        await ReloadAsync();
     }
 
-    private string GetDaysToGap() {
-        var gap = forecast.Gaps.OrderBy(g => g.StartDate).FirstOrDefault();
-        if (gap == null) return "Нет";
-        var d = (gap.StartDate - DateTime.Today).Days;
-        return d <= 0 ? "Сегодня" : $"{d} дн.";
-    }
-
-    private string GetWideLayoutStyles() => "grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));";
-
-    private RenderFragment RenderChart(List<ScenarioPoint> points) => __builder => {
-        if (points == null || !points.Any()) return;
-        var max = points.Max(p => p.Balance);
-        var min = points.Min(p => p.Balance);
-        var range = Math.Max((double)(max - min), 1.0);
-        var h = 180;
-
-        <div style="padding: 24px 0 12px 0; background: var(--surface);">
-            <svg width="100%" height="@(h + 20)" viewBox="0 0 @points.Count @(h + 20)" preserveAspectRatio="none" style="overflow:visible">
-                <defs>
-                    <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.2" />
-                        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
-                    </linearGradient>
-                </defs>
-                @{ 
-                    string pathLine = ""; 
-                    for (int i = 0; i < points.Count; i++) {
-                        var y = h - (double)((points[i].Balance - min) / (decimal)range * h);
-                        pathLine += (i == 0 ? "M" : "L") + $"{i} {y} ";
-                    }
-                    string pathArea = pathLine + $" L {points.Count - 1} {h + 20} L 0 {h + 20} Z";
-                }
-                <path d="@pathArea" fill="url(#chartFill)" />
-                <path d="@pathLine" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-
-                @if (min < 0) {
-                    var zy = h - (double)((0 - min) / (decimal)range * h);
-                    <line x1="0" y1="@zy" x2="@points.Count" y2="@zy" stroke="var(--danger)" stroke-width="1" stroke-dasharray="4" vector-effect="non-scaling-stroke" />
-                }
-            </svg>
-            <div class="d-flex justify-content-between px-4 mt-3 small muted fw-bold">
-                <span>@points.First().Date.ToString("dd MMM")</span>
-                <span>@points.Last().Date.ToString("dd MMM")</span>
-            </div>
-        </div>
-    };
-
-    private string GetRiskLabel(string l) => l switch {
-        "critical" => "Критический",
-        "high" => "Высокий",
-        "medium" => "Средний",
-        _ => "Низкий"
-    };
-
-    private string GetSeverityClass(GapSeverity s) => s switch {
-        GapSeverity.Critical => "severity-critical",
-        GapSeverity.High => "severity-high",
-        GapSeverity.Medium => "severity-medium",
-        _ => "severity-low"
-    };
-
-    private string GetSeverityLabel(GapSeverity s) => s switch {
-        GapSeverity.Critical => "Критическая",
-        GapSeverity.High => "Высокая",
-        GapSeverity.Medium => "Средняя",
-        _ => "Низкая"
-    };
-
-    private string GetScenarioColor(string n) => 
-        n.Contains("Опт") ? "var(--success)" : 
-        n.Contains("Пес") ? "var(--danger)" : "var(--accent)";
-
-    private double GetScenarioPercent(decimal b) {
-        var m = Math.Max(forecast.OptimisticScenario.FinalBalance, 1);
-        return Math.Clamp((double)(b / m * 100), 10, 100);
-    }
-
-    public class CategoryMetrics {
-        public string Category { get; set; } = "";
-        public decimal Income { get; set; }
-        public decimal Expense { get; set; }
-        public int TransactionCount { get; set; }
-        public decimal Profitability { get; set; }
-    }
-
-    public class ScalingAction {
-        public string Title { get; set; }
-        public string Description { get; set; }
-        public ScalingAction(string t, string d) { Title = t; Description = d; }
+    private void Export(string format, string report)
+    {
+        var qs = BuildFilters(report).ToQueryString(format, report);
+        var path = format switch
+        {
+            "xlsx" => $"/reports/export/xlsx?{qs}",
+            "pdf" => $"/reports/export/pdf?{qs}&tab={report}",
+            _ => $"/reports/export/csv?{qs}"
+        };
+        NavigationManager.NavigateTo(path, forceLoad: true);
     }
 }
-
-<style>
-    .table thead th { border-top: none; }
-    .kpi-card { transition: transform 0.2s; }
-    .kpi-card:hover { transform: translateY(-2px); }
-
-    @@media (min-width: 992px) {
-        .main {
-            padding: 32px 48px;
-        }
-    }
-</style>
