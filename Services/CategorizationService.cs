@@ -1,50 +1,77 @@
+using Microsoft.EntityFrameworkCore;
+using MiniFinance.Data;
+using MiniFinance.Data.Models;
+
 namespace MiniFinance.Services
 {
     public class CategorizationService : ICategorizationService
     {
-        private readonly Dictionary<string, List<string>> _categoryKeywords = new()
-        {
-            // Расходы
-            ["Аренда"] = new() { "аренда", "rent", "арендная", "помещение" },
-            ["Зарплата"] = new() { "зарплата", "salary", "оклад", "зп", "выплата сотрудникам", "персонал" },
-            ["Налоги"] = new() { "налог", "tax", "ндфл", "ндс", "взнос", "пенсионный фонд", "фсс" },
-            ["Коммунальные"] = new() { "электричество", "вода", "газ", "отопление", "коммунальные", "utility", "свет" },
-            ["Связь"] = new() { "интернет", "телефон", "связь", "мобильная", "internet", "phone", "сотовая" },
-            ["Офис"] = new() { "канцелярия", "бумага", "принтер", "офис", "мебель", "оборудование", "office" },
-            ["Реклама"] = new() { "реклама", "маркетинг", "продвижение", "advertising", "яндекс директ", "google ads" },
-            ["Транспорт"] = new() { "бензин", "топливо", "такси", "транспорт", "доставка", "логистика", "fuel", "газ" },
-            ["Закупка товаров"] = new() { "закупка", "товар", "поставщик", "материалы", "сырье", "purchase", "supplier" },
-            ["Банк"] = new() { "комиссия", "банк", "обслуживание счета", "bank", "fee", "процент" },
-            ["Страхование"] = new() { "страхование", "страховка", "insurance", "полис" },
-            ["Обучение"] = new() { "обучение", "курсы", "тренинг", "семинар", "training", "education" },
-            ["Программное обеспечение"] = new() { "подписка", "saas", "софт", "лицензия", "software", "subscription", "облако" },
+        private readonly ApplicationDbContext _db;
 
-            // Доходы
-            ["Продажи"] = new() { "оплата", "продажа", "payment", "sale", "клиент", "заказ", "invoice" },
-            ["Услуги"] = new() { "услуга", "service", "консультация", "работа" },
-            ["Инвестиции"] = new() { "дивиденды", "проценты", "инвестиции", "investment", "dividend" }
+        private static readonly Dictionary<string, List<string>> FallbackKeywords = new()
+        {
+            ["Аренда"] = new() { "аренда", "rent", "арендная", "помещение" },
+            ["Зарплата"] = new() { "зарплата", "salary", "оклад", "зп", "персонал" },
+            ["Налоги"] = new() { "налог", "tax", "ндфл", "ндс", "взнос", "фсс" },
+            ["Связь"] = new() { "интернет", "телефон", "связь", "мобильная", "internet", "phone" },
+            ["Офисные расходы"] = new() { "канцелярия", "бумага", "принтер", "офис", "мебель", "office" },
+            ["Реклама"] = new() { "реклама", "маркетинг", "продвижение", "advertising", "google ads" },
+            ["Хостинг"] = new() { "хостинг", "hosting", "сервер", "домен", "cloud" },
+            ["Закупки"] = new() { "закупка", "закупки", "поставка", "товар", "материал" },
+            ["Доход от услуг"] = new() { "оплата", "продажа", "payment", "sale", "клиент", "услуга", "service", "консультация" }
         };
+
+        public CategorizationService(ApplicationDbContext db)
+        {
+            _db = db;
+        }
 
         public string CategorizeTransaction(string description, decimal amount)
         {
             if (string.IsNullOrWhiteSpace(description))
+                return amount >= 0 ? CategoryDefaults.DefaultIncome : CategoryDefaults.DefaultExpense;
+
+            var lowerDescription = description.ToLowerInvariant();
+            var categories = _db.Categories.AsNoTracking().ToList();
+
+            foreach (var cat in categories.Where(c => !string.IsNullOrWhiteSpace(c.Keywords)))
             {
-                return amount >= 0 ? "Доход" : "Расход";
+                var keywords = cat.Keywords!.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (keywords.Any(k => lowerDescription.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                    return cat.Name;
             }
 
-            var lowerDescription = description.ToLower();
-
-            // Ищем совпадения по ключевым словам
-            foreach (var category in _categoryKeywords)
+            foreach (var pair in FallbackKeywords)
             {
-                if (category.Value.Any(keyword => lowerDescription.Contains(keyword)))
-                {
-                    return category.Key;
-                }
+                if (pair.Value.Any(k => lowerDescription.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                    return pair.Key;
             }
 
-            // Если не нашли совпадений, используем базовую категоризацию
-            return amount >= 0 ? "Доход" : "Расход";
+            return amount >= 0 ? CategoryDefaults.DefaultIncome : CategoryDefaults.DefaultExpense;
         }
+
+        public async Task EnsureDefaultCategoriesAsync()
+        {
+            foreach (var (name, type, keywords, icon, color) in CategoryDefaults.All)
+            {
+                if (await _db.Categories.AnyAsync(c => c.Name == name))
+                    continue;
+
+                _db.Categories.Add(new Category
+                {
+                    Name = name,
+                    Type = type,
+                    Keywords = string.IsNullOrWhiteSpace(keywords) ? null : keywords,
+                    Icon = icon,
+                    Color = color,
+                    IsDefault = true
+                });
+            }
+
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<List<string>> GetCategoryNamesAsync() =>
+            await _db.Categories.OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
     }
 }

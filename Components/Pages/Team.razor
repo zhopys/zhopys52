@@ -1,0 +1,111 @@
+@page "/team"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@using MiniFinance.Services
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "OwnerOnly")]
+
+<PageTitle>Команда и роли — MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Команда и роли</h1>
+        <div class="meta text-muted">Владелец · Бухгалтер · Менеджер</div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="small text-muted mb-3">
+            <strong>Владелец</strong> — полный доступ, настройки, утверждение расходов.
+            <strong>Бухгалтер</strong> — отчёты и транзакции, без настроек.
+            <strong>Менеджер</strong> — свой отдел/проект; новые расходы требуют утверждения.
+        </p>
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Пользователи</div>
+    <div class="card-body" style="padding:0">
+        <table class="table">
+            <thead>
+                <tr><th>Email</th><th>Роль</th><th>Отдел</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _users)
+                {
+                    <tr>
+                        <td>@u.Email</td>
+                        <td>
+                            <select class="input input-sm" value="@GetRole(u)" @onchange="e => SetRole(u, e)">
+                                @foreach (var r in AppRoles.All)
+                                {
+                                    <option value="@r">@RoleLabel(r)</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <input class="input input-sm" value="@(u.Department ?? "")"
+                                   @onchange="e => SetDepartment(u, e.Value?.ToString())" />
+                        </td>
+                        <td class="text-muted small">@(u.Id == _currentUserId ? "вы" : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<ApplicationUser> _users = new();
+    private string _currentUserId = "";
+    private string? _message;
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        var me = await UserManager.GetUserAsync(auth.User);
+        if (me == null) return;
+        _currentUserId = me.Id;
+        _users = UserManager.Users.OrderBy(u => u.Email).ToList();
+    }
+
+    private string GetRole(ApplicationUser u)
+    {
+        var roles = UserManager.GetRolesAsync(u).GetAwaiter().GetResult();
+        return roles.FirstOrDefault() ?? AppRoles.Owner;
+    }
+
+    private async Task SetRole(ApplicationUser u, ChangeEventArgs e)
+    {
+        var role = e.Value?.ToString() ?? AppRoles.Owner;
+        var current = await UserManager.GetRolesAsync(u);
+        await UserManager.RemoveFromRolesAsync(u, current);
+        await UserManager.AddToRoleAsync(u, role);
+        _message = $"Роль обновлена: {u.Email}";
+        _isError = false;
+    }
+
+    private async Task SetDepartment(ApplicationUser u, string? dept)
+    {
+        u.Department = string.IsNullOrWhiteSpace(dept) ? null : dept.Trim();
+        await UserManager.UpdateAsync(u);
+    }
+
+    private static string RoleLabel(string r) => r switch
+    {
+        AppRoles.Accountant => "Бухгалтер",
+        AppRoles.Manager => "Менеджер",
+        _ => "Владелец"
+    };
+}

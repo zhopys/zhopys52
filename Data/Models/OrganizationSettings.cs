@@ -18,5 +18,17 @@ namespace MiniFinance.Data.Models
         // Integration settings
         public string? ApiKey { get; set; }
         public string? IntegrationUrl { get; set; }
+
+        public decimal MinCashBalance { get; set; } = 1000m;
+
+        public int WeekStartsOn { get; set; } = 1;
+
+        public int FinancialYearStartMonth { get; set; } = 1;
+
+        [StringLength(20)]
+        public string DateFormat { get; set; } = "dd.MM.yyyy";
+
+        [StringLength(80)]
+        public string TimeZoneId { get; set; } = "Europe/Minsk";
     }
 }

@@ -8,7 +8,7 @@
         try{
             if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
         }catch(e){}
-        return 'light';
+        return 'dark';
     }
 
     function applyTheme(theme){
@@ -47,4 +47,15 @@
     // Helper for direct onclick handlers
     window.toggleTheme = toggleTheme;
     window.setTheme = setTheme;
+    // Download helper for layouts
+    window.downloadFile = function (url, filename) {
+        try {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename || '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (e) { console.error(e); }
+    };
 })();

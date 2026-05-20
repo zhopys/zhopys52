@@ -1,0 +1,138 @@
+@page "/debts"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject IDebtService DebtService
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize]
+
+<PageTitle>Долги — MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Долги</h1>
+        <div class="meta text-muted">Дебиторка и кредиторка</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" @onclick="OpenCreate">Добавить долг</button>
+    </div>
+</div>
+
+@if (_summary != null)
+{
+    <div class="reports-tax-summary mb-3">
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Нам должны</span>
+            <span class="reports-tax-kpi-value text-success">@_summary.TotalReceivable.ToString("N0") Br</span>
+        </div>
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Мы должны</span>
+            <span class="reports-tax-kpi-value text-danger">@_summary.TotalPayable.ToString("N0") Br</span>
+        </div>
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Чистая позиция</span>
+            <span class="reports-tax-kpi-value">@_summary.NetPosition.ToString("N0") Br</span>
+        </div>
+    </div>
+}
+
+@if (_showForm)
+{
+    <div class="card mb-3">
+        <div class="card-header">Новый долг</div>
+        <div class="card-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
+                <div>
+                    <label class="label">Тип</label>
+                    <select class="input" @bind="_form.Type">
+                        <option value="@DebtType.Receivable">Нам должны (дебиторка)</option>
+                        <option value="@DebtType.Payable">Мы должны (кредиторка)</option>
+                    </select>
+                </div>
+                <div><label class="label">Контрагент *</label><input class="input" @bind="_form.CounterpartyName" /></div>
+                <div><label class="label">Сумма *</label><input type="number" class="input" @bind="_form.Amount" /></div>
+                <div><label class="label">Срок</label><input type="date" class="input" @bind="_dueDate" /></div>
+            </div>
+            <div class="mt-3" style="display:flex;gap:.5rem">
+                <button class="btn btn-primary" @onclick="Save">Сохранить</button>
+                <button class="btn btn-outline" @onclick="() => _showForm = false">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body" style="padding:0">
+        @if (_debts == null) { <div class="empty-state small">Загрузка...</div> }
+        else if (!_debts.Any()) { <div class="empty-state">Нет открытых долгов</div> }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr><th>Контрагент</th><th>Тип</th><th class="text-end">Сумма</th><th class="text-end">Оплачено</th><th>Срок</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _debts)
+                    {
+                        <tr>
+                            <td>@d.CounterpartyName</td>
+                            <td>@(d.Type == DebtType.Receivable ? "Дебиторка" : "Кредиторка")</td>
+                            <td class="text-end">@d.Amount.ToString("N0")</td>
+                            <td class="text-end">@d.PaidAmount.ToString("N0")</td>
+                            <td>@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline" @onclick="() => Pay(d)">Погасить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private string _userId = "";
+    private List<Debt>? _debts;
+    private DebtSummaryDto? _summary;
+    private bool _showForm;
+    private Debt _form = new() { Type = DebtType.Receivable };
+    private DateTime? _dueDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
+        _userId = user.Id;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _debts = await DebtService.ListAsync(_userId);
+        _summary = await DebtService.GetSummaryAsync(_userId);
+    }
+
+    private void OpenCreate() { _form = new Debt { Type = DebtType.Receivable }; _dueDate = null; _showForm = true; }
+
+    private async Task Save()
+    {
+        _form.DueDate = _dueDate;
+        await DebtService.CreateAsync(_form, _userId);
+        _showForm = false;
+        await ReloadAsync();
+    }
+
+    private async Task Pay(Debt d)
+    {
+        var remaining = d.Amount - d.PaidAmount;
+        await DebtService.RecordPaymentAsync(d.Id, remaining, _userId);
+        await ReloadAsync();
+    }
+}

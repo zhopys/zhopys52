@@ -1,12 +1,14 @@
 @page "/categories"
 @rendermode InteractiveServer
 @using MiniFinance.Data.Models
+@using MiniFinance.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Data
 @inject ApplicationDbContext DbContext
+@inject ICategorizationService CategorizationService
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -42,6 +44,14 @@
                                 <option value="Expense">Расход</option>
                                 <option value="Income">Доход</option>
                             </select>
+                        </div>
+                        <div>
+                            <label class="label">Иконка</label>
+                            <input class="input" placeholder="receipt" @bind="newIcon" />
+                        </div>
+                        <div>
+                            <label class="label">Цвет</label>
+                            <input class="input" type="color" @bind="newColor" />
                         </div>
                         <div style="grid-column:1/-1">
                             <label class="label">Ключевые слова для авто-категоризации</label>
@@ -150,6 +160,8 @@
     private string newName = string.Empty;
     private CategoryType newType = CategoryType.Expense;
     private string newKeywords = string.Empty;
+    private string newIcon = string.Empty;
+    private string newColor = "#7c3aed";
     private bool showAddForm = false;
 
     private int editId = 0;
@@ -159,6 +171,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await CategorizationService.EnsureDefaultCategoriesAsync();
         await LoadCategories();
     }
 
@@ -182,7 +195,9 @@
         {
             Name = newName.Trim(),
             Type = newType,
-            Keywords = string.IsNullOrWhiteSpace(newKeywords) ? null : newKeywords.Trim()
+            Keywords = string.IsNullOrWhiteSpace(newKeywords) ? null : newKeywords.Trim(),
+            Icon = string.IsNullOrWhiteSpace(newIcon) ? null : newIcon.Trim(),
+            Color = string.IsNullOrWhiteSpace(newColor) ? null : newColor
         });
         await DbContext.SaveChangesAsync();
         newName = string.Empty;
@@ -230,8 +245,18 @@
         var used = await DbContext.Transactions.AnyAsync(t => t.Category == cat.Name);
         if (used)
         {
-            await JS.InvokeVoidAsync("alert", "Нельзя удалить — к ней привязаны транзакции.");
-            return;
+            // Reassign transactions to 'Прочее' category
+            var other = await DbContext.Categories.FirstOrDefaultAsync(c => c.Name == "Прочее");
+            if (other == null)
+            {
+                other = new Category { Name = "Прочее", Type = CategoryType.Expense, IsDefault = true };
+                DbContext.Categories.Add(other);
+                await DbContext.SaveChangesAsync();
+            }
+
+            var tx = await DbContext.Transactions.Where(t => t.Category == cat.Name).ToListAsync();
+            foreach (var t in tx) t.Category = other.Name;
+            await DbContext.SaveChangesAsync();
         }
 
         DbContext.Categories.Remove(cat);

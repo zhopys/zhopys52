@@ -1,0 +1,59 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">
+        Сравнение с прошлым периодом
+        <span class="text-muted small ms-2">
+            @GetModeLabel() · @Comparison.CurrentStart.ToString("dd.MM.yyyy")–@Comparison.CurrentEnd.ToString("dd.MM.yyyy")
+            vs @Comparison.PreviousStart.ToString("dd.MM.yyyy")–@Comparison.PreviousEnd.ToString("dd.MM.yyyy")
+        </span>
+    </div>
+    <div class="card-body" style="padding:0">
+        @if (Comparison.Metrics.Count == 0)
+        {
+            <div class="empty-state small">Включите сравнение в фильтрах (месяц к месяцу или год к году)</div>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Показатель</th>
+                        <th class="text-end">Текущий</th>
+                        <th class="text-end">Прошлый</th>
+                        <th class="text-end">Изменение</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in Comparison.Metrics)
+                    {
+                        <tr>
+                            <td>@m.Label</td>
+                            <td class="text-end fw-bold">@FormatValue(m.Key, m.Current)</td>
+                            <td class="text-end text-muted">@FormatValue(m.Key, m.Previous)</td>
+                            <td class="text-end">
+                                <span class="reports-trend reports-trend-@m.Trend">
+                                    @(m.ChangePercent >= 0 ? "+" : "")@m.ChangePercent.ToString("F1")%
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public PeriodComparisonDetailDto Comparison { get; set; } = new();
+
+    private static string FormatValue(string key, decimal v) =>
+        key == "tx" ? v.ToString("N0") : $"{v:N0} Br";
+
+    private string GetModeLabel() => Comparison.Mode.ToLowerInvariant() switch
+    {
+        "yoy" => "Год к году",
+        "mom" => "Месяц к месяцу",
+        _ => "Период к периоду"
+    };
+}

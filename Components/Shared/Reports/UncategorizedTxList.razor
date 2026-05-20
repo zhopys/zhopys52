@@ -1,0 +1,61 @@
+@using MiniFinance.Services
+
+@if (Transactions.Any())
+{
+    <div class="card mb-3">
+        <div class="card-header">
+            <span>Корректировка категорий</span>
+            <a href="/transactions" class="small text-muted">Все транзакции →</a>
+        </div>
+        <div class="card-body" style="padding:0">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Описание</th>
+                        <th class="text-end">Сумма</th>
+                        <th>Категория</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tx in Transactions)
+                    {
+                        <tr>
+                            <td class="text-muted">@tx.Date.ToString("dd.MM")</td>
+                            <td>@tx.Description</td>
+                            <td class="text-end text-danger">@tx.Amount.ToString("N0")</td>
+                            <td>
+                                <select class="input input-sm"
+                                        value="@tx.Category"
+                                        @onchange="e => OnCategoryChange(tx.Id, e)">
+                                    @foreach (var cat in Categories)
+                                    {
+                                        <option value="@cat" selected="@(cat == tx.Category)">@cat</option>
+                                    }
+                                    @if (!string.IsNullOrEmpty(tx.SuggestedCategory) && !Categories.Contains(tx.SuggestedCategory))
+                                    {
+                                        <option value="@tx.SuggestedCategory">@tx.SuggestedCategory (подсказка)</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<UncategorizedTransactionDto> Transactions { get; set; } = Array.Empty<UncategorizedTransactionDto>();
+    [Parameter] public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<(int Id, string Category)> OnCategoryUpdated { get; set; }
+
+    private async Task OnCategoryChange(int id, ChangeEventArgs e)
+    {
+        var category = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrWhiteSpace(category))
+            await OnCategoryUpdated.InvokeAsync((id, category));
+    }
+}
+

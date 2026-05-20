@@ -6,7 +6,20 @@ namespace MiniFinance.Data.Models
     {
         OneTime = 0,
         Monthly = 1,
-        Yearly = 2
+        Yearly = 2,
+        Quarterly = 3,
+        Daily = 4,
+        Weekly = 5
+    }
+
+    public enum ReminderType
+    {
+        Tax = 0,
+        Bill = 1,
+        Salary = 2,
+        Rent = 3,
+        Subscription = 4,
+        Other = 5
     }
 
     public class Reminder
@@ -43,5 +56,13 @@ namespace MiniFinance.Data.Models
         public string? Notes { get; set; }
 
         public DateTime? NotificationSentDate { get; set; }
+
+        public ReminderType ReminderType { get; set; } = ReminderType.Other;
+
+        public DateTime? SnoozedUntil { get; set; }
+
+        public bool IsArchived { get; set; }
+
+        public int NotifyDaysBefore { get; set; } = 3;
     }
 }

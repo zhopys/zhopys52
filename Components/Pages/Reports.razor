@@ -1,468 +1,562 @@
 @page "/reports"
 @rendermode InteractiveServer
-@using Microsoft.EntityFrameworkCore
-@using MiniFinance.Data
-@using MiniFinance.Services
+@using System.Globalization
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Components.Shared.Reports
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject IReportAnalyticsService AnalyticsService
+@inject IExtendedReportService ExtendedReportService
+@inject IBalanceReportService BalanceReportService
+@inject IAccountingIntegrationService AccountingService
+@inject ITransactionService TransactionService
+@inject ICategorizationService CategorizationService
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
-@inject IReportService ReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 @attribute [Authorize]
 
-<PageTitle>Отчёты - MiniFinance</PageTitle>
+<PageTitle>Отчёты — MiniFinance</PageTitle>
 
 <AuthorizeView>
     <Authorized>
         <div class="page-header">
             <div class="title">
                 <h1>Финансовые отчёты</h1>
-                <div class="meta text-muted">P&L, Cash Flow, Оборотно-сальдовая ведомость</div>
-            </div>
-            <div class="page-actions">
-                <button class="btn btn-outline" @onclick="ExportCsv">CSV</button>
-                <button class="btn btn-outline" @onclick="ExportXlsx">Excel</button>
+                <div class="meta text-muted">Сводка, прибыли и убытки, движение денег и прогноз остатка</div>
             </div>
         </div>
 
-        <!-- Period selector -->
-        <div class="card mb-3">
-            <div class="card-body">
-                <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-                    <div>
-                        <label class="label">Период</label>
-                        <select class="input" @bind="selectedMonth" style="width:200px">
-                            @foreach (var m in availableMonths)
-                            {
-                                <option value="@m">@m.ToString("MMMM yyyy", new System.Globalization.CultureInfo("ru-RU"))</option>
-                            }
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tabs -->
-        <div class="tabs mb-3">
-            <button class="tab @(activeTab == "pl" ? "active" : "")" @onclick="SetPlTab">Прибыли и убытки</button>
-            <button class="tab @(activeTab == "cashflow" ? "active" : "")" @onclick="SetCashflowTab">Движение денег</button>
-            <button class="tab @(activeTab == "trial" ? "active" : "")" @onclick="SetTrialTab">Оборотно-сальдовая</button>
-            <button class="tab @(activeTab == "book" ? "active" : "")" @onclick="SetBookTab">Книга доходов/расходов</button>
-        </div>
-
-        <!-- P&L Tab -->
-        @if (activeTab == "pl")
+        @if (!string.IsNullOrEmpty(_errorMessage))
         {
-            <div class="card mb-3">
-                <div class="card-header">Прибыли и убытки</div>
-                <div class="card-body" style="padding:0">
-                    @if (plReport == null)
-                    {
-                        <div class="empty-state">Нет данных за выбранный период</div>
-                    }
-                    else
-                    {
-                        <!-- Summary -->
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;padding:1rem;border-bottom:1px solid var(--border)">
-                            <div>
-                                <div class="metric-label">Доходы</div>
-                                <div class="metric-value text-success">@plReport.TotalIncome.ToString("N0") Br</div>
-                            </div>
-                            <div>
-                                <div class="metric-label">Расходы</div>
-                                <div class="metric-value text-danger">@plReport.TotalExpense.ToString("N0") Br</div>
-                            </div>
-                            <div>
-                                <div class="metric-label">Чистая прибыль</div>
-                                <div class="metric-value" style="color:@(plReport.NetProfit >= 0 ? "var(--success)" : "var(--danger)")">
-                                    @plReport.NetProfit.ToString("N0") Br
-                                </div>
-                            </div>
-                            <div>
-                                <div class="metric-label">Маржинальность</div>
-                                <div class="metric-value" style="color:@(plReport.ProfitMargin >= 0 ? "var(--success)" : "var(--danger)")">
-                                    @plReport.ProfitMargin.ToString("F1")%
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Expense breakdown -->
-                        @if (plReport.ExpenseByCategory.Any())
-                        {
-                            <div style="padding:1rem">
-                                <h4 style="margin-bottom:0.5rem">Расходы по категориям</h4>
-                                @foreach (var cat in plReport.ExpenseByCategory)
-                                {
-                                    <div style="margin-bottom:0.5rem">
-                                        <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                                            <span>@cat.Category</span>
-                                            <span class="text-danger">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
-                                        </div>
-                                        <div class="progress-bar-container" style="height:6px">
-                                            <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--danger)"></div>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        }
-
-                        <!-- Income breakdown -->
-                        @if (plReport.IncomeByCategory.Any())
-                        {
-                            <div style="padding:1rem;border-top:1px solid var(--border)">
-                                <h4 style="margin-bottom:0.5rem">Доходы по категориям</h4>
-                                @foreach (var cat in plReport.IncomeByCategory)
-                                {
-                                    <div style="margin-bottom:0.5rem">
-                                        <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                                            <span>@cat.Category</span>
-                                            <span class="text-success">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
-                                        </div>
-                                        <div class="progress-bar-container" style="height:6px">
-                                            <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--success)"></div>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        }
-                    }
-                </div>
+            <div class="alert alert-error reports-alert mb-3" role="alert">
+                <strong>Ошибка.</strong> @_errorMessage
             </div>
         }
 
-        <!-- Cash Flow Tab -->
-        @if (activeTab == "cashflow")
-        {
-            <div class="card mb-3">
-                <div class="card-header">Движение денежных средств</div>
-                <div class="card-body" style="padding:0">
-                    @if (cashFlowStatement == null)
-                    {
-                        <div class="empty-state">Нет данных за выбранный период</div>
-                    }
-                    else
-                    {
-                        <!-- Cash flow summary by activity -->
-                        <div style="padding:1rem;border-bottom:1px solid var(--border)">
-                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
-                                <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                                    <div class="metric-label">Операционная деятельность</div>
-                                    <div class="metric-value" style="font-size:1.2rem;color:@(cashFlowStatement.OperatingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                                        @cashFlowStatement.OperatingCashFlow.ToString("N0") Br
-                                    </div>
-                                    <div class="text-muted" style="font-size:0.8rem">Приход: @cashFlowStatement.OperatingIncome.ToString("N0") | Расход: @cashFlowStatement.OperatingExpenses.ToString("N0")</div>
-                                </div>
-                                <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                                    <div class="metric-label">Инвестиционная деятельность</div>
-                                    <div class="metric-value" style="font-size:1.2rem;color:@(cashFlowStatement.InvestmentCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                                        @cashFlowStatement.InvestmentCashFlow.ToString("N0") Br
-                                    </div>
-                                    <div class="text-muted" style="font-size:0.8rem">Приход: @cashFlowStatement.InvestmentIncome.ToString("N0") | Расход: @cashFlowStatement.InvestmentExpenses.ToString("N0")</div>
-                                </div>
-                                <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                                    <div class="metric-label">Финансовая деятельность</div>
-                                    <div class="metric-value" style="font-size:1.2rem;color:@(cashFlowStatement.FinancingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                                        @cashFlowStatement.FinancingCashFlow.ToString("N0") Br
-                                    </div>
-                                    <div class="text-muted" style="font-size:0.8rem">Приход: @cashFlowStatement.FinancingIncome.ToString("N0") | Расход: @cashFlowStatement.FinancingExpenses.ToString("N0")</div>
-                                </div>
-                            </div>
-                            <div style="margin-top:1rem;padding:1rem;background:var(--surface-hover);border-radius:var(--radius);text-align:center">
-                                <div class="metric-label">Чистый денежный поток</div>
-                                <div class="metric-value" style="color:@(cashFlowStatement.NetCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                                    @cashFlowStatement.NetCashFlow.ToString("N0") Br
-                                </div>
-                            </div>
-                        </div>
+        <ReportsToolbar PeriodType="@_periodType"
+                        PeriodTypeChanged="OnPeriodTypeChanged"
+                        SelectedMonthKey="@_selectedMonthKey"
+                        SelectedMonthKeyChanged="OnMonthKeyChanged"
+                        CustomStart="@_customStart"
+                        CustomStartChanged="OnCustomStartChanged"
+                        CustomEnd="@_customEnd"
+                        CustomEndChanged="OnCustomEndChanged"
+                        CompareMode="@_compareMode"
+                        CompareModeChanged="OnCompareModeChanged"
+                        ProjectId="@_projectId"
+                        ProjectIdChanged="OnProjectIdChanged"
+                        SelectedCategory="@_selectedCategory"
+                        SelectedCategoryChanged="OnCategoryChanged"
+                        ForecastDays="@_forecastDays"
+                        ForecastDaysChanged="OnForecastDaysChanged"
+                        AvailableMonths="@_availableMonths"
+                        Projects="@_projects"
+                        Categories="@_categoryNames"
+                        OnFiltersChanged="ReloadAsync"
+                        OnReset="ResetFiltersAsync"
+                        OnExport="ExportAsync"
+                        Disabled="@_loading" />
 
-                        <!-- Category details -->
-                        @if (cashFlowStatement.CategoryDetails.Any())
+        @if (_snapshot != null && _snapshot.DataStatus.HasData)
+        {
+            <div class="reports-period-banner mb-3">
+                <div class="reports-period-main">
+                    <span class="reports-period-label">Период отчёта</span>
+                    <span class="reports-period-dates">
+                        @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
+                    </span>
+                </div>
+                @{
+                    var filterSummary = GetActiveFilterSummary();
+                }
+                @if (!string.IsNullOrEmpty(filterSummary))
+                {
+                    <div class="reports-period-filters">@filterSummary</div>
+                }
+            </div>
+        }
+
+        <ReportsKpiGrid Metrics="@(_snapshot?.Kpi ?? Array.Empty<KpiMetricDto>())" Loading="@(_loading && _snapshot == null)" />
+
+        @if (_loading && _snapshot == null)
+        {
+            <div class="loading-state"><div class="spinner"></div></div>
+        }
+        else if (_snapshot != null && !_snapshot.DataStatus.HasData)
+        {
+            <div class="empty-state reports-empty-state">
+                <div class="empty-state-icon reports-empty-icon" aria-hidden="true"></div>
+                <div class="empty-state-title">Нет данных для отчётов</div>
+                <p class="text-muted">Импортируйте выписку из банка в формате CSV или добавьте операции вручную.</p>
+                <div class="page-actions" style="justify-content:center;margin-top:1rem">
+                    <a href="/import" class="btn btn-primary">Импорт CSV</a>
+                    <a href="/transactions" class="btn btn-outline">Добавить операцию</a>
+                </div>
+            </div>
+        }
+        else if (_snapshot != null)
+        {
+            @if (_snapshot.TaxReserve > 0)
+            {
+                <div class="alert alert-warning small mb-3">
+                    <strong>Налоговый резерв:</strong> @_snapshot.TaxReserve.ToString("N0") Br
+                    · свободные деньги: <strong>@_snapshot.FreeCash.ToString("N0") Br</strong>
+                </div>
+            }
+
+            <div class="reports-top-row mb-3 @(_refreshing ? "reports-refreshing" : "")">
+                <DataSourcesCard Status="@_snapshot.DataStatus"
+                                 Refreshing="@_refreshing"
+                                 OnRefreshRequested="ReloadAsync" />
+                <AccountingIntegrationCard Integration="@_snapshot.Accounting" OnExportRequested="TriggerAccountingExport" />
+            </div>
+
+            <TaxCalendarWidget Alerts="@_snapshot.CriticalReminders" />
+
+            <div class="reports-charts-row mb-3">
+                <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
+                                    SelectedCategory="@_selectedCategory"
+                                    OnCategorySelected="FilterByCategory" />
+                <CashGapForecastChart Forecast="@_snapshot.Forecast"
+                                      HorizonDays="@_forecastDays"
+                                      OnHorizonChanged="ChangeForecastHorizon" />
+            </div>
+
+            <ProfitabilityMatrix Rows="@_snapshot.ProfitabilityMatrix" />
+
+            @if (_snapshot.Projects.Any())
+            {
+                <ProjectProfitTable Rows="@_snapshot.Projects" />
+            }
+
+            <UncategorizedTxList Transactions="@_snapshot.UncategorizedTransactions"
+                                 Categories="@_categoryNames"
+                                 OnCategoryUpdated="UpdateTransactionCategory" />
+
+            <div class="tabs mb-2">
+                <button type="button" class="tab @(_activeTab == "pl" ? "active" : "")" @onclick='() => SetTab("pl")' title="Отчёт о прибылях и убытках">Прибыли и убытки</button>
+                <button type="button" class="tab @(_activeTab == "cashflow" ? "active" : "")" @onclick='() => SetTab("cashflow")' title="Движение денежных средств">Денежный поток</button>
+                <button type="button" class="tab @(_activeTab == "trial" ? "active" : "")" @onclick='() => SetTab("trial")' title="Оборотно-сальдовая ведомость">ОСВ</button>
+                <button type="button" class="tab @(_activeTab == "book" ? "active" : "")" @onclick='() => SetTab("book")' title="Книга учёта доходов и расходов">Книга учёта</button>
+            </div>
+
+            <div class="tabs reports-extended-tabs mb-3">
+                <button type="button" class="tab @(_extendedTab == "forecast" ? "active" : "")" @onclick='() => SetExtendedTab("forecast")'>Прогноз</button>
+                <button type="button" class="tab @(_extendedTab == "tax" ? "active" : "")" @onclick='() => SetExtendedTab("tax")'>Налоги</button>
+                <button type="button" class="tab @(_extendedTab == "counterparty" ? "active" : "")" @onclick='() => SetExtendedTab("counterparty")'>Контрагент</button>
+                <button type="button" class="tab @(_extendedTab == "compare" ? "active" : "")" @onclick='() => SetExtendedTab("compare")'>Сравнение</button>
+                <button type="button" class="tab @(_extendedTab == "weekday" ? "active" : "")" @onclick='() => SetExtendedTab("weekday")'>По дням</button>
+                <button type="button" class="tab @(_extendedTab == "balance" ? "active" : "")" @onclick='() => SetExtendedTab("balance")'>Баланс</button>
+            </div>
+
+            @if (_extended != null)
+            {
+                @if (_extendedTab == "forecast")
+                {
+                    <ForecastInsightsPanel Data="@_extended.Forecast" />
+                }
+                else if (_extendedTab == "tax")
+                {
+                    <TaxReportPanel Report="@_extended.Tax" />
+                }
+                else if (_extendedTab == "counterparty")
+                {
+                    <CounterpartyReportPanel Report="@_extended.Counterparty" OnCounterpartySelected="OnCounterpartySelected" />
+                }
+                else if (_extendedTab == "compare")
+                {
+                    <PeriodComparisonPanel Comparison="@_extended.PeriodComparison" />
+                }
+                else if (_extendedTab == "weekday")
+                {
+                    <WeekdayExpensePanel Data="@_extended.WeekdayExpenses" />
+                }
+                else if (_extendedTab == "balance" && _balance != null)
+                {
+                    <BalanceReportPanel Report="@_balance" />
+                }
+            }
+
+            @if (_activeTab == "pl")
+            {
+                <PlReportPanel Report="@_snapshot.ProfitLoss" />
+            }
+            else if (_activeTab == "cashflow")
+            {
+                <CashFlowPanel Statement="@_snapshot.CashFlow" MonthlyCashflow="@_snapshot.MonthlyCashflow" />
+            }
+            else if (_activeTab == "trial")
+            {
+                <div class="card mb-3">
+                    <div class="card-header">Оборотно-сальдовая ведомость</div>
+                    <div class="card-body" style="padding:0">
+                        @if (_snapshot.TrialBalance == null || !_snapshot.TrialBalance.Entries.Any())
+                        {
+                            <div class="empty-state small">Нет данных за период</div>
+                        }
+                        else
                         {
                             <table class="table">
                                 <thead>
                                     <tr>
                                         <th>Категория</th>
-                                        <th class="text-end">Приход</th>
-                                        <th class="text-end">Расход</th>
-                                        <th class="text-end">Нетто</th>
-                                        <th class="text-end">Операций</th>
+                                        <th class="text-end">Нач.</th>
+                                        <th class="text-end">Дебет</th>
+                                        <th class="text-end">Кредит</th>
+                                        <th class="text-end">Кон.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var cat in cashFlowStatement.CategoryDetails)
+                                    @foreach (var e in _snapshot.TrialBalance.Entries)
                                     {
                                         <tr>
-                                            <td>@cat.Category</td>
-                                            <td class="text-end text-success">@cat.Income.ToString("N0") Br</td>
-                                            <td class="text-end text-danger">@cat.Expense.ToString("N0") Br</td>
-                                            <td class="text-end fw-bold @(cat.NetFlow >= 0 ? "text-success" : "text-danger")">
-                                                @cat.NetFlow.ToString("N0") Br
-                                            </td>
-                                            <td class="text-end text-muted">@cat.TransactionCount</td>
+                                            <td>@e.Category</td>
+                                            <td class="text-end">@e.OpeningBalance.ToString("N2")</td>
+                                            <td class="text-end text-success">@e.Debit.ToString("N2")</td>
+                                            <td class="text-end text-danger">@e.Credit.ToString("N2")</td>
+                                            <td class="text-end fw-bold">@e.ClosingBalance.ToString("N2")</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                         }
-                    }
+                    </div>
                 </div>
-            </div>
-
-            <!-- Daily cashflow table -->
-            <div class="card">
-                <div class="card-header">Помесячный денежный поток</div>
-                <div class="card-body" style="padding:0">
-                    @if (!monthlyCashflow.Any())
-                    {
-                        <div class="empty-state">Нет данных</div>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Месяц</th>
-                                    <th class="text-end">Приход</th>
-                                    <th class="text-end">Расход</th>
-                                    <th class="text-end">Остаток нарастающим</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var c in monthlyCashflow)
-                                {
+            }
+            else if (_activeTab == "book")
+            {
+                <div class="card mb-3">
+                    <div class="card-header">Книга доходов и расходов</div>
+                    <div class="card-body" style="padding:0">
+                        @if (!_snapshot.IncomeExpenseBook.Any())
+                        {
+                            <div class="empty-state small">Нет данных за период</div>
+                        }
+                        else
+                        {
+                            <table class="table">
+                                <thead>
                                     <tr>
-                                        <td class="text-muted">@c.Date.ToString("MMMM yyyy", new System.Globalization.CultureInfo("ru-RU"))</td>
-                                        <td class="text-end text-success">@c.Income.ToString("N2") Br</td>
-                                        <td class="text-end text-danger">@c.Expense.ToString("N2") Br</td>
-                                        <td class="text-end fw-bold @(c.Balance >= 0 ? "text-success" : "text-danger")">
-                                            @c.Balance.ToString("N2") Br
-                                        </td>
+                                        <th>№</th>
+                                        <th>Дата</th>
+                                        <th>Описание</th>
+                                        <th class="text-end">Доход</th>
+                                        <th class="text-end">Расход</th>
                                     </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
+                                </thead>
+                                <tbody>
+                                    @foreach (var e in _snapshot.IncomeExpenseBook)
+                                    {
+                                        <tr>
+                                            <td>@e.EntryNumber</td>
+                                            <td>@e.Date.ToString("dd.MM.yyyy")</td>
+                                            <td>@e.Description</td>
+                                            <td class="text-end text-success">@(e.Income > 0 ? e.Income.ToString("N2") : "—")</td>
+                                            <td class="text-end text-danger">@(e.Expense > 0 ? e.Expense.ToString("N2") : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
                 </div>
-            </div>
-        }
-
-        <!-- Trial Balance Tab -->
-        @if (activeTab == "trial")
-        {
-            <div class="card">
-                <div class="card-header">Оборотно-сальдовая ведомость</div>
-                <div class="card-body" style="padding:0">
-                    @if (trialBalance == null)
-                    {
-                        <div class="empty-state">Нет данных за выбранный период</div>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Категория</th>
-                                    <th class="text-end">Нач. остаток</th>
-                                    <th class="text-end">Дебет (приход)</th>
-                                    <th class="text-end">Кредит (расход)</th>
-                                    <th class="text-end">Кон. остаток</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var entry in trialBalance.Entries)
-                                {
-                                    <tr>
-                                        <td>@entry.Category</td>
-                                        <td class="text-end @(entry.OpeningBalance >= 0 ? "text-success" : "text-danger")">
-                                            @entry.OpeningBalance.ToString("N2") Br
-                                        </td>
-                                        <td class="text-end text-success">@entry.Debit.ToString("N2") Br</td>
-                                        <td class="text-end text-danger">@entry.Credit.ToString("N2") Br</td>
-                                        <td class="text-end fw-bold @(entry.ClosingBalance >= 0 ? "text-success" : "text-danger")">
-                                            @entry.ClosingBalance.ToString("N2") Br
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td class="fw-bold">Итого</td>
-                                    <td class="text-end fw-bold">@trialBalance.TotalOpeningBalance.ToString("N2") Br</td>
-                                    <td class="text-end fw-bold text-success">@trialBalance.TotalDebit.ToString("N2") Br</td>
-                                    <td class="text-end fw-bold text-danger">@trialBalance.TotalCredit.ToString("N2") Br</td>
-                                    <td class="text-end fw-bold">@trialBalance.TotalClosingBalance.ToString("N2") Br</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    }
-                </div>
-            </div>
-        }
-
-        <!-- Book Tab -->
-        @if (activeTab == "book")
-        {
-            <div class="card">
-                <div class="card-header">Книга доходов и расходов</div>
-                <div class="card-body" style="padding:0">
-                    @if (incomeExpenseBook == null || !incomeExpenseBook.Any())
-                    {
-                        <div class="empty-state">Нет данных за выбранный период</div>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>№</th>
-                                    <th>Дата</th>
-                                    <th>Документ</th>
-                                    <th>Контрагент</th>
-                                    <th>Описание</th>
-                                    <th class="text-end">Доход</th>
-                                    <th class="text-end">Расход</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var entry in incomeExpenseBook)
-                                {
-                                    <tr>
-                                        <td>@entry.EntryNumber</td>
-                                        <td>@entry.Date.ToString("dd.MM.yyyy")</td>
-                                        <td class="text-muted">@entry.DocumentNumber</td>
-                                        <td>@entry.Counterparty</td>
-                                        <td>@entry.Description</td>
-                                        <td class="text-end text-success">@(entry.Income > 0 ? entry.Income.ToString("N2") + " Br" : "—")</td>
-                                        <td class="text-end text-danger">@(entry.Expense > 0 ? entry.Expense.ToString("N2") + " Br" : "—")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="5" class="fw-bold">Итого</td>
-                                    <td class="text-end fw-bold text-success">@incomeExpenseBook.Sum(e => e.Income).ToString("N2") Br</td>
-                                    <td class="text-end fw-bold text-danger">@incomeExpenseBook.Sum(e => e.Expense).ToString("N2") Br</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    }
-                </div>
-            </div>
+            }
         }
     </Authorized>
 </AuthorizeView>
 
 @code {
-    private List<Transaction> transactions = new();
-    private string activeTab = "pl";
-    private DateTime selectedMonth = DateTime.Today;
-    private List<DateTime> availableMonths = new();
-
-    // P&L
-    private ProfitLossReport? plReport;
-    // Cash flow
-    private List<CashflowEntry> cashflow = new();
-    private List<CashflowEntry> monthlyCashflow = new();
-    private CashFlowStatementReport? cashFlowStatement;
-    // Trial balance
-    private TrialBalanceReport? trialBalance;
-    // Book
-    private List<IncomeExpenseBookEntry>? incomeExpenseBook;
+    private ReportAnalyticsSnapshot? _snapshot;
+    private ExtendedAnalyticsDto? _extended;
+    private BalanceReportDto? _balance;
+    private string _extendedTab = "forecast";
+    private string? _selectedCounterparty;
+    private string _userId = "";
+    private bool _loading = true;
+    private bool _refreshing;
+    private string? _errorMessage;
+    private string _activeTab = "pl";
+    private string _periodType = "Month";
+    private string _compareMode = "mom";
+    private DateTime _selectedMonth = DateTime.Today;
+    private string _selectedMonthKey = "";
+    private DateTime _customStart;
+    private DateTime _customEnd = DateTime.Today;
+    private List<DateTime> _availableMonths = new();
+    private List<string> _categoryNames = new();
+    private List<Project> _projects = new();
+    private int _forecastDays = 90;
+    private int? _projectId;
+    private string? _selectedCategory;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user != null)
-        {
-            transactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id)
-                .OrderByDescending(t => t.Date)
-                .ToListAsync();
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
 
-            availableMonths = transactions
+        _userId = user.Id;
+        _categoryNames = await CategorizationService.GetCategoryNamesAsync();
+        _projects = await DbContext.Projects
+            .Where(p => p.UserId == user.Id || p.UserId == null)
+            .Where(p => !p.IsDefault)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _customStart = monthStart;
+        _customEnd = monthStart.AddMonths(1).AddDays(-1);
+
+        await LoadAvailableAnchorsAsync();
+        await ReloadAsync();
+    }
+
+    private async Task LoadAvailableAnchorsAsync()
+    {
+        var transactions = await TransactionService.ListAsync(_userId);
+
+        _availableMonths = _periodType switch
+        {
+            "Year" => transactions
+                .GroupBy(t => t.Date.Year)
+                .Select(g => new DateTime(g.Key, 1, 1))
+                .OrderByDescending(d => d)
+                .ToList(),
+            "Quarter" => transactions
+                .GroupBy(t => new { t.Date.Year, Q = (t.Date.Month - 1) / 3 })
+                .Select(g => new DateTime(g.Key.Year, g.Key.Q * 3 + 1, 1))
+                .OrderByDescending(d => d)
+                .ToList(),
+            _ => transactions
                 .GroupBy(t => new { t.Date.Year, t.Date.Month })
                 .Select(g => new DateTime(g.Key.Year, g.Key.Month, 1))
                 .OrderByDescending(d => d)
-                .ToList();
+                .ToList()
+        };
 
-            if (availableMonths.Any())
-            {
-                selectedMonth = availableMonths.First();
-            }
-            else
-            {
-                availableMonths.Add(DateTime.Today);
-            }
+        if (!_availableMonths.Any())
+            _availableMonths.Add(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
 
-            LoadReports();
+        if (!_availableMonths.Any(m => ToMonthKey(m) == _selectedMonthKey))
+        {
+            _selectedMonth = _availableMonths[0];
+            _selectedMonthKey = ToMonthKey(_selectedMonth);
         }
     }
 
-    private void LoadReports()
+    private ReportFilters BuildFilters(string? exportReport = null)
     {
-        var start = new DateTime(selectedMonth.Year, selectedMonth.Month, 1);
-        var end = start.AddMonths(1).AddDays(-1);
-        var monthTx = transactions.Where(t => t.Date >= start && t.Date <= end).ToList();
-
-        // P&L
-        plReport = ReportService.GetProfitLossReport(monthTx, start, end);
-
-        // Cash flow - daily
-        cashflow = ReportService.GetCashflow(monthTx);
-
-        // Cash flow - monthly (for the second table)
-        var monthlyTx = transactions
-            .Where(t => t.Date <= end)
-            .GroupBy(t => new { t.Date.Year, t.Date.Month })
-            .OrderBy(g => g.Key.Year)
-            .ThenBy(g => g.Key.Month)
-            .Select(g => new CashflowEntry
-            {
-                Date = new DateTime(g.Key.Year, g.Key.Month, 1),
-                Income = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
-                Expense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount)),
-                Balance = g.Sum(t => t.Amount)
-            })
-            .ToList();
-        decimal running = 0;
-        foreach (var e in monthlyTx) { running += e.Balance; e.Balance = running; }
-        monthlyCashflow = monthlyTx;
-
-        // Cash flow statement
-        cashFlowStatement = ReportService.GetCashFlowStatement(monthTx, start, end);
-
-        // Trial balance
-        trialBalance = ReportService.GetTrialBalanceReport(monthTx, start, end);
-
-        // Book
-        incomeExpenseBook = ReportService.GetIncomeExpenseBook(monthTx, start, end);
+        var (start, end) = GetPeriodRange();
+        return new ReportFilters
+        {
+            Start = start,
+            End = end,
+            PeriodType = _periodType,
+            CompareMode = _compareMode,
+            ForecastDays = _forecastDays,
+            ProjectId = _projectId,
+            Categories = string.IsNullOrEmpty(_selectedCategory) ? Array.Empty<string>() : new[] { _selectedCategory },
+            ExportReport = exportReport ?? MapTabForExport(_activeTab)
+        };
     }
 
-    protected override void OnParametersSet()
+    private async Task ReloadAsync()
     {
-        LoadReports();
+        if (string.IsNullOrEmpty(_userId)) return;
+
+        _errorMessage = null;
+        _loading = _snapshot == null;
+        _refreshing = _snapshot != null;
+        StateHasChanged();
+
+        try
+        {
+            if (!string.IsNullOrEmpty(_selectedMonthKey) && _periodType != "Custom")
+                _selectedMonth = ParseMonthKey(_selectedMonthKey);
+
+            var filters = BuildFilters();
+            _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
+            _extended = await ExtendedReportService.BuildAsync(_userId, filters, _selectedCounterparty);
+            _balance = await BalanceReportService.BuildAsync(_userId, filters);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = GetRussianErrorMessage(ex);
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+        finally
+        {
+            _loading = false;
+            _refreshing = false;
+            StateHasChanged();
+        }
     }
 
-    private void ExportCsv()
+    private async Task ResetFiltersAsync()
     {
-        var start = new DateTime(selectedMonth.Year, selectedMonth.Month, 1);
-        var end = start.AddMonths(1).AddDays(-1);
-        NavigationManager.NavigateTo($"/reports/export/csv?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}", forceLoad: true);
+        _periodType = "Month";
+        _compareMode = "mom";
+        _projectId = null;
+        _selectedCategory = null;
+        _selectedCounterparty = null;
+        _forecastDays = 90;
+        _selectedMonth = _availableMonths.Count > 0 ? _availableMonths[0] : DateTime.Today;
+        _selectedMonthKey = ToMonthKey(_selectedMonth);
+        var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _customStart = monthStart;
+        _customEnd = monthStart.AddMonths(1).AddDays(-1);
+        await ReloadAsync();
     }
 
-    private void ExportXlsx()
+    private async Task OnPeriodTypeChanged(string value)
     {
-        var start = new DateTime(selectedMonth.Year, selectedMonth.Month, 1);
-        var end = start.AddMonths(1).AddDays(-1);
-        NavigationManager.NavigateTo($"/reports/export/xlsx?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}", forceLoad: true);
+        _periodType = value;
+        await LoadAvailableAnchorsAsync();
+        await ReloadAsync();
     }
 
-    private void SetPlTab() => activeTab = "pl";
-    private void SetCashflowTab() => activeTab = "cashflow";
-    private void SetTrialTab() => activeTab = "trial";
-    private void SetBookTab() => activeTab = "book";
+    private async Task OnCompareModeChanged(string value)
+    {
+        _compareMode = value;
+        await ReloadAsync();
+    }
+
+    private async Task OnMonthKeyChanged(string key)
+    {
+        _selectedMonthKey = key;
+        await ReloadAsync();
+    }
+
+    private async Task OnCustomStartChanged(DateTime d)
+    {
+        _customStart = d;
+        await ReloadAsync();
+    }
+
+    private async Task OnCustomEndChanged(DateTime d)
+    {
+        _customEnd = d;
+        await ReloadAsync();
+    }
+
+    private async Task OnProjectIdChanged(int? id)
+    {
+        _projectId = id;
+        await ReloadAsync();
+    }
+
+    private async Task OnCategoryChanged(string? cat)
+    {
+        _selectedCategory = cat;
+        await ReloadAsync();
+    }
+
+    private async Task OnForecastDaysChanged(int days)
+    {
+        _forecastDays = days;
+        await ReloadAsync();
+    }
+
+    private void SetTab(string tab) => _activeTab = tab;
+
+    private void SetExtendedTab(string tab) => _extendedTab = tab;
+
+    private async Task OnCounterpartySelected(string? name)
+    {
+        _selectedCounterparty = name;
+        await ReloadAsync();
+    }
+
+    private async Task FilterByCategory(string category)
+    {
+        _selectedCategory = string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase) ? null : category;
+        await ReloadAsync();
+    }
+
+    private async Task ChangeForecastHorizon(int days)
+    {
+        _forecastDays = days;
+        await ReloadAsync();
+    }
+
+    private async Task TriggerAccountingExport()
+    {
+        var f = BuildFilters();
+        await AccountingService.ForceExportAsync(_userId, f.Start, f.End);
+        await ReloadAsync();
+    }
+
+    private async Task UpdateTransactionCategory((int Id, string Category) args)
+    {
+        await TransactionService.UpdateCategoryAsync(args.Id, args.Category, _userId);
+        await ReloadAsync();
+    }
+
+    private void ExportAsync(string format)
+    {
+        var report = format.Equals("csv", StringComparison.OrdinalIgnoreCase) ? "transactions" : "full";
+        var qs = BuildFilters(report).ToQueryString(format, report);
+        NavigationManager.NavigateTo($"/api/reports/export?{qs}", forceLoad: true);
+    }
+
+    private (DateTime start, DateTime end) GetPeriodRange()
+    {
+        if (_periodType == "Custom")
+            return ReportFilters.ResolvePeriodRange(_selectedMonth, _periodType, _customStart, _customEnd);
+        return ReportFilters.ResolvePeriodRange(_selectedMonth, _periodType);
+    }
+
+    private static string ToMonthKey(DateTime d) => d.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+    private static DateTime ParseMonthKey(string key)
+    {
+        if (DateTime.TryParseExact(key + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+            return d;
+        return DateTime.Today;
+    }
+
+    private string? GetActiveFilterSummary()
+    {
+        var parts = new List<string>();
+        if (_projectId.HasValue)
+        {
+            var name = _projects.FirstOrDefault(p => p.Id == _projectId)?.Name;
+            if (!string.IsNullOrEmpty(name))
+                parts.Add($"проект: {name}");
+        }
+        if (!string.IsNullOrEmpty(_selectedCategory))
+            parts.Add($"категория: {_selectedCategory}");
+        if (!string.IsNullOrEmpty(_selectedCounterparty))
+            parts.Add($"контрагент: {_selectedCounterparty}");
+        if (_compareMode != "none")
+            parts.Add(ReportKpiLabels.FormatCompareHint(_compareMode));
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
+    }
+
+    private static string GetRussianErrorMessage(Exception ex) => ex switch
+    {
+        Microsoft.EntityFrameworkCore.DbUpdateException =>
+            "Не удалось прочитать данные из базы. Перезапустите приложение или обратитесь к администратору.",
+        TimeoutException =>
+            "Превышено время ожидания. Сузьте период отчёта или повторите попытку позже.",
+        InvalidOperationException op when !string.IsNullOrWhiteSpace(op.Message) && op.Message.Any(c => c >= '\u0400') =>
+            op.Message,
+        _ =>
+            "Не удалось построить отчёт. Проверьте выбранные фильтры и нажмите «Применить», либо обновите страницу."
+    };
+
+    private static string MapTabForExport(string tab) => tab switch
+    {
+        "cashflow" => "cashflow",
+        "trial" => "categories",
+        "book" => "transactions",
+        "pl" => "pl",
+        _ => "full"
+    };
 }

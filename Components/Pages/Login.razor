@@ -1,20 +1,16 @@
 @page "/login"
-@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
-@using System.ComponentModel.DataAnnotations
+
+@using Microsoft.AspNetCore.Antiforgery
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
-@using MiniFinance.Data
 @using MiniFinance.Components.Account
 @using MiniFinance.Components.Account.Shared
-@inject UserManager<ApplicationUser> UserManager
-@inject SignInManager<ApplicationUser> SignInManager
-@inject ILogger<Login> Logger
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAntiforgery Antiforgery
 @inject NavigationManager NavigationManager
-@inject IdentityRedirectManager RedirectManager
-@inject IJSRuntime JS
 
-<PageTitle>Вход - MiniFinance</PageTitle>
+<PageTitle>Вход — MiniFinance</PageTitle>
 
 <div class="login-page">
     <div class="login-container">
@@ -23,108 +19,140 @@
             <p class="text-muted">Вход в учётную запись</p>
         </div>
 
-        @if (!string.IsNullOrEmpty(errorMessage))
+        <StatusMessage />
+
+        @if (!string.IsNullOrEmpty(_successMessage))
         {
-            <div class="alert alert-danger">@errorMessage</div>
+            <div class="alert alert-success">@_successMessage</div>
         }
 
-        <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger">@_errorMessage</div>
+        }
+
+        <form method="post" action="/Account/Login">
+            @if (_afTokens is not null)
+            {
+                <input type="hidden" name="@_afTokens.FormFieldName" value="@_afTokens.RequestToken" />
+            }
+            <input type="hidden" name="returnUrl" value="@(ReturnUrl ?? "")" />
 
             <div class="form-group">
-                <label class="label">Email</label>
-                <InputText @bind-Value="Input.Email" class="input" autocomplete="username" placeholder="name@example.com" />
-                <ValidationMessage For="() => Input.Email" />
+                <label class="label" for="email">Email</label>
+                <input type="email"
+                       id="email"
+                       name="email"
+                       class="input"
+                       value="@_email"
+                       autocomplete="username"
+                       placeholder="name@example.com"
+                       required />
             </div>
 
             <div class="form-group">
-                <label class="label">Пароль</label>
-                <InputText type="password" @bind-Value="Input.Password" class="input" autocomplete="current-password" placeholder="Введите пароль" />
-                <ValidationMessage For="() => Input.Password" />
+                <label class="label" for="password">Пароль</label>
+                <input type="password"
+                       id="password"
+                       name="password"
+                       class="input"
+                       autocomplete="current-password"
+                       placeholder="Введите пароль"
+                       required />
             </div>
 
             <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
-                <InputCheckbox @bind-Value="Input.RememberMe" style="accent-color:var(--accent)" />
-                <label>Запомнить меня</label>
+                <input type="checkbox" id="rememberMe" name="rememberMe" value="true" style="accent-color:var(--accent)" />
+                <label for="rememberMe">Запомнить меня</label>
             </div>
 
             <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
-        </EditForm>
+        </form>
+
+        <ExternalLoginPicker />
 
         <div class="login-footer">
             <a href="Account/ForgotPassword">Забыли пароль?</a>
             <span style="margin:0 .5rem;color:var(--border)">|</span>
-            <a href="@(NavigationManager.GetUriWithQueryParameters("Account/Register", new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl }))">Регистрация</a>
+            <a href="@_registerLink">Регистрация</a>
+            <span style="margin:0 .5rem;color:var(--border)">|</span>
+            <a href="@_resendLink">Подтвердить email</a>
         </div>
     </div>
 </div>
 
 @code {
-    private string? errorMessage;
-    private EditContext editContext = default!;
-
-    [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
-
-    [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = default!;
+    private string _email = "";
+    private string? _errorMessage;
+    private string? _successMessage;
+    private string _registerLink = "/Account/Register";
+    private string _resendLink = "/Account/ResendEmailConfirmation";
+    private AntiforgeryTokenSet? _afTokens;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
+    [SupplyParameterFromQuery(Name = "confirmed")]
+    private string? Confirmed { get; set; }
+
+    [SupplyParameterFromQuery(Name = "email")]
+    private string? EmailFromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorFromQuery { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
-        Input ??= new();
-        editContext = new EditContext(Input);
+        _email = EmailFromQuery?.Trim().ToLowerInvariant() ?? "";
 
-        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        _registerLink = NavigationManager.GetUriWithQueryParameters(
+            "/Account/Register",
+            new Dictionary<string, object?> { ["ReturnUrl"] = ReturnUrl });
+
+        _resendLink = string.IsNullOrWhiteSpace(_email)
+            ? "/Account/ResendEmailConfirmation"
+            : NavigationManager.GetUriWithQueryParameters(
+                "/Account/ResendEmailConfirmation",
+                new Dictionary<string, object?> { ["email"] = _email });
+
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
         {
-            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+            _afTokens = Antiforgery.GetAndStoreTokens(httpContext);
+
+            if (HttpMethods.IsGet(httpContext.Request.Method))
+            {
+                await httpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+            }
+
+            if (httpContext.User.Identity?.IsAuthenticated == true)
+            {
+                var target = AccountUrls.SanitizeReturnUrl(ReturnUrl) ?? "/";
+                NavigationManager.NavigateTo(target, forceLoad: true);
+                return;
+            }
         }
+
+        ApplyQueryMessages();
     }
 
-    public async Task LoginUser()
+    private void ApplyQueryMessages()
     {
-        if (!editContext.Validate()) return;
-
-        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
-
-        if (result.Succeeded)
+        if (Confirmed == "1")
         {
-            Logger.LogInformation("User logged in.");
-            RedirectManager.RedirectTo(ReturnUrl);
+            _successMessage = "Email подтверждён. Введите пароль, который вы указали при регистрации.";
         }
-        else if (result.RequiresTwoFactor)
+
+        _errorMessage = ErrorFromQuery switch
         {
-            RedirectManager.RedirectTo(
-                "Account/LoginWith2fa",
-                new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
-        }
-        else if (result.IsLockedOut)
-        {
-            Logger.LogWarning("User account locked out.");
-            RedirectManager.RedirectTo("Account/Lockout");
-        }
-        else
-        {
-            errorMessage = "Неверный email или пароль.";
-        }
-    }
-
-    private sealed class InputModel
-    {
-        [Required(ErrorMessage = "Email обязателен")]
-        [EmailAddress(ErrorMessage = "Некорректный email")]
-        public string Email { get; set; } = "";
-
-        [Required(ErrorMessage = "Пароль обязателен")]
-        [DataType(DataType.Password)]
-        public string Password { get; set; } = "";
-
-        [Display(Name = "Remember me?")]
-        public bool RememberMe { get; set; }
-
-        public PasskeyInputModel? Passkey { get; set; }
+            "empty" => "Введите email и пароль.",
+            "invalid" => "Неверный email или пароль.",
+            "unconfirmed" => "Email не подтверждён. Проверьте почту или запросите ссылку повторно.",
+            "invalid_link" => "Некорректная ссылка подтверждения.",
+            "user_not_found" => "Пользователь не найден. Зарегистрируйтесь снова.",
+            "confirm_failed" => "Не удалось подтвердить email. Запросите новое письмо.",
+            "invalid_code" => "Ссылка устарела или уже использована.",
+            _ => _errorMessage
+        };
     }
 }

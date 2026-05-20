@@ -146,21 +146,30 @@
                             </div>
                         </div>
 
+                        <div class="card mb-4">
+                            <div class="card-header">Сценарии «что если»</div>
+                            <div class="card-body">
+                                <label class="form-label">Рост расходов: @expenseAdjustPercent%</label>
+                                <input type="range" min="0" max="30" step="5" @bind="expenseAdjustPercent" @bind:event="oninput" @onchange="LoadForecast" class="w-100" />
+                                <label class="form-label mt-3">Задержка поступлений: @incomeDelayDays дн.</label>
+                                <input type="range" min="0" max="14" step="1" @bind="incomeDelayDays" @bind:event="oninput" @onchange="LoadForecast" class="w-100" />
+                                <div class="small text-muted mt-2">Порог остатка: @minCashThreshold.ToString("N0") BYN <a href="/settings">изменить</a></div>
+                            </div>
+                        </div>
+
                         <div class="card shadow-sm" style="background: var(--accent-weak); border-color: var(--accent); border-style: dashed;">
                             <div class="card-body">
-                                <h3 style="color: var(--accent); font-size: 15px;" class="mb-2">💡 Рекомендация ИИ</h3>
-                                <div class="insight-text" style="font-size: 13px; line-height: 1.6;">
-                                    @if (forecast.DaysInRed > 0) {
-                                        <p>Обнаружена нехватка средств в течение <strong>@forecast.DaysInRed дней</strong>.</p>
-                                        <ul class="recommendations small">
-                                            <li>Перенесите оплату налогов или крупных закупок на более поздний срок.</li>
-                                            <li>Проверьте дебиторскую задолженность — время напомнить клиентам об оплате.</li>
-                                        </ul>
-                                    } else {
-                                        <p>Ситуация стабильна. Все обязательства будут выполнены в срок.</p>
-                                        <p class="insight-description">Попробуйте вложить свободные <strong>@((forecast.MinBalance * 0.2m).ToString("N0")) Br</strong> в развитие или краткосрочный депозит.</p>
+                                <h3 style="color: var(--accent); font-size: 15px;" class="mb-2">Рекомендации</h3>
+                                <ul class="recommendations small" style="margin:0;padding-left:1.2rem">
+                                    @foreach (var rec in forecast.Recommendations)
+                                    {
+                                        <li>@rec</li>
                                     }
-                                </div>
+                                </ul>
+                                @if (forecast.DaysBelowMinCash > 0 && minCashThreshold > 0)
+                                {
+                                    <p class="small text-danger mt-2">@forecast.DaysBelowMinCash дн. ниже порога @minCashThreshold.ToString("N0") BYN</p>
+                                }
                             </div>
                         </div>
                     </div>
@@ -174,6 +183,9 @@
     private bool isLoading = true;
     private bool hasData = false;
     private int forecastDays = 90;
+    private decimal expenseAdjustPercent;
+    private int incomeDelayDays;
+    private decimal minCashThreshold = 1000;
     private AdvancedCashForecast forecast = new();
 
     protected override async Task OnInitializedAsync() => await LoadForecast();
@@ -185,16 +197,21 @@
             var user = await UserManager.GetUserAsync(authState.User);
             if (user == null) return;
 
-            var tx = await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync();
-            var rem = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
+            var tx = await DbContext.Transactions.Where(t => t.UserId == user.Id && t.IsConfirmed).ToListAsync();
+            var rem = await DbContext.Reminders.Where(r => r.UserId == user.Id && !r.IsArchived).ToListAsync();
+            var taxes = await DbContext.TaxPayments.Where(t => t.UserId == user.Id && !t.IsPaid).ToListAsync();
+
+            var org = await DbContext.OrganizationSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+            minCashThreshold = org?.MinCashBalance ?? 1000;
 
             if (!tx.Any()) {
                 hasData = false;
                 return;
             }
 
-            // Вызов вашего сервиса прогнозирования
-            forecast = ForecastingService.ForecastCashGapsAdvanced(tx, rem, new List<TaxPayment>(), forecastDays);
+            forecast = ForecastingService.ForecastCashGapsAdvanced(
+                tx, rem, taxes, forecastDays, expenseAdjustPercent, incomeDelayDays, minCashThreshold);
             hasData = true;
         }
         catch (Exception ex) {

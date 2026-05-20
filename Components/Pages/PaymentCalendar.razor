@@ -1,0 +1,634 @@
+@page "/payment-calendar"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject IPaymentCalendarService CalendarService
+@inject ApplicationDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider Auth
+@inject IJSRuntime JS
+@attribute [Authorize]
+
+<PageTitle>Платёжный календарь — MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Платёжный календарь</h1>
+        <div class="meta text-muted">@_monthTitle · планируемые и фактические платежи</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-outline" @onclick="PrevMonth" title="Предыдущий месяц">←</button>
+        <button class="btn btn-outline" @onclick="GoToday">Сегодня</button>
+        <button class="btn btn-outline" @onclick="NextMonth" title="Следующий месяц">→</button>
+        <button class="btn btn-primary" @onclick="OpenAddForm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Платёж
+        </button>
+    </div>
+</div>
+
+@if (_showMessage)
+{
+    <div class="alert alert-success mb-3">@_message</div>
+}
+@if (_showError)
+{
+    <div class="alert alert-error mb-3">@_errorMessage</div>
+}
+
+@if (_calendar != null)
+{
+    <div class="payment-cal-kpis">
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Списания (месяц)</span>
+            <span class="reports-tax-kpi-value text-danger">−@_calendar.TotalOutflow.ToString("N0") Br</span>
+        </div>
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">К оплате</span>
+            <span class="reports-tax-kpi-value">@_calendar.UnpaidOutflow.ToString("N0") Br</span>
+        </div>
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Поступления</span>
+            <span class="reports-tax-kpi-value text-success">+@_calendar.TotalInflow.ToString("N0") Br</span>
+        </div>
+        <div class="reports-tax-kpi">
+            <span class="reports-tax-kpi-label">Просрочено</span>
+            <span class="reports-tax-kpi-value @(_calendar.OverdueCount > 0 ? "text-danger" : "")">@_calendar.OverdueCount</span>
+        </div>
+    </div>
+}
+
+<div class="payment-cal-layout">
+    <div class="card payment-cal-sidebar">
+        <div class="card-header payment-cal-month-nav">
+            <strong>@_monthTitle</strong>
+        </div>
+        <div class="card-body">
+            <div class="payment-cal-weekdays">
+                @foreach (var wd in _weekdays)
+                {
+                    <span>@wd</span>
+                }
+            </div>
+            <div class="payment-cal-grid">
+                @foreach (var cell in _calendarCells)
+                {
+                    <button type="button"
+                            class="payment-cal-day @GetDayClass(cell)"
+                            @onclick="() => SelectDay(cell.Date)">
+                        <span class="payment-cal-day-num">@cell.Date.Day</span>
+                        @if (cell.Count > 0)
+                        {
+                            <span class="payment-cal-dots">
+                                @foreach (var dot in cell.StatusDots.Take(3))
+                                {
+                                    <span class="payment-cal-dot status-@dot"></span>
+                                }
+                            </span>
+                            <span class="payment-cal-day-sum">@cell.TotalOutflow.ToString("N0")</span>
+                        }
+                    </button>
+                }
+            </div>
+            <div class="payment-cal-legend mt-3">
+                <span><i class="dot status-paid"></i> Оплачено</span>
+                <span><i class="dot status-due-today"></i> Сегодня/завтра</span>
+                <span><i class="dot status-overdue"></i> Просрочено</span>
+                <span><i class="dot status-planned"></i> Запланировано</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="payment-cal-main">
+        <div class="card">
+            <div class="card-body payment-cal-filters-wrap">
+                <div class="payment-cal-filters">
+                    <div>
+                        <label class="label">Тип</label>
+                        <select class="input" @bind="_typeFilter" @bind:after="ApplyFilters">
+                            <option value="@PaymentCalendarPaymentType.All">Все типы</option>
+                            <option value="@PaymentCalendarPaymentType.Tax">Налоги</option>
+                            <option value="@PaymentCalendarPaymentType.Rent">Аренда</option>
+                            <option value="@PaymentCalendarPaymentType.Salary">Зарплата</option>
+                            <option value="@PaymentCalendarPaymentType.Utilities">Коммуналка</option>
+                            <option value="@PaymentCalendarPaymentType.Other">Прочее</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Статус</label>
+                        <select class="input" @bind="_statusFilter" @bind:after="ApplyFilters">
+                            <option value="">Все</option>
+                            <option value="unpaid">К оплате</option>
+                            <option value="paid">Оплачено</option>
+                            <option value="overdue">Просрочено</option>
+                            <option value="urgent">Сегодня / завтра</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Контрагент</label>
+                        <select class="input" @bind="_counterpartyFilter" @bind:after="ApplyFilters">
+                            <option value="">Все</option>
+                            @foreach (var cp in _calendar?.Counterparties ?? Array.Empty<string>())
+                            {
+                                <option value="@cp">@cp</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_selectedDay.HasValue)
+                    {
+                        <div class="payment-cal-filter-actions">
+                            <button class="btn btn-outline btn-sm" @onclick="ClearDayFilter">Сбросить день (@_selectedDay.Value.ToString("dd.MM"))</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (_selectedKeys.Count > 0)
+        {
+            <div class="card payment-cal-bulk-bar">
+                <div class="card-body">
+                    <span>Выбрано: <strong>@_selectedKeys.Count</strong> · @_selectedTotal.ToString("N2") Br</span>
+                    <div class="payment-cal-bulk-actions">
+                        <button class="btn btn-success" @onclick="BulkPay" disabled="@_paying">
+                            @if (_paying) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
+                            Оплатить выбранные
+                        </button>
+                        <button class="btn btn-outline" @onclick="ClearSelection">Снять выбор</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_showAddForm)
+        {
+            <div class="card">
+                <div class="card-header">Новый платёж</div>
+                <div class="card-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Дата *</label>
+                            <input type="date" class="form-input" @bind="_formDate" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Сумма *</label>
+                            <input type="number" class="form-input" @bind="_formAmount" step="0.01" min="0.01" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Категория</label>
+                            <select class="form-input" @bind="_formCategory">
+                                <option value="">—</option>
+                                @foreach (var c in _categories) { <option value="@c">@c</option> }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Контрагент</label>
+                            <input class="form-input" @bind="_formCounterparty" list="cpList" placeholder="Получатель / поставщик" />
+                            <datalist id="cpList">
+                                @foreach (var cp in _counterparties) { <option value="@cp" /> }
+                            </datalist>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Назначение</label>
+                            <input class="form-input" @bind="_formPurpose" placeholder="За что платёж" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Повторение</label>
+                            <select class="form-input" @bind="_formFrequency">
+                                <option value="@ReminderFrequency.OneTime">Разово</option>
+                                <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
+                                <option value="@ReminderFrequency.Quarterly">Ежеквартально</option>
+                                <option value="@ReminderFrequency.Yearly">Ежегодно</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
+                        <button class="btn btn-primary" @onclick="SavePayment">Сохранить</button>
+                        <button class="btn btn-outline" @onclick="() => _showAddForm = false">Отмена</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-header payment-cal-list-header">
+                <span>
+                    @if (_selectedDay.HasValue)
+                    {
+                        @:Платежи на @_selectedDay.Value.ToString("dd MMMM yyyy", RuCulture)
+                    }
+                    else
+                    {
+                        @:Все платежи месяца
+                    }
+                </span>
+                <span class="text-muted small">@_filteredItems.Count записей</span>
+            </div>
+            <div class="card-body" style="padding:0">
+                @if (_loading)
+                {
+                    <div class="loading-state"><div class="spinner"></div></div>
+                }
+                else if (!_filteredItems.Any())
+                {
+                    <div class="empty-state">
+                        <div class="empty-state-title">Нет платежей по фильтру</div>
+                        <button class="btn btn-primary" @onclick="OpenAddForm">Добавить платёж</button>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var group in _filteredItems.GroupBy(i => i.Date.Date).OrderBy(g => g.Key))
+                    {
+                        <div class="payment-cal-day-group">
+                            <div class="payment-cal-day-header">
+                                <strong>@group.Key.ToString("dddd, dd MMMM", RuCulture)</strong>
+                                <span class="text-muted small">
+                                    −@group.Where(i => !i.IsInflow).Sum(i => i.Amount).ToString("N0") Br
+                                    @if (group.Any(i => i.IsInflow))
+                                    {
+                                        <span> · +@group.Where(i => i.IsInflow).Sum(i => i.Amount).ToString("N0") Br</span>
+                                    }
+                                </span>
+                            </div>
+                            <div class="payment-cal-table-wrap">
+                            <table class="table payment-cal-table">
+                                <tbody>
+                                    @foreach (var item in group)
+                                    {
+                                        <tr class="payment-cal-row status-@GetStatusClass(item.Status)">
+                                            <td style="width:36px">
+                                                @if (item.CanMarkPaid && !item.IsInflow)
+                                                {
+                                                    <input type="checkbox"
+                                                           checked="@_selectedKeys.Contains(item.Key)"
+                                                           @onchange="e => ToggleSelect(item, e)" />
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold">@(string.IsNullOrWhiteSpace(item.Counterparty) ? item.Title : item.Counterparty)</div>
+                                                <div class="small text-muted">@item.Purpose</div>
+                                            </td>
+                                            <td class="text-muted small">@GetTypeLabel(item.PaymentType)</td>
+                                            <td class="text-muted small">@item.Category</td>
+                                            <td>
+                                                <span class="badge @GetStatusBadge(item.Status)">@GetStatusLabel(item.Status)</span>
+                                            </td>
+                                            <td class="text-end fw-bold @(item.IsInflow ? "text-success" : "text-danger")">
+                                                @(item.IsInflow ? "+" : "−")@item.Amount.ToString("N2") Br
+                                            </td>
+                                            <td class="text-end col-actions">
+                                                @if (item.CanMarkPaid)
+                                                {
+                                                    <button class="btn btn-sm btn-success" title="Отметить оплаченным" @onclick="() => PayOne(item)">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
+    private static readonly string[] _weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+    private string _userId = "";
+    private PaymentCalendarDto? _calendar;
+    private List<PaymentCalendarItemDto> _filteredItems = new();
+    private List<CalendarCell> _calendarCells = new();
+    private List<string> _categories = new();
+    private List<string> _counterparties = new();
+
+    private int _year;
+    private int _month;
+    private string _monthTitle = "";
+    private DateTime? _selectedDay;
+
+    private PaymentCalendarPaymentType _typeFilter = PaymentCalendarPaymentType.All;
+    private string _statusFilter = "";
+    private string _counterpartyFilter = "";
+
+    private readonly HashSet<string> _selectedKeys = new();
+    private decimal _selectedTotal;
+
+    private bool _loading = true;
+    private bool _showAddForm;
+    private bool _paying;
+    private string _message = "";
+    private bool _showMessage;
+    private string _errorMessage = "";
+    private bool _showError;
+
+    private DateTime _formDate = DateTime.Today;
+    private decimal _formAmount;
+    private string _formCategory = "";
+    private string _formCounterparty = "";
+    private string _formPurpose = "";
+    private ReminderFrequency _formFrequency = ReminderFrequency.OneTime;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
+        _userId = user.Id;
+        _year = DateTime.Today.Year;
+        _month = DateTime.Today.Month;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _monthTitle = new DateTime(_year, _month, 1).ToString("MMMM yyyy", RuCulture);
+
+        _categories = await DbContext.Categories.Select(c => c.Name).ToListAsync();
+        _counterparties = await DbContext.Counterparties
+            .Where(c => c.UserId == _userId)
+            .Select(c => c.Name)
+            .ToListAsync();
+
+        _calendar = await CalendarService.BuildMonthAsync(_userId, _year, _month);
+        BuildCalendarGrid();
+        ApplyFilters();
+        _loading = false;
+    }
+
+    private void BuildCalendarGrid()
+    {
+        if (_calendar == null) return;
+
+        var first = new DateTime(_year, _month, 1);
+        var startOffset = ((int)first.DayOfWeek + 6) % 7;
+        var gridStart = first.AddDays(-startOffset);
+        var cells = new List<CalendarCell>();
+
+        for (var i = 0; i < 42; i++)
+        {
+            var date = gridStart.AddDays(i);
+            var dayItems = _calendar.Items.Where(x => x.Date.Date == date.Date).ToList();
+            var dots = dayItems
+                .Select(x => GetStatusClass(x.Status))
+                .Distinct()
+                .ToList();
+
+            cells.Add(new CalendarCell
+            {
+                Date = date,
+                IsCurrentMonth = date.Month == _month,
+                Count = dayItems.Count,
+                TotalOutflow = dayItems.Where(x => !x.IsInflow && !x.IsPaid).Sum(x => x.Amount),
+                StatusDots = dots
+            });
+        }
+
+        _calendarCells = cells;
+    }
+
+    private void ApplyFilters()
+    {
+        if (_calendar == null)
+        {
+            _filteredItems = new();
+            return;
+        }
+
+        IEnumerable<PaymentCalendarItemDto> q = _calendar.Items;
+
+        if (_selectedDay.HasValue)
+            q = q.Where(i => i.Date.Date == _selectedDay.Value.Date);
+
+        if (_typeFilter != PaymentCalendarPaymentType.All)
+            q = q.Where(i => i.PaymentType == _typeFilter);
+
+        if (!string.IsNullOrEmpty(_counterpartyFilter))
+            q = q.Where(i => string.Equals(i.Counterparty, _counterpartyFilter, StringComparison.OrdinalIgnoreCase));
+
+        q = _statusFilter switch
+        {
+            "paid" => q.Where(i => i.IsPaid),
+            "unpaid" => q.Where(i => !i.IsPaid),
+            "overdue" => q.Where(i => i.Status == PaymentCalendarStatus.Overdue),
+            "urgent" => q.Where(i => i.Status is PaymentCalendarStatus.DueToday or PaymentCalendarStatus.DueTomorrow),
+            _ => q
+        };
+
+        _filteredItems = q.OrderBy(i => i.Date).ThenBy(i => i.Title).ToList();
+        RecalcSelectionTotal();
+    }
+
+    private void SelectDay(DateTime date)
+    {
+        _selectedDay = _selectedDay?.Date == date.Date ? null : date.Date;
+        ApplyFilters();
+    }
+
+    private void ClearDayFilter()
+    {
+        _selectedDay = null;
+        ApplyFilters();
+    }
+
+    private async Task PrevMonth()
+    {
+        var d = new DateTime(_year, _month, 1).AddMonths(-1);
+        _year = d.Year;
+        _month = d.Month;
+        _selectedDay = null;
+        ClearSelection();
+        await LoadAsync();
+    }
+
+    private async Task NextMonth()
+    {
+        var d = new DateTime(_year, _month, 1).AddMonths(1);
+        _year = d.Year;
+        _month = d.Month;
+        _selectedDay = null;
+        ClearSelection();
+        await LoadAsync();
+    }
+
+    private async Task GoToday()
+    {
+        _year = DateTime.Today.Year;
+        _month = DateTime.Today.Month;
+        _selectedDay = DateTime.Today;
+        ClearSelection();
+        await LoadAsync();
+    }
+
+    private void OpenAddForm()
+    {
+        _formDate = _selectedDay ?? DateTime.Today;
+        _formAmount = 0;
+        _formCategory = "";
+        _formCounterparty = "";
+        _formPurpose = "";
+        _formFrequency = ReminderFrequency.OneTime;
+        _showAddForm = true;
+    }
+
+    private async Task SavePayment()
+    {
+        ClearAlerts();
+        if (_formAmount <= 0) { ShowError("Укажите сумму"); return; }
+
+        try
+        {
+            await CalendarService.AddPaymentAsync(new PaymentCreateRequest
+            {
+                Date = _formDate,
+                Amount = _formAmount,
+                Category = _formCategory,
+                Counterparty = _formCounterparty,
+                Purpose = _formPurpose,
+                Frequency = _formFrequency
+            }, _userId);
+            _showAddForm = false;
+            ShowSuccess("Платёж добавлен в календарь");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private async Task PayOne(PaymentCalendarItemDto item)
+    {
+        ClearAlerts();
+        try
+        {
+            var result = await CalendarService.MarkPaidBulkAsync(new[] { item.Key }, _userId);
+            ShowSuccess(result.Message);
+            ClearSelection();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private async Task BulkPay()
+    {
+        if (_selectedKeys.Count == 0) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"Отметить {_selectedKeys.Count} платеж(ей) как оплаченные?"))
+            return;
+
+        _paying = true;
+        ClearAlerts();
+        try
+        {
+            var result = await CalendarService.MarkPaidBulkAsync(_selectedKeys, _userId);
+            ShowSuccess(result.Message);
+            ClearSelection();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            _paying = false;
+        }
+    }
+
+    private void ToggleSelect(PaymentCalendarItemDto item, ChangeEventArgs e)
+    {
+        var on = e.Value is bool b && b;
+        if (on) _selectedKeys.Add(item.Key);
+        else _selectedKeys.Remove(item.Key);
+        RecalcSelectionTotal();
+    }
+
+    private void RecalcSelectionTotal()
+    {
+        if (_calendar == null) { _selectedTotal = 0; return; }
+        _selectedTotal = _calendar.Items
+            .Where(i => _selectedKeys.Contains(i.Key))
+            .Sum(i => i.Amount);
+    }
+
+    private void ClearSelection()
+    {
+        _selectedKeys.Clear();
+        _selectedTotal = 0;
+    }
+
+    private string GetDayClass(CalendarCell cell)
+    {
+        var parts = new List<string>();
+        if (!cell.IsCurrentMonth) parts.Add("other-month");
+        if (cell.Count > 0) parts.Add("has-payments");
+        if (_selectedDay?.Date == cell.Date.Date) parts.Add("selected");
+        if (cell.Date.Date == DateTime.Today) parts.Add("today");
+        if (cell.StatusDots.Contains("overdue")) parts.Add("has-overdue");
+        return string.Join(" ", parts);
+    }
+
+    private static string GetStatusClass(PaymentCalendarStatus status) => status switch
+    {
+        PaymentCalendarStatus.Paid => "paid",
+        PaymentCalendarStatus.Overdue => "overdue",
+        PaymentCalendarStatus.DueToday => "due-today",
+        PaymentCalendarStatus.DueTomorrow => "due-today",
+        _ => "planned"
+    };
+
+    private static string GetStatusLabel(PaymentCalendarStatus status) => status switch
+    {
+        PaymentCalendarStatus.Paid => "Оплачено",
+        PaymentCalendarStatus.Overdue => "Просрочено",
+        PaymentCalendarStatus.DueToday => "Сегодня",
+        PaymentCalendarStatus.DueTomorrow => "Завтра",
+        _ => "Ожидает"
+    };
+
+    private static string GetStatusBadge(PaymentCalendarStatus status) => status switch
+    {
+        PaymentCalendarStatus.Paid => "badge-success",
+        PaymentCalendarStatus.Overdue => "badge-danger",
+        PaymentCalendarStatus.DueToday or PaymentCalendarStatus.DueTomorrow => "badge-warning",
+        _ => "badge"
+    };
+
+    private static string GetTypeLabel(PaymentCalendarPaymentType type) => type switch
+    {
+        PaymentCalendarPaymentType.Tax => "Налоги",
+        PaymentCalendarPaymentType.Rent => "Аренда",
+        PaymentCalendarPaymentType.Salary => "Зарплата",
+        PaymentCalendarPaymentType.Utilities => "Коммуналка",
+        _ => "Прочее"
+    };
+
+    private void ClearAlerts() { _showMessage = _showError = false; }
+    private void ShowSuccess(string m) { _message = m; _showMessage = true; }
+    private void ShowError(string m) { _errorMessage = m; _showError = true; }
+
+    private sealed class CalendarCell
+    {
+        public DateTime Date { get; init; }
+        public bool IsCurrentMonth { get; init; }
+        public int Count { get; init; }
+        public decimal TotalOutflow { get; init; }
+        public List<string> StatusDots { get; init; } = new();
+    }
+}

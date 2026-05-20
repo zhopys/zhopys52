@@ -1,4 +1,5 @@
 using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
@@ -80,12 +81,7 @@ public class NotificationEmailService : INotificationEmailService
             var bodyBuilder = new BodyBuilder { HtmlBody = body };
             message.Body = bodyBuilder.ToMessageBody();
 
-            using var client = new SmtpClient();
-            await client.ConnectAsync(_smtp.Host, _smtp.Port, _smtp.EnableSsl);
-            if (!string.IsNullOrWhiteSpace(_smtp.Username))
-                await client.AuthenticateAsync(_smtp.Username, _smtp.Password);
-            await client.SendAsync(message);
-            await client.DisconnectAsync(true);
+            await SendMessageAsync(message);
 
             _logger.LogInformation("Notification email sent to {Email}: {PaymentName}", userEmail, paymentName);
         }
@@ -133,12 +129,7 @@ public class NotificationEmailService : INotificationEmailService
             };
             message.Body = bodyBuilder.ToMessageBody();
 
-            using var client = new SmtpClient();
-            await client.ConnectAsync(_smtp.Host, _smtp.Port, _smtp.EnableSsl);
-            if (!string.IsNullOrWhiteSpace(_smtp.Username))
-                await client.AuthenticateAsync(_smtp.Username, _smtp.Password);
-            await client.SendAsync(message);
-            await client.DisconnectAsync(true);
+            await SendMessageAsync(message);
 
             _logger.LogInformation("Test email sent to {Email}", userEmail);
         }
@@ -148,6 +139,41 @@ public class NotificationEmailService : INotificationEmailService
             throw;
         }
     }
+
+    public async Task SendRawEmailAsync(string userEmail, string subject, string htmlBody)
+    {
+        if (string.IsNullOrWhiteSpace(_smtp.Host) || string.IsNullOrWhiteSpace(_smtp.FromEmail))
+        {
+            _logger.LogWarning("SMTP not configured, skipping email to {Email}", userEmail);
+            return;
+        }
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_smtp.FromName, _smtp.FromEmail));
+        message.To.Add(new MailboxAddress("", userEmail));
+        message.Subject = subject;
+        message.Body = new BodyBuilder { HtmlBody = htmlBody }.ToMessageBody();
+
+        await SendMessageAsync(message);
+    }
+
+    private async Task SendMessageAsync(MimeMessage message)
+    {
+        using var client = new SmtpClient();
+        await client.ConnectAsync(_smtp.Host, _smtp.Port, GetSecureSocketOptions());
+        if (!string.IsNullOrWhiteSpace(_smtp.Username))
+            await client.AuthenticateAsync(_smtp.Username, _smtp.Password);
+        await client.SendAsync(message);
+        await client.DisconnectAsync(true);
+    }
+
+    private SecureSocketOptions GetSecureSocketOptions() =>
+        _smtp.Port switch
+        {
+            465 => SecureSocketOptions.SslOnConnect,
+            587 => SecureSocketOptions.StartTls,
+            _ => _smtp.EnableSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None
+        };
 
     public async Task<int> SendAllUpcomingNotificationsAsync(IEnumerable<(string Email, string Name, decimal Amount, DateTime DueDate, string Type, int DaysUntil)> items)
     {

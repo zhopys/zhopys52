@@ -1,0 +1,35 @@
+@using MiniFinance.Services
+
+@if (Alerts.Any())
+{
+    <div class="card tax-calendar-widget mb-3">
+        <div class="card-header">
+            <span>Календарь платежей</span>
+            <a href="/reminders" class="small text-muted">Все напоминания</a>
+        </div>
+        <div class="card-body" style="padding:0">
+            @foreach (var alert in Alerts)
+            {
+                <div class="tax-alert-item severity-@alert.Severity">
+                    <span class="tax-alert-dot severity-@alert.Severity" aria-hidden="true"></span>
+                    <div class="tax-alert-content">
+                        <div class="fw-bold">@alert.Message</div>
+                        <div class="small text-muted">
+                            @alert.DueDate.ToString("dd MMMM yyyy", RuCulture) · @alert.Amount.ToString("N0") Br
+                        </div>
+                    </div>
+                    @if (alert.Source == "reminder")
+                    {
+                        <a href="/reminders" class="btn btn-sm btn-outline">Открыть</a>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<TaxAlertDto> Alerts { get; set; } = Array.Empty<TaxAlertDto>();
+
+    private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
+}

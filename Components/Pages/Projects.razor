@@ -212,7 +212,7 @@
     var completedProjects = projects.Count(p => p.Status == ProjectStatus.Completed);
 
     <div class="dashboard-stats">
-        <div class="stat-card">
+        <div class="stat-card" data-animate>
             <div class="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             </div>
@@ -225,7 +225,7 @@
                 </div>
             </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-animate>
             <div class="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
@@ -235,7 +235,7 @@
                 <div class="stat-trend">Плановый</div>
             </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-animate>
             <div class="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
             </div>
@@ -245,7 +245,7 @@
                 <div class="stat-trend">За все время</div>
             </div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" data-animate>
             <div class="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
             </div>
@@ -256,7 +256,6 @@
             </div>
         </div>
     </div>
-    }
 
     <!-- Department summaries -->
     @if (departmentSummaries.Any())
@@ -279,7 +278,7 @@
                     <tbody>
                         @foreach (var dept in departmentSummaries)
                         {
-                            <tr>
+                            <tr class="@(dept.TotalProfit < 0 ? "negative-balance" : null)" data-balance="@dept.TotalProfit.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                                 <td><strong>@dept.Department</strong></td>
                                 <td class="text-center">@dept.ProjectCount</td>
                                 <td class="text-center">@dept.ActiveProjects</td>
@@ -327,7 +326,7 @@
                     <tbody>
                         @foreach (var m in profitabilityMetrics)
                         {
-                            <tr>
+                            <tr class="@(m.Profit < 0 ? "negative-balance" : null)" data-balance="@m.Profit.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                                 <td><strong>@m.ProjectName</strong></td>
                                 @if (!string.IsNullOrWhiteSpace(m.Department))
                                 {
@@ -412,7 +411,7 @@
                     ? (proj.EndDate.Value - DateTime.Today).Days 
                     : (int?)null;
 
-                <div class="project-card @(expandedProjectId == proj.Id ? "expanded" : "")">
+                <div class="project-card @(expandedProjectId == proj.Id ? "expanded" : "")" data-animate>
                     <!-- Заголовок карточки со статусом -->
                     <div class="project-header">
                         <div class="project-title-section">
@@ -448,14 +447,14 @@
                                     }
                                 </svg>
                             </button>
-                            <button class="project-action" @onclick="() => StartEdit(proj)" title="Редактировать">
+                            <button class="project-action" @onclick="() => StartEdit(proj)" title="Редактировать" disabled="@(proj.UserId != null && proj.UserId != userId && !proj.IsDefault)">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
                                 </svg>
                             </button>
                             @if (!proj.IsDefault)
                             {
-                                <button class="project-action delete" @onclick="() => ConfirmDelete(proj.Id)" title="Удалить">
+                                <button class="project-action delete" @onclick="() => ConfirmDelete(proj.Id)" title="Удалить" disabled="@(proj.UserId != null && proj.UserId != userId)">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <polyline points="3 6 5 6 21 6"/>
                                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -638,6 +637,7 @@
 
 @code {
     private List<Project>? projects;
+    private string? userId;
     private bool isLoading = true;
     private bool showCreateForm = false;
     private bool showMessage = false;
@@ -659,6 +659,18 @@
         await LoadProjects();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("uiEnhance.refresh");
+        }
+        catch
+        {
+            // ui.js may not be loaded yet on first paint
+        }
+    }
+
     private async Task LoadProjects()
     {
         isLoading = true;
@@ -668,8 +680,10 @@
             var user = await UserManager.GetUserAsync(authState.User);
 
             if (user == null) return;
+            userId = user.Id;
 
             projects = await DbContext.Projects
+                .Where(p => p.UserId == user.Id || p.IsDefault)
                 .OrderBy(p => p.IsDefault ? 0 : 1)
                 .ThenBy(p => p.Status == ProjectStatus.Active ? 0 : 1)
                 .ThenBy(p => p.Name)
@@ -709,13 +723,18 @@
                 transactionsByCategory[proj.Id] = catGroups;
             }
 
-            // Compute profitability metrics
-            profitabilityMetrics = MiniFinance.Services.ProjectProfitabilityService.ComputeMetrics(projects, await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync());
-            departmentSummaries = MiniFinance.Services.ProjectProfitabilityService.ComputeDepartmentSummaries(projects, await DbContext.Transactions.Where(t => t.UserId == user.Id).ToListAsync());
+            var userTransactions = await DbContext.Transactions
+                .Where(t => t.UserId == user.Id)
+                .ToListAsync();
+
+            profitabilityMetrics = MiniFinance.Services.ProjectProfitabilityService.ComputeMetrics(projects, userTransactions);
+            departmentSummaries = MiniFinance.Services.ProjectProfitabilityService.ComputeDepartmentSummaries(projects, userTransactions);
         }
         catch (Exception ex)
         {
-            errorMessage = $"Ошибка загрузки: {ex.Message}";
+            // Surface the root cause to help debugging (inner exception from EF/SQLite)
+            var baseMsg = ex.GetBaseException()?.Message ?? ex.Message;
+            errorMessage = $"Ошибка загрузки: {baseMsg}";
             showError = true;
         }
         finally
@@ -760,10 +779,11 @@
 
             if (editId == 0)
             {
-                // Create new
-                if (await DbContext.Projects.AnyAsync(p => p.Name == newProject.Name.Trim()))
+                // Create new: check for name uniqueness per user
+                var trimmedName = newProject.Name.Trim();
+                if (await DbContext.Projects.AnyAsync(p => p.UserId == user.Id && p.Name == trimmedName && !p.IsDefault))
                 {
-                    errorMessage = "Проект с таким названием уже существует";
+                    errorMessage = "У вас уже есть проект с таким названием";
                     showError = true;
                     return;
                 }
@@ -785,6 +805,7 @@
                     Notes = newProject.Notes
                 };
 
+                project.UserId = user.Id;
                 DbContext.Projects.Add(project);
                 message = "Проект создан успешно";
             }
@@ -799,11 +820,20 @@
                     return;
                 }
 
-                // Check for duplicate name
-                if (proj.Name != newProject.Name.Trim() && 
-                    await DbContext.Projects.AnyAsync(p => p.Name == newProject.Name.Trim()))
+                // Ensure ownership: only owner or default projects editable
+                if (proj.UserId != null && proj.UserId != user.Id && !proj.IsDefault)
                 {
-                    errorMessage = "Проект с таким названием уже существует";
+                    errorMessage = "Нет прав на редактирование этого проекта";
+                    showError = true;
+                    return;
+                }
+
+                // Check for duplicate name per user
+                var trimmedName = newProject.Name.Trim();
+                if (proj.Name != trimmedName && 
+                    await DbContext.Projects.AnyAsync(p => p.UserId == user.Id && p.Name == trimmedName && !p.IsDefault))
+                {
+                    errorMessage = "У вас уже есть проект с таким названием";
                     showError = true;
                     return;
                 }
@@ -832,7 +862,8 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Ошибка: {ex.Message}";
+            var baseMsg = ex.GetBaseException()?.Message ?? ex.Message;
+            errorMessage = $"Ошибка: {baseMsg}";
             showError = true;
         }
     }
@@ -881,6 +912,16 @@
         {
             var p = await DbContext.Projects.FindAsync(id);
             if (p == null) return;
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) return;
+
+            if (p.UserId != null && p.UserId != user.Id && !p.IsDefault)
+            {
+                errorMessage = "Нет прав на удаление этого проекта";
+                showError = true;
+                return;
+            }
 
             DbContext.Projects.Remove(p);
             await DbContext.SaveChangesAsync();
@@ -890,7 +931,8 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Ошибка при удалении: {ex.Message}";
+            var baseMsg = ex.GetBaseException()?.Message ?? ex.Message;
+            errorMessage = $"Ошибка при удалении: {baseMsg}";
             showError = true;
         }
     }

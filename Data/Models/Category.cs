@@ -31,5 +31,14 @@ namespace MiniFinance.Data.Models
         public string? Icon { get; set; }
 
         public string? Color { get; set; }
+
+        public int? ParentCategoryId { get; set; }
+
+        public decimal? MonthlyBudget { get; set; }
+
+        [StringLength(100)]
+        public string? GroupName { get; set; }
+
+        public bool IsHidden { get; set; }
     }
 }

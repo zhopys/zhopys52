@@ -1,49 +1,31 @@
 ﻿@page "/Account/ConfirmEmail"
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
-@using System.Text
-@using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.WebUtilities
-@using MiniFinance.Data
+@inject NavigationManager Navigation
 
-@inject UserManager<ApplicationUser> UserManager
-@inject IdentityRedirectManager RedirectManager
+<PageTitle>Подтверждение email — MiniFinance</PageTitle>
 
-<PageTitle>Confirm email</PageTitle>
-
-<h1>Confirm email</h1>
-<StatusMessage Message="@statusMessage" />
+<div class="login-page">
+    <div class="login-container">
+        <p class="text-muted">Перенаправление...</p>
+    </div>
+</div>
 
 @code {
-    private string? statusMessage;
+    [SupplyParameterFromQuery] public string? UserId { get; set; }
+    [SupplyParameterFromQuery] public string? Code { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
 
-    [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
-
-    [SupplyParameterFromQuery]
-    private string? UserId { get; set; }
-
-    [SupplyParameterFromQuery]
-    private string? Code { get; set; }
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        if (UserId is null || Code is null)
-        {
-            RedirectManager.RedirectTo("");
-            return;
-        }
-
-        var user = await UserManager.FindByIdAsync(UserId);
-        if (user is null)
-        {
-            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            statusMessage = $"Error loading user with ID {UserId}";
-        }
-        else
-        {
-            var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
-            var result = await UserManager.ConfirmEmailAsync(user, code);
-            statusMessage = result.Succeeded ? "Thank you for confirming your email." : "Error confirming your email.";
-        }
+        var url = Navigation.GetUriWithQueryParameters(
+            Navigation.ToAbsoluteUri("/Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?>
+            {
+                ["userId"] = UserId,
+                ["code"] = Code,
+                ["returnUrl"] = ReturnUrl
+            });
+        Navigation.NavigateTo(url, forceLoad: true);
     }
 }

@@ -1,0 +1,78 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Отчёт о прибылях и убытках</div>
+    <div class="card-body" style="padding:0">
+        @if (Report == null)
+        {
+            <div class="empty-state">Нет данных за выбранный период</div>
+        }
+        else
+        {
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;padding:1rem;border-bottom:1px solid var(--border)">
+                <div>
+                    <div class="metric-label">Доходы</div>
+                    <div class="metric-value text-success">@Report.TotalIncome.ToString("N0") Br</div>
+                </div>
+                <div>
+                    <div class="metric-label">Расходы</div>
+                    <div class="metric-value text-danger">@Report.TotalExpense.ToString("N0") Br</div>
+                </div>
+                <div>
+                    <div class="metric-label">Чистая прибыль</div>
+                    <div class="metric-value" style="color:@(Report.NetProfit >= 0 ? "var(--success)" : "var(--danger)")">
+                        @Report.NetProfit.ToString("N0") Br
+                    </div>
+                </div>
+                <div>
+                    <div class="metric-label">Маржинальность</div>
+                    <div class="metric-value" style="color:@(Report.ProfitMargin >= 0 ? "var(--success)" : "var(--danger)")">
+                        @Report.ProfitMargin.ToString("F1")%
+                    </div>
+                </div>
+            </div>
+            @if (Report.ExpenseByCategory.Any())
+            {
+                <div style="padding:1rem">
+                    <h4 style="margin-bottom:0.5rem">Расходы по категориям</h4>
+                    @foreach (var cat in Report.ExpenseByCategory)
+                    {
+                        <div style="margin-bottom:0.5rem">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                                <span>@cat.Category</span>
+                                <span class="text-danger">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
+                            </div>
+                            <div class="progress-bar-container" style="height:6px">
+                                <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--danger)"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            @if (Report.IncomeByCategory.Any())
+            {
+                <div style="padding:1rem;border-top:1px solid var(--border)">
+                    <h4 style="margin-bottom:0.5rem">Доходы по категориям</h4>
+                    @foreach (var cat in Report.IncomeByCategory)
+                    {
+                        <div style="margin-bottom:0.5rem">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                                <span>@cat.Category</span>
+                                <span class="text-success">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
+                            </div>
+                            <div class="progress-bar-container" style="height:6px">
+                                <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--success)"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public ProfitLossReport? Report { get; set; }
+}
+
+

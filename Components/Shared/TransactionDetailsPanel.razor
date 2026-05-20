@@ -1,0 +1,142 @@
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject ITagService TagService
+@inject IAttachmentService AttachmentService
+@inject ICommentService CommentService
+@inject ITransactionService TransactionService
+@inject IUserContextService UserContext
+
+@if (TransactionId > 0)
+{
+    <div class="card mt-2 transaction-details">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Операция #@TransactionId</span>
+            <button type="button" class="btn btn-sm btn-outline" @onclick="OnClose">Закрыть</button>
+        </div>
+        <div class="card-body">
+            @if (_canApprove && _status == TransactionApprovalStatus.Pending)
+            {
+                <div class="alert alert-warning small">
+                    Ожидает утверждения
+                    <button class="btn btn-sm btn-primary ms-2" @onclick="Approve">Утвердить</button>
+                    <button class="btn btn-sm btn-outline ms-1" @onclick="Reject">Отклонить</button>
+                </div>
+            }
+
+            <div class="mb-3">
+                <label class="label">Теги (через запятую)</label>
+                <input class="input" @bind="_tagsInput" />
+                <button class="btn btn-sm btn-outline mt-1" @onclick="SaveTags">Сохранить теги</button>
+                @if (_tagNames.Any())
+                {
+                    <div class="reports-active-filters mt-2">
+                        @foreach (var t in _tagNames)
+                        {
+                            <span class="filter-chip">@t</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="label">Чеки и документы (PDF, JPG, PNG до 10 МБ)</label>
+                <InputFile OnChange="OnFileSelected" accept=".pdf,.jpg,.jpeg,.png,.webp" />
+                @if (_attachments.Any())
+                {
+                    <ul class="small mt-2" style="list-style:none;padding:0">
+                        @foreach (var a in _attachments)
+                        {
+                            <li class="mb-1">
+                                <a href="@AttachmentService.GetPublicUrl(a)" target="_blank" rel="noopener">@a.FileName</a>
+                                <button type="button" class="btn btn-sm btn-outline text-danger ms-1" @onclick="() => DeleteAttachment(a.Id)">×</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <div>
+                <label class="label">Комментарии</label>
+                @foreach (var c in _comments)
+                {
+                    <div class="small mb-1 p-2" style="background:var(--surface-hover);border-radius:6px">
+                        <strong>@(c.AuthorName ?? "Сотрудник")</strong>
+                        <span class="text-muted"> · @c.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
+                        <div>@c.Text</div>
+                    </div>
+                }
+                <textarea class="input mt-1" rows="2" @bind="_newComment" placeholder="Комментарий..."></textarea>
+                <button class="btn btn-sm btn-primary mt-1" @onclick="AddComment">Добавить</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int TransactionId { get; set; }
+    [Parameter] public string UserId { get; set; } = "";
+    [Parameter] public string? AuthorName { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<string> _tagNames = new();
+    private string _tagsInput = "";
+    private List<TransactionAttachment> _attachments = new();
+    private List<TransactionComment> _comments = new();
+    private string _newComment = "";
+    private TransactionApprovalStatus _status;
+    private bool _canApprove;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (TransactionId <= 0 || string.IsNullOrEmpty(UserId)) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var ctx = await UserContext.GetContextAsync(UserId);
+        _canApprove = UserContext.CanApproveTransactions(ctx);
+        var tx = await TransactionService.GetAsync(TransactionId, UserId);
+        _status = tx?.ApprovalStatus ?? TransactionApprovalStatus.Approved;
+        _tagNames = (await TagService.GetTransactionTagNamesAsync(TransactionId, UserId)).ToList();
+        _tagsInput = string.Join(", ", _tagNames);
+        _attachments = await AttachmentService.ListAsync(TransactionId, UserId);
+        _comments = await CommentService.ListAsync(TransactionId, UserId);
+    }
+
+    private async Task SaveTags()
+    {
+        var names = _tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        await TagService.SetTransactionTagsAsync(TransactionId, UserId, names);
+        await LoadAsync();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        await AttachmentService.UploadAsync(TransactionId, UserId, ms, file.Name, file.ContentType);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAttachment(int id)
+    {
+        await AttachmentService.DeleteAsync(id, UserId);
+        await LoadAsync();
+    }
+
+    private async Task AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(_newComment)) return;
+        await CommentService.AddAsync(TransactionId, UserId, _newComment, AuthorName);
+        _newComment = "";
+        await LoadAsync();
+    }
+
+    private async Task Approve() { await TransactionService.ApproveAsync(TransactionId, UserId); await LoadAsync(); }
+    private async Task Reject() { await TransactionService.RejectAsync(TransactionId, UserId); await LoadAsync(); }
+}

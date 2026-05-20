@@ -1,0 +1,112 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Движение денежных средств (Cash Flow)</div>
+    <div class="card-body" style="padding:0">
+        @if (Statement == null)
+        {
+            <div class="empty-state">Нет данных за выбранный период</div>
+        }
+        else
+        {
+            <div style="padding:1rem;border-bottom:1px solid var(--border)">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
+                        <div class="metric-label">Операционная деятельность</div>
+                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.OperatingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
+                            @Statement.OperatingCashFlow.ToString("N0") Br
+                        </div>
+                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.OperatingIncome.ToString("N0") | Расход: @Statement.OperatingExpenses.ToString("N0")</div>
+                    </div>
+                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
+                        <div class="metric-label">Инвестиционная деятельность</div>
+                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.InvestmentCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
+                            @Statement.InvestmentCashFlow.ToString("N0") Br
+                        </div>
+                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.InvestmentIncome.ToString("N0") | Расход: @Statement.InvestmentExpenses.ToString("N0")</div>
+                    </div>
+                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
+                        <div class="metric-label">Финансовая деятельность</div>
+                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.FinancingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
+                            @Statement.FinancingCashFlow.ToString("N0") Br
+                        </div>
+                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.FinancingIncome.ToString("N0") | Расход: @Statement.FinancingExpenses.ToString("N0")</div>
+                    </div>
+                </div>
+                <div style="margin-top:1rem;padding:1rem;background:var(--surface-hover);border-radius:var(--radius);text-align:center">
+                    <div class="metric-label">Чистый денежный поток</div>
+                    <div class="metric-value" style="color:@(Statement.NetCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
+                        @Statement.NetCashFlow.ToString("N0") Br
+                    </div>
+                </div>
+            </div>
+            @if (Statement.CategoryDetails.Any())
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Категория</th>
+                            <th class="text-end">Приход</th>
+                            <th class="text-end">Расход</th>
+                            <th class="text-end">Нетто</th>
+                            <th class="text-end">Операций</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in Statement.CategoryDetails)
+                        {
+                            <tr class="@(cat.NetFlow < 0 ? "negative-balance" : null)" data-balance="@cat.NetFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                                <td>@cat.Category</td>
+                                <td class="text-end text-success">@cat.Income.ToString("N0") Br</td>
+                                <td class="text-end text-danger">@cat.Expense.ToString("N0") Br</td>
+                                <td class="text-end fw-bold @(cat.NetFlow >= 0 ? "text-success" : "text-danger")">
+                                    @cat.NetFlow.ToString("N0") Br
+                                </td>
+                                <td class="text-end text-muted">@cat.TransactionCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@if (MonthlyCashflow.Any())
+{
+    <div class="card mb-3">
+        <div class="card-header">Помесячный денежный поток</div>
+        <div class="card-body" style="padding:0">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Месяц</th>
+                        <th class="text-end">Приход</th>
+                        <th class="text-end">Расход</th>
+                        <th class="text-end">Остаток нарастающим</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in MonthlyCashflow)
+                    {
+                        <tr class="@(c.Balance < 0 ? "negative-balance" : null)" data-balance="@c.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                            <td class="text-muted">@c.Date.ToString("MMMM yyyy", RuCulture)</td>
+                            <td class="text-end text-success">@c.Income.ToString("N2") Br</td>
+                            <td class="text-end text-danger">@c.Expense.ToString("N2") Br</td>
+                            <td class="text-end fw-bold @(c.Balance >= 0 ? "text-success" : "text-danger")">
+                                @c.Balance.ToString("N2") Br
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public CashFlowStatementReport? Statement { get; set; }
+    [Parameter] public List<CashflowEntry> MonthlyCashflow { get; set; } = new();
+
+    private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
+}

@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Data.Models
+@using MiniFinance.Services
 @inject ApplicationDbContext DbContext
 @inject IJSRuntime JsRuntime
 @inject UserManager<ApplicationUser> UserManager
@@ -69,6 +70,9 @@
             <button class="tab @(_activeTab == "all" ? "active" : "")" @onclick="@(() => SetTab("all"))">
                 Все
             </button>
+            <button class="tab @(_activeTab == "archive" ? "active" : "")" @onclick="@(() => SetTab("archive"))">
+                Архив
+            </button>
         </div>
     </div>
 </div>
@@ -96,11 +100,34 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Тип</label>
+                    <select class="form-select form-input" @bind="_newReminderType">
+                        <option value="@ReminderType.Tax">Налоги</option>
+                        <option value="@ReminderType.Bill">Счета</option>
+                        <option value="@ReminderType.Salary">Зарплата</option>
+                        <option value="@ReminderType.Rent">Аренда</option>
+                        <option value="@ReminderType.Subscription">Подписки</option>
+                        <option value="@ReminderType.Other">Другое</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Периодичность</label>
                     <select class="form-select form-input" @bind="_newFrequency">
                         <option value="@ReminderFrequency.OneTime">Разово</option>
+                        <option value="@ReminderFrequency.Daily">Ежедневно</option>
+                        <option value="@ReminderFrequency.Weekly">Еженедельно</option>
                         <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
+                        <option value="@ReminderFrequency.Quarterly">Ежеквартально</option>
                         <option value="@ReminderFrequency.Yearly">Ежегодно</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Напомнить за (дней)</label>
+                    <select class="form-select form-input" @bind="_newNotifyDays">
+                        <option value="7">7 дней</option>
+                        <option value="3">3 дня</option>
+                        <option value="1">1 день</option>
+                        <option value="0">В день платежа</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -274,8 +301,11 @@
                                 }
                             </td>
                             <td class="text-center" style="white-space: nowrap;">
-                                @if (!r.IsPaid)
+                                @if (!r.IsPaid && _activeTab != "archive")
                                 {
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 1))" title="Напомнить через 1 день">+1д</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 3))" title="Через 3 дня">+3д</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 7))" title="Через неделю">+7д</button>
                                     <button class="btn btn-sm btn-success" @onclick="@(() => MarkPaid(r.Id))" title="Отметить как оплаченное">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                                     </button>
@@ -319,6 +349,8 @@
     private DateTime _newDate = DateTime.Today;
     private int? _newProjectId;
     private string _newNotes = string.Empty;
+    private ReminderType _newReminderType = ReminderType.Other;
+    private int _newNotifyDays = 3;
 
     protected override async Task OnInitializedAsync()
     {
@@ -354,8 +386,8 @@
                 .Where(r => r.UserId == user.Id)
                 .ToListAsync();
 
-            _upcomingCount = _reminders.Count(r => !r.IsPaid && r.Date >= DateTime.Today);
-            _overdueCount = _reminders.Count(r => !r.IsPaid && r.Date < DateTime.Today);
+            _upcomingCount = _reminders.Count(r => !r.IsArchived && !r.IsPaid && r.Date >= DateTime.Today);
+            _overdueCount = _reminders.Count(r => !r.IsArchived && !r.IsPaid && r.Date < DateTime.Today);
         }
     }
 
@@ -365,10 +397,11 @@
 
         return _activeTab switch
         {
-            "upcoming" => _reminders.Where(r => !r.IsPaid && r.Date >= DateTime.Today),
-            "overdue" => _reminders.Where(r => !r.IsPaid && r.Date < DateTime.Today),
-            "paid" => _reminders.Where(r => r.IsPaid),
-            _ => _reminders
+            "upcoming" => _reminders.Where(r => !r.IsArchived && !r.IsPaid && r.Date >= DateTime.Today && (r.SnoozedUntil == null || r.SnoozedUntil.Value.Date <= DateTime.Today)),
+            "overdue" => _reminders.Where(r => !r.IsArchived && !r.IsPaid && r.Date < DateTime.Today && (r.SnoozedUntil == null || r.SnoozedUntil.Value.Date <= DateTime.Today)),
+            "paid" => _reminders.Where(r => !r.IsArchived && r.IsPaid),
+            "archive" => _reminders.Where(r => r.IsArchived),
+            _ => _reminders.Where(r => !r.IsArchived)
         };
     }
 
@@ -383,7 +416,9 @@
         _newName = string.Empty;
         _newAmount = 0;
         _newCategory = string.Empty;
+        _newReminderType = ReminderType.Other;
         _newFrequency = ReminderFrequency.OneTime;
+        _newNotifyDays = 3;
         _newDate = DateTime.Today;
         _newProjectId = null;
         _newNotes = string.Empty;
@@ -410,7 +445,9 @@
                 Name = _newName,
                 Amount = _newAmount,
                 Category = _newCategory,
+                ReminderType = _newReminderType,
                 Frequency = _newFrequency,
+                NotifyDaysBefore = _newNotifyDays,
                 Date = _newDate,
                 ProjectId = _newProjectId,
                 Notes = _newNotes,
@@ -427,10 +464,14 @@
                 r.Name = _newName;
                 r.Amount = _newAmount;
                 r.Category = _newCategory;
+                r.ReminderType = _newReminderType;
                 r.Frequency = _newFrequency;
+                r.NotifyDaysBefore = _newNotifyDays;
                 r.Date = _newDate;
                 r.ProjectId = _newProjectId;
                 r.Notes = _newNotes;
+                r.SnoozedUntil = null;
+                r.IsArchived = false;
             }
         }
 
@@ -451,11 +492,22 @@
         _newName = r.Name;
         _newAmount = r.Amount;
         _newCategory = r.Category;
+        _newReminderType = r.ReminderType;
         _newFrequency = r.Frequency;
+        _newNotifyDays = r.NotifyDaysBefore;
         _newDate = r.Date;
         _newProjectId = r.ProjectId;
         _newNotes = r.Notes ?? string.Empty;
         _showCreateForm = true;
+    }
+
+    private async Task Snooze(Reminder r, int days)
+    {
+        if (days <= 0) return;
+        r.SnoozedUntil = DateTime.Today.AddDays(days);
+        DbContext.Reminders.Update(r);
+        await DbContext.SaveChangesAsync();
+        await LoadReminders();
     }
 
     private async Task ConfirmDelete(int id)
@@ -559,14 +611,13 @@
             r.IsPaid = true;
             r.PaidDate = DateTime.Now;
         }
-        else if (r.Frequency == ReminderFrequency.Monthly)
+        else
         {
-            r.Date = r.Date.AddMonths(1);
+            r.Date = RecurringCalendarHelper.StepForward(r.Date, r.Frequency);
+            r.NotificationSentDate = null;
         }
-        else if (r.Frequency == ReminderFrequency.Yearly)
-        {
-            r.Date = r.Date.AddYears(1);
-        }
+
+        r.SnoozedUntil = null;
 
         await DbContext.SaveChangesAsync();
         await LoadReminders();
@@ -579,6 +630,7 @@
             "upcoming" => "Нет предстоящих платежей",
             "overdue" => "Нет просроченных платежей",
             "paid" => "Нет оплаченных напоминаний",
+            "archive" => "Архив пуст",
             _ => "Нет напоминаний"
         };
     }
@@ -590,6 +642,7 @@
             "upcoming" => "Все платежи оплачены",
             "overdue" => "Отличная работа, всё оплачено вовремя!",
             "paid" => "Пока нет оплаченных напоминаний",
+            "archive" => "Архивируйте напоминания, чтобы скрывать неактуальные записи.",
             _ => "Создайте первое напоминание, чтобы отслеживать платежи"
         };
     }
@@ -599,7 +652,10 @@
         return frequency switch
         {
             ReminderFrequency.OneTime => "Разово",
+            ReminderFrequency.Daily => "Ежедневно",
+            ReminderFrequency.Weekly => "Еженедельно",
             ReminderFrequency.Monthly => "Ежемесячно",
+            ReminderFrequency.Quarterly => "Ежеквартально",
             ReminderFrequency.Yearly => "Ежегодно",
             _ => frequency.ToString()
         };

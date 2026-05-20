@@ -74,5 +74,12 @@ namespace MiniFinance.Data.Models
         
         [StringLength(1000)]
         public string? Notes { get; set; }
+
+        // Owner
+        [StringLength(450)]
+        public string? UserId { get; set; }
+
+        // Navigation
+        public MiniFinance.Data.ApplicationUser? User { get; set; }
     }
 }

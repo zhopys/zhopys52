@@ -8,18 +8,29 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="itext7" Version="9.5.0" />
+    <PackageReference Include="itext7" Version="9.6.0" />
+    <PackageReference Include="itext7.bouncy-castle-adapter" Version="9.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.*" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="9.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.*" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="MailKit" Version="4.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="9.0.*" />
     <PackageReference Include="PdfPig" Version="0.1.13" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Data\Statements\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tools\**\*.cs" />
+    <Compile Remove="bin-build-check\**\*.cs" />
+    <Content Remove="tools\**\*" />
+    <Content Remove="bin-build-check\**\*" />
+    <None Remove="tools\**\*" />
+    <None Remove="bin-build-check\**\*" />
   </ItemGroup>
 
 </Project>

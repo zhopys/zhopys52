@@ -9,5 +9,13 @@ namespace MiniFinance.Services
         List<CashForecastPoint> PredictCashflowNextDays(List<Transaction> transactions, List<Reminder> reminders, int days = 30);
         List<CashGap> DetectCashGaps(List<Transaction> transactions, List<Reminder> reminders, int days = 90, decimal threshold = 0);
         AdvancedCashForecast ForecastCashGapsAdvanced(List<Transaction> transactions, List<Reminder> reminders, List<TaxPayment> taxPayments, int days = 90);
+        AdvancedCashForecast ForecastCashGapsAdvanced(
+            List<Transaction> transactions,
+            List<Reminder> reminders,
+            List<TaxPayment> taxPayments,
+            int days,
+            decimal expenseAdjustPercent,
+            int incomeDelayDays,
+            decimal minCashThreshold);
     }
 }

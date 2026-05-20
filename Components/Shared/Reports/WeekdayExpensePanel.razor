@@ -1,0 +1,56 @@
+@using MiniFinance.Services
+@inject IJSRuntime JS
+
+<div class="card mb-3">
+    <div class="card-header">
+        Расходы по дням недели
+        @if (!string.IsNullOrEmpty(Data.PeakDay))
+        {
+            <span class="text-muted small ms-2">Пик: @Data.PeakDay</span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!Data.Days.Any() || Data.MaxAmount <= 0)
+        {
+            <div class="empty-state small">Нет расходов за выбранный период</div>
+        }
+        else
+        {
+            <div class="reports-weekday-heatmap mb-3">
+                @foreach (var day in Data.Days.OrderBy(d => d.DayOfWeek == 0 ? 7 : d.DayOfWeek))
+                {
+                    <div class="reports-weekday-cell" title="@day.DayName: @day.TotalExpense.ToString("N0") Br (@day.TransactionCount оп.)">
+                        <div class="reports-weekday-bar" style="height:@(Math.Max(day.Intensity, 8))%"></div>
+                        <span class="reports-weekday-label">@day.DayShort</span>
+                        <span class="reports-weekday-amount">@day.TotalExpense.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+            <div class="chart-canvas-wrap" style="height:200px">
+                <canvas id="@_canvasId" aria-label="Расходы по дням недели"></canvas>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public WeekdayExpenseDto Data { get; set; } = new();
+
+    private readonly string _canvasId = $"weekdayChart_{Guid.NewGuid():N}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await RenderChart();
+    protected override async Task OnParametersSetAsync() => await RenderChart();
+
+    private async Task RenderChart()
+    {
+        if (!Data.Days.Any() || Data.MaxAmount <= 0) return;
+        try
+        {
+            var ordered = Data.Days.OrderBy(d => d.DayOfWeek == 0 ? 7 : d.DayOfWeek).ToList();
+            var labels = ordered.Select(d => d.DayShort).ToArray();
+            var values = ordered.Select(d => (double)d.TotalExpense).ToArray();
+            await JS.InvokeVoidAsync("dashboardCharts.renderWeekdayChart", _canvasId, labels, values);
+        }
+        catch { }
+    }
+}

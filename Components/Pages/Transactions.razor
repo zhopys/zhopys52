@@ -10,62 +10,78 @@
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject ICategorizationService CategorizationService
+@inject ITransactionService TransactionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JsRuntime
 @attribute [Authorize]
 
 <PageTitle>Транзакции - MiniFinance</PageTitle>
 
-<AuthorizeView Context="authContext">
-    <Authorized>
-        <div class="page-header">
+<div class="page-header">
             <div class="title">
                 <h1>Транзакции</h1>
-                <div class="meta text-muted">@transactions.Count операций</div>
+                <div class="meta text-muted">@filteredCount операций · баланс @totalBalance.ToString("N2") Br</div>
             </div>
             <div class="page-actions">
-                <button class="btn btn-primary" @onclick="() => showAddModal = true">Добавить</button>
+                <button class="btn btn-primary" @onclick="OpenAddModal">Добавить</button>
                 <a class="btn btn-outline" href="/import">Импорт CSV</a>
             </div>
         </div>
 
         @if (showMessage)
         {
-            <div class="alert alert-success">@_message</div>
+            <div class="alert @(isErrorMessage ? "alert-danger" : "alert-success")">@_message</div>
         }
 
-        <!-- Add form -->
+        @if (_pending.Any())
+        {
+            <div class="alert alert-warning mb-3">
+                <strong>На утверждении:</strong> @_pending.Count операций
+            </div>
+        }
+
         @if (showAddModal)
         {
             <div class="card mb-3">
                 <div class="card-header">Новая транзакция</div>
                 <div class="card-body">
-                    <EditForm Model="@_newTransaction" OnValidSubmit="@AddTransaction" Context="transForm">
+                    <EditForm Model="@_newTransaction" OnValidSubmit="@AddTransaction" Context="addForm">
                         <DataAnnotationsValidator />
+                        <ValidationSummary />
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
                             <div>
                                 <label class="label">Дата *</label>
-                                <InputDate id="date" class="input" @bind-Value="_newTransaction.Date" />
+                                <InputDate class="input" @bind-Value="_newTransaction.Date" />
                             </div>
                             <div>
                                 <label class="label">Сумма *</label>
-                                <InputNumber id="amount" class="input" @bind-Value="_newTransaction.Amount" @bind-Value:after="OnAmountChanged" />
-                                <div class="small text-muted">− для расхода</div>
+                                <InputNumber class="input" @bind-Value="_newTransaction.Amount" @bind-Value:after="OnNewFieldChanged" />
+                                <div class="small text-muted">− расход, + доход</div>
                             </div>
                             <div>
                                 <label class="label">Описание *</label>
-                                <InputText id="description" class="input" @bind-Value="_newTransaction.Description" @bind-Value:after="OnDescriptionChanged" />
+                                <InputText class="input" @bind-Value="_newTransaction.Description" @bind-Value:after="OnNewFieldChanged" />
                             </div>
                             <div>
                                 <label class="label">Категория</label>
-                                <input list="categoryList" class="input" @bind="_newTransaction.Category" placeholder="Выберите" />
-                                <datalist id="categoryList">
-                                    @foreach (var c in GetUniqueCategories()) { <option value="@c"></option> }
-                                </datalist>
+                                <InputSelect class="input" @bind-Value="_newTransaction.Category">
+                                    <option value="">— авто —</option>
+                                    @foreach (var c in categoryNames) { <option value="@c">@c</option> }
+                                </InputSelect>
                                 @if (!string.IsNullOrEmpty(_suggestedCategory))
                                 {
                                     <div class="small text-muted">Подсказка: @_suggestedCategory</div>
                                 }
+                            </div>
+                            <div>
+                                <label class="label">Проект</label>
+                                <InputSelect class="input" @bind-Value="_newProjectId">
+                                    <option value="">— не указан —</option>
+                                    @foreach (var p in userProjects)
+                                    {
+                                        <option value="@p.Id">@p.Name</option>
+                                    }
+                                </InputSelect>
                             </div>
                             <div>
                                 <label class="label">Контрагент</label>
@@ -81,7 +97,6 @@
             </div>
         }
 
-        <!-- Edit form -->
         @if (showEditModal)
         {
             <div class="card mb-3">
@@ -89,25 +104,35 @@
                 <div class="card-body">
                     <EditForm Model="@_editTransaction" OnValidSubmit="@SaveEdit" Context="editForm">
                         <DataAnnotationsValidator />
+                        <ValidationSummary />
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
                             <div>
                                 <label class="label">Дата *</label>
-                                <InputDate id="editDate" class="input" @bind-Value="_editTransaction.Date" />
+                                <InputDate class="input" @bind-Value="_editTransaction.Date" />
                             </div>
                             <div>
                                 <label class="label">Сумма *</label>
-                                <InputNumber id="editAmount" class="input" @bind-Value="_editTransaction.Amount" />
+                                <InputNumber class="input" @bind-Value="_editTransaction.Amount" />
                             </div>
                             <div>
                                 <label class="label">Описание *</label>
-                                <InputText id="editDescription" class="input" @bind-Value="_editTransaction.Description" />
+                                <InputText class="input" @bind-Value="_editTransaction.Description" />
                             </div>
                             <div>
                                 <label class="label">Категория</label>
-                                <input list="editCategoryList" class="input" @bind="_editTransaction.Category" placeholder="Выберите" />
-                                <datalist id="editCategoryList">
-                                    @foreach (var c in GetUniqueCategories()) { <option value="@c"></option> }
-                                </datalist>
+                                <InputSelect class="input" @bind-Value="_editTransaction.Category">
+                                    @foreach (var c in categoryNames) { <option value="@c">@c</option> }
+                                </InputSelect>
+                            </div>
+                            <div>
+                                <label class="label">Проект</label>
+                                <InputSelect class="input" @bind-Value="_editProjectId">
+                                    <option value="">— не указан —</option>
+                                    @foreach (var p in userProjects)
+                                    {
+                                        <option value="@p.Id">@p.Name</option>
+                                    }
+                                </InputSelect>
                             </div>
                             <div>
                                 <label class="label">Контрагент</label>
@@ -123,35 +148,65 @@
             </div>
         }
 
-        <!-- Filters -->
         <div class="card mb-3">
             <div class="card-body">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;align-items:center">
-                    <input type="text" class="input" placeholder="Поиск..." @bind="_searchQuery" @bind:event="oninput" />
-                    <select class="input" @bind="_filterCategory">
-                        <option value="">Все категории</option>
-                        @foreach (var cat in GetUniqueCategories()) { <option value="@cat">@cat</option> }
-                    </select>
-                    <select class="input" @bind="_filterType">
-                        <option value="all">Все типы</option>
-                        <option value="income">Доходы</option>
-                        <option value="expense">Расходы</option>
-                    </select>
-                    <button class="btn btn-outline w-100" @onclick="ClearFilters">Сбросить</button>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.5rem;align-items:end">
+                    <div>
+                        <label class="label">Поиск</label>
+                        <input type="text" class="input" placeholder="Описание..." @bind="_searchQuery" @bind:event="oninput" @bind:after="ResetPage" />
+                    </div>
+                    <div>
+                        <label class="label">Категория</label>
+                        <select class="input" @bind="_filterCategory" @bind:after="ResetPage">
+                            <option value="">Все</option>
+                            @foreach (var cat in categoryNames) { <option value="@cat">@cat</option> }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Тип</label>
+                        <select class="input" @bind="_filterType" @bind:after="ResetPage">
+                            <option value="all">Все</option>
+                            <option value="income">Доходы</option>
+                            <option value="expense">Расходы</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Проект</label>
+                        <select class="input" @bind="_filterProjectId" @bind:after="ResetPage">
+                            <option value="">Все</option>
+                            @foreach (var p in userProjects)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">С</label>
+                        <input type="date" class="input" @bind="_filterDateFrom" @bind:after="ResetPage" />
+                    </div>
+                    <div>
+                        <label class="label">По</label>
+                        <input type="date" class="input" @bind="_filterDateTo" @bind:after="ResetPage" />
+                    </div>
+                    <div>
+                        <button class="btn btn-outline w-100" @onclick="ClearFilters">Сбросить</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Transactions table -->
         <div class="card">
             <div class="card-body" style="padding:0">
                 @if (transactions.Count == 0)
                 {
                     <div class="empty-state">Нет транзакций</div>
                 }
+                else if (!PagedTransactions.Any())
+                {
+                    <div class="empty-state">Нет транзакций по выбранным фильтрам</div>
+                }
                 else
                 {
-                    var filtered = GetFilteredTransactions().ToList();
                     <table class="table">
                         <thead>
                             <tr>
@@ -164,17 +219,18 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var t in filtered)
+                            @foreach (var t in PagedTransactions)
                             {
-                                <tr>
+                                <tr class="@(t.Amount < 0 ? "negative-balance" : null)" data-balance="@t.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                                     <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
                                     <td><span class="badge @(t.Amount >= 0 ? "badge-success" : "badge-danger")">@(t.Amount >= 0 ? "Доход" : "Расход")</span></td>
                                     <td><span class="badge">@t.Category</span></td>
                                     <td>@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</td>
-                                    <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                    <td class="text-end fw-bold amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                         @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") Br
                                     </td>
                                     <td class="text-center">
+                                        <button class="btn btn-sm btn-outline" @onclick="() => OpenDetails(t.Id)">Подробнее</button>
                                         <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(t)">Изменить</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(t.Id)">Удалить</button>
                                     </td>
@@ -182,41 +238,122 @@
                             }
                         </tbody>
                     </table>
+
+                    @if (TotalPages > 1)
+                    {
+                        <div style="padding:12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border)">
+                            <span class="small text-muted">Стр. @_currentPage из @TotalPages</span>
+                            <div style="display:flex;gap:8px">
+                                <button class="btn btn-sm btn-outline" disabled="@(_currentPage <= 1)" @onclick="PrevPage">Назад</button>
+                                <button class="btn btn-sm btn-outline" disabled="@(_currentPage >= TotalPages)" @onclick="NextPage">Вперёд</button>
+                            </div>
+                        </div>
+                    }
                 }
             </div>
         </div>
-    </Authorized>
-</AuthorizeView>
+
+        @if (_selectedTxId > 0 && !string.IsNullOrEmpty(_userId))
+        {
+            <TransactionDetailsPanel TransactionId="@_selectedTxId"
+                                     UserId="@_userId"
+                                     AuthorName="@_authorName"
+                                     OnClose="CloseDetails" />
+        }
 
 @code {
+    private const int PageSize = 25;
+    private string? _userId;
+    private string? _authorName;
+    private int _selectedTxId;
+    private List<Transaction> _pending = new();
+
     private List<Transaction> transactions = new();
-    private bool showAddModal = false;
-    private bool showEditModal = false;
-    private bool showMessage = false;
+    private List<string> categoryNames = new();
+    private List<Project> userProjects = new();
+
+    private bool showAddModal;
+    private bool showEditModal;
+    private bool showMessage;
+    private bool isErrorMessage;
     private string _message = string.Empty;
     private string _suggestedCategory = string.Empty;
 
-    private Transaction _newTransaction { get; set; } = new() { Date = DateTime.Today };
-    private Transaction _editTransaction { get; set; } = new();
+    private Transaction _newTransaction = new() { Date = DateTime.Today };
+    private Transaction _editTransaction = new();
+    private string? _newProjectId;
+    private string? _editProjectId;
 
     private string _searchQuery = string.Empty;
     private string _filterCategory = string.Empty;
     private string _filterType = "all";
+    private string _filterProjectId = string.Empty;
+    private DateTime? _filterDateFrom;
+    private DateTime? _filterDateTo;
+    private int _currentPage = 1;
+
+    private IEnumerable<Transaction> FilteredTransactions => ApplyFilters(transactions);
+    private List<Transaction> PagedTransactions => FilteredTransactions
+        .Skip((_currentPage - 1) * PageSize)
+        .Take(PageSize)
+        .ToList();
+    private int filteredCount => FilteredTransactions.Count();
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(filteredCount / (double)PageSize));
+    private decimal totalBalance => transactions.Sum(t => t.Amount);
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = await UserManager.GetUserAsync(authState.User);
-        if (user != null)
-        {
-            transactions = await DbContext.Transactions
-                .Where(t => t.UserId == user.Id)
-                .OrderByDescending(t => t.Date)
-                .ToListAsync();
-        }
+        if (user == null) return;
+
+        _userId = user.Id;
+        _authorName = user.Email;
+        await CategorizationService.EnsureDefaultCategoriesAsync();
+        categoryNames = await CategorizationService.GetCategoryNamesAsync();
+
+        userProjects = await DbContext.Projects
+            .Where(p => p.UserId == user.Id || p.IsDefault)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        await ReloadAsync();
     }
 
-    private void OnDescriptionChanged()
+    private async Task ReloadAsync()
+    {
+        if (_userId == null) return;
+        transactions = await TransactionService.ListAsync(_userId);
+        _pending = await TransactionService.ListPendingApprovalAsync(_userId);
+    }
+
+    private void OpenDetails(int id) => _selectedTxId = id;
+    private void CloseDetails() => _selectedTxId = 0;
+
+    private IEnumerable<Transaction> ApplyFilters(IEnumerable<Transaction> source)
+    {
+        var q = source.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+            q = q.Where(t => t.Description.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_filterCategory))
+            q = q.Where(t => t.Category == _filterCategory);
+        if (_filterType == "income") q = q.Where(t => t.Amount > 0);
+        else if (_filterType == "expense") q = q.Where(t => t.Amount < 0);
+        if (int.TryParse(_filterProjectId, out var pid)) q = q.Where(t => t.ProjectId == pid);
+        if (_filterDateFrom.HasValue) q = q.Where(t => t.Date >= _filterDateFrom.Value);
+        if (_filterDateTo.HasValue) q = q.Where(t => t.Date <= _filterDateTo.Value);
+        return q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id);
+    }
+
+    private void OpenAddModal()
+    {
+        _newTransaction = new Transaction { Date = DateTime.Today };
+        _newProjectId = null;
+        _suggestedCategory = string.Empty;
+        showAddModal = true;
+    }
+
+    private void OnNewFieldChanged()
     {
         if (!string.IsNullOrWhiteSpace(_newTransaction.Description) && _newTransaction.Amount != 0)
         {
@@ -226,60 +363,40 @@
         }
     }
 
-    private void OnAmountChanged() => OnDescriptionChanged();
-
     private async Task AddTransaction()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
+        if (_userId == null) return;
+        try
+        {
+            if (int.TryParse(_newProjectId, out var pid)) _newTransaction.ProjectId = pid;
+            else _newTransaction.ProjectId = null;
 
-        if (string.IsNullOrWhiteSpace(_newTransaction.Category))
-            _newTransaction.Category = CategorizationService.CategorizeTransaction(_newTransaction.Description, _newTransaction.Amount);
-
-        _newTransaction.UserId = user.Id;
-        _newTransaction.CreatedAt = DateTime.UtcNow;
-
-        DbContext.Transactions.Add(_newTransaction);
-        await DbContext.SaveChangesAsync();
-
-        _message = $"Транзакция добавлена: {_newTransaction.Description}";
-        showMessage = true;
-        _newTransaction = new Transaction { Date = DateTime.Today };
-        _suggestedCategory = string.Empty;
-        showAddModal = false;
-
-        transactions = await DbContext.Transactions
-            .Where(t => t.UserId == user.Id)
-            .OrderByDescending(t => t.Date)
-            .ToListAsync();
-
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(4000);
-        showMessage = false;
-        await InvokeAsync(StateHasChanged);
+            await TransactionService.CreateAsync(_newTransaction, _userId);
+            ShowSuccess($"Транзакция добавлена: {_newTransaction.Description}");
+            showAddModal = false;
+            _newTransaction = new Transaction { Date = DateTime.Today };
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
     }
 
     private async Task ConfirmDelete(int id)
     {
         var ok = await JsRuntime.InvokeAsync<bool>("confirm", "Удалить транзакцию?");
-        if (!ok) return;
-        var t = await DbContext.Transactions.FindAsync(id);
-        if (t != null)
+        if (!ok || _userId == null) return;
+
+        try
         {
-            DbContext.Transactions.Remove(t);
-            await DbContext.SaveChangesAsync();
-            _message = "Транзакция удалена";
-            showMessage = true;
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = await UserManager.GetUserAsync(authState.User);
-            if (user != null)
-            {
-                transactions = await DbContext.Transactions
-                    .Where(t => t.UserId == user.Id)
-                    .OrderByDescending(t => t.Date)
-                    .ToListAsync();
-            }
+            await TransactionService.DeleteAsync(id, _userId);
+            ShowSuccess("Транзакция удалена");
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
         }
     }
 
@@ -296,59 +413,58 @@
             UserId = t.UserId,
             ProjectId = t.ProjectId,
             PaymentMethod = t.PaymentMethod,
-            IsMandatory = t.IsMandatory
+            IsMandatory = t.IsMandatory,
+            IsConfirmed = t.IsConfirmed
         };
+        _editProjectId = t.ProjectId?.ToString();
         showEditModal = true;
     }
 
     private async Task SaveEdit()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
+        if (_userId == null) return;
+        try
+        {
+            if (int.TryParse(_editProjectId, out var pid)) _editTransaction.ProjectId = pid;
+            else _editTransaction.ProjectId = null;
 
-        var t = await DbContext.Transactions.FindAsync(_editTransaction.Id);
-        if (t == null) return;
-
-        t.Date = _editTransaction.Date;
-        t.Amount = _editTransaction.Amount;
-        t.Description = _editTransaction.Description;
-        t.Category = _editTransaction.Category;
-        t.Counterparty = _editTransaction.Counterparty;
-        t.UpdatedAt = DateTime.UtcNow;
-
-        await DbContext.SaveChangesAsync();
-        _message = "Транзакция обновлена";
-        showMessage = true;
-        showEditModal = false;
-
-        transactions = await DbContext.Transactions
-            .Where(t => t.UserId == user.Id)
-            .OrderByDescending(t => t.Date)
-            .ToListAsync();
+            await TransactionService.UpdateAsync(_editTransaction, _userId);
+            ShowSuccess("Транзакция обновлена");
+            showEditModal = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
     }
-
-    private IEnumerable<Transaction> GetFilteredTransactions()
-    {
-        var filtered = transactions.AsEnumerable();
-        if (!string.IsNullOrWhiteSpace(_searchQuery))
-            filtered = filtered.Where(t => t.Description.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(_filterCategory))
-            filtered = filtered.Where(t => t.Category == _filterCategory);
-        if (_filterType == "income")
-            filtered = filtered.Where(t => t.Amount > 0);
-        else if (_filterType == "expense")
-            filtered = filtered.Where(t => t.Amount < 0);
-        return filtered.OrderByDescending(t => t.Date);
-    }
-
-    private List<string> GetUniqueCategories() =>
-        transactions?.Select(t => t.Category).Distinct().OrderBy(c => c).ToList() ?? new();
 
     private void ClearFilters()
     {
         _searchQuery = string.Empty;
         _filterCategory = string.Empty;
         _filterType = "all";
+        _filterProjectId = string.Empty;
+        _filterDateFrom = null;
+        _filterDateTo = null;
+        ResetPage();
+    }
+
+    private void ResetPage() => _currentPage = 1;
+    private void PrevPage() { if (_currentPage > 1) _currentPage--; }
+    private void NextPage() { if (_currentPage < TotalPages) _currentPage++; }
+
+    private void ShowSuccess(string msg)
+    {
+        _message = msg;
+        isErrorMessage = false;
+        showMessage = true;
+    }
+
+    private void ShowError(string msg)
+    {
+        _message = msg;
+        isErrorMessage = true;
+        showMessage = true;
     }
 }

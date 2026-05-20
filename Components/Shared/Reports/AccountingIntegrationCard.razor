@@ -1,0 +1,45 @@
+@using MiniFinance.Services
+
+<div class="card integration-card">
+    <div class="card-body">
+        <div class="integration-header">
+            <div>
+                <div class="integration-provider">@Integration.Provider</div>
+                <div class="text-muted small">Облачная бухгалтерия</div>
+            </div>
+            <span class="integration-badge @(Integration.IsConnected ? "connected" : "disconnected")">
+                @(Integration.IsConnected ? "Подключено" : "Не подключено")
+            </span>
+        </div>
+        @if (Integration.LastExportAt.HasValue)
+        {
+            <div class="small text-muted mt-2">
+                Последняя выгрузка: @Integration.LastExportAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(Integration.LastError))
+        {
+            <div class="alert alert-error small mt-2 mb-0">@Integration.LastError</div>
+        }
+        <button class="btn btn-sm btn-primary mt-3 w-100"
+                @onclick="OnExport"
+                disabled="@(!Integration.CanForceExport || _exporting)">
+            @(_exporting ? "Выгрузка…" : "Принудительная выгрузка в бухгалтерию")
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public AccountingIntegrationDto Integration { get; set; } = new();
+    [Parameter] public EventCallback OnExportRequested { get; set; }
+
+    private bool _exporting;
+
+    private async Task OnExport()
+    {
+        _exporting = true;
+        await OnExportRequested.InvokeAsync();
+        _exporting = false;
+    }
+}
+

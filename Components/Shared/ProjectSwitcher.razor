@@ -1,0 +1,51 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@inject ApplicationDbContext Db
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider Auth
+
+<AuthorizeView>
+    <Authorized>
+        @if (_projects.Any())
+        {
+            <select class="input input-sm project-switcher" title="Активный проект / компания" @bind="_activeId" @bind:after="SaveActive">
+                <option value="">Все направления</option>
+                @foreach (var p in _projects)
+                {
+                    <option value="@p.Id">@p.Name</option>
+                }
+            </select>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<Project> _projects = new();
+    private string _activeId = "";
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(state.User);
+        if (user == null) return;
+        _userId = user.Id;
+        _projects = await Db.Projects
+            .Where(p => (p.UserId == user.Id || p.IsDefault) && !p.IsDefault)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _activeId = user.ActiveProjectId?.ToString() ?? "";
+    }
+
+    private async Task SaveActive()
+    {
+        if (_userId == null) return;
+        var user = await UserManager.FindByIdAsync(_userId);
+        if (user == null) return;
+        user.ActiveProjectId = int.TryParse(_activeId, out var id) && id > 0 ? id : null;
+        await UserManager.UpdateAsync(user);
+    }
+}

@@ -14,407 +14,896 @@
 @inject IJSRuntime JS
 @attribute [Authorize]
 
-<PageTitle>Налоги и счета - MiniFinance</PageTitle>
+<PageTitle>Налоги и счета — MiniFinance</PageTitle>
 
-<AuthorizeView>
-    <Authorized>
-        <div class="page-header">
-            <div class="title">
-                <h1>Налоги и счета</h1>
-                <div class="meta text-muted">Учёт налоговых платежей и счетов</div>
-            </div>
+<div class="page-header">
+    <div class="title">
+        <h1>Налоги и счета</h1>
+        <div class="meta text-muted">
+            @if (!string.IsNullOrWhiteSpace(_companyName))
+            {
+                <span>@_companyName · </span>
+            }
+            Система: <strong>@GetTaxSystemLabel(_taxSystem)</strong>
+            <a href="/settings" class="small" style="margin-left:.5rem">Настроить</a>
         </div>
-
-        @if (showMessage)
+    </div>
+    <div class="page-actions">
+        <a href="/payment-calendar" class="btn btn-outline">Календарь платежей</a>
+        <a href="/reminders" class="btn btn-outline">Напоминания</a>
+        @if (_mainTab == "taxes")
         {
-            <div class="alert alert-success">@_message</div>
-        }
-
-        <!-- Tabs -->
-        <div class="card mb-3">
-            <div class="card-body" style="padding: 0.75rem;">
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn @(_activeTab == "taxes" ? "btn-primary" : "btn-outline") btn-sm" @onclick="@(() => _activeTab = "taxes")">Налоги</button>
-                    <button class="btn @(_activeTab == "bills" ? "btn-primary" : "btn-outline") btn-sm" @onclick="@(() => _activeTab = "bills")">Счета</button>
-                </div>
-            </div>
-        </div>
-
-        @if (_activeTab == "taxes")
-        {
-            <!-- Add tax form -->
-            <div class="card mb-3">
-                <div class="card-header">Добавить налог</div>
-                <div class="card-body">
-                    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:.5rem;align-items:end">
-                        <div>
-                            <label class="label">Название</label>
-                            <select class="input" @bind="newTaxName">
-                                <option value="НДС">НДС</option>
-                                <option value="УСН">УСН</option>
-                                <option value="ФСЗН">ФСЗН</option>
-                                <option value="Подоходный">Подоходный</option>
-                                <option value="Другое">Другое</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="label">Сумма</label>
-                            <InputNumber class="input" @bind-Value="newTaxAmount" />
-                        </div>
-                        <div>
-                            <label class="label">Дата уплаты</label>
-                            <InputDate class="input" @bind-Value="newTaxDueDate" />
-                        </div>
-                        <div>
-                            <button class="btn btn-primary mt-3" @onclick="AddTax">Добавить</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Taxes table -->
-            <div class="card">
-                <div class="card-body" style="padding:0">
-                    @if (isLoading)
-                    {
-                        <div class="center text-muted py-4">Загрузка...</div>
-                    }
-                    else if (!taxes.Any())
-                    {
-                        <div class="empty-state">Нет налоговых платежей</div>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Название</th>
-                                    <th>Дата уплаты</th>
-                                    <th class="text-end">Сумма</th>
-                                    <th>Статус</th>
-                                    <th class="text-center">Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var tax in taxes)
-                                {
-                                    <tr>
-                                        <td><strong>@tax.Name</strong></td>
-                                        <td class="text-muted">@tax.DueDate.ToString("dd.MM.yyyy")</td>
-                                        <td class="text-end">@tax.Amount.ToString("N2") Br</td>
-                                        <td>
-                                            @if (tax.IsPaid)
-                                            {
-                                                <span class="badge badge-success">Оплачено</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge badge-danger">Не оплачено</span>
-                                            }
-                                        </td>
-                                        <td class="text-center">
-                                            @if (!tax.IsPaid)
-                                            {
-                                                <button class="btn btn-sm btn-success" @onclick="() => MarkPaid(tax.Id)">Отметить оплаченным</button>
-                                            }
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTax(tax.Id)">Удалить</button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
-                </div>
-            </div>
+            <button class="btn btn-primary" @onclick="OpenTaxForm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Добавить налог
+            </button>
         }
         else
         {
-            <!-- Add bill form -->
-            <div class="card mb-3">
-                <div class="card-header">Добавить счёт</div>
-                <div class="card-body">
-                    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:.5rem;align-items:end">
-                        <div>
-                            <label class="label">Название</label>
-                            <input class="input" @bind="newBillName" placeholder="Например: Аренда офиса" />
+            <button class="btn btn-primary" @onclick="OpenBillForm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Добавить счёт
+            </button>
+        }
+    </div>
+</div>
+
+@if (_showMessage)
+{
+    <div class="alert alert-success">@_message</div>
+}
+@if (_showError)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<!-- Main tabs: taxes / bills -->
+<div class="card mb-3">
+    <div class="card-body" style="padding:.5rem">
+        <div class="tab-bar">
+            <button class="tab @(_mainTab == "taxes" ? "active" : "")" @onclick="@(() => SetMainTab("taxes"))">
+                Налоги
+                @if (_summary?.OverdueCount > 0) { <span class="tab-count tab-count-danger">@_summary.OverdueCount</span> }
+            </button>
+            <button class="tab @(_mainTab == "bills" ? "active" : "")" @onclick="@(() => SetMainTab("bills"))">
+                Счета к оплате
+                @if (_billOverdueCount > 0) { <span class="tab-count tab-count-danger">@_billOverdueCount</span> }
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (_mainTab == "taxes")
+{
+    @if (_summary != null)
+    {
+        <div class="reports-tax-summary cols-4 mb-3">
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">К уплате</span>
+                <span class="reports-tax-kpi-value text-danger">@_summary.UnpaidTotal.ToString("N0") Br</span>
+            </div>
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Уплачено (план)</span>
+                <span class="reports-tax-kpi-value text-success">@_summary.PaidYearToDate.ToString("N0") Br</span>
+            </div>
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Расходы «Налоги»</span>
+                <span class="reports-tax-kpi-value">@_summary.PaidInTransactionsYearToDate.ToString("N0") Br</span>
+            </div>
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Ближайший</span>
+                @if (_summary.NextDueDate.HasValue)
+                {
+                    <span class="reports-tax-kpi-value" style="font-size:18px">@_summary.NextDueName</span>
+                    <span class="small text-muted">@_summary.NextDueDate.Value.ToString("dd.MM.yyyy") · @_summary.NextDueAmount.ToString("N0") Br</span>
+                }
+                else
+                {
+                    <span class="reports-tax-kpi-value text-muted" style="font-size:16px">—</span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-header">Калькулятор налога</div>
+        <div class="card-body">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Доход за период (Br)</label>
+                    <input type="number" class="form-input" @bind="_calcIncome" step="100" min="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Расходы (для УСН 15%)</label>
+                    <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
+                </div>
+                <div class="form-group" style="display:flex;align-items:flex-end">
+                    <button class="btn btn-primary" @onclick="RunTaxCalculator">Рассчитать</button>
+                </div>
+            </div>
+            @if (_calcResult != null)
+            {
+                <div class="alert alert-info mt-3 mb-0">
+                    <strong>@_calcResult.TaxAmount.ToString("N2") Br</strong>
+                    <span class="text-muted"> · ставка ~@_calcResult.EffectiveRate%</span>
+                    <div class="small mt-1">@_calcResult.Description</div>
+                    <button class="btn btn-sm btn-outline mt-2" @onclick="ApplyCalcToTaxForm">Создать платёж с этой суммой</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (_taxSystem.HasValue)
+    {
+        <div class="card mb-3">
+            <div class="card-header">Типовые сроки (@GetTaxSystemLabel(_taxSystem))</div>
+            <div class="card-body">
+                <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+                    @foreach (var hint in GetTaxHints(_taxSystem.Value))
+                    {
+                        <button type="button" class="btn btn-sm btn-outline" @onclick="() => ApplyTaxHint(hint)">@hint.Label</button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-body" style="padding:.5rem">
+            <div class="tab-bar">
+                <button class="tab @(_taxFilter == "upcoming" ? "active" : "")" @onclick="@(() => SetTaxFilter("upcoming"))">
+                    Предстоящие
+                    @if (_taxUpcomingCount > 0) { <span class="tab-count">@_taxUpcomingCount</span> }
+                </button>
+                <button class="tab @(_taxFilter == "overdue" ? "active" : "")" @onclick="@(() => SetTaxFilter("overdue"))">
+                    Просроченные
+                    @if (_summary?.OverdueCount > 0) { <span class="tab-count tab-count-danger">@_summary.OverdueCount</span> }
+                </button>
+                <button class="tab @(_taxFilter == "paid" ? "active" : "")" @onclick="@(() => SetTaxFilter("paid"))">История уплат</button>
+                <button class="tab @(_taxFilter == "all" ? "active" : "")" @onclick="@(() => SetTaxFilter("all"))">Все</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_showPartialForm && _partialTax != null)
+    {
+        <div class="card mb-3">
+            <div class="card-header">Частичная оплата: @_partialTax.Name</div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Сумма платежа</label>
+                        <input type="number" class="form-input" @bind="_partialAmount" step="0.01" min="0.01" />
+                        <div class="small text-muted">Остаток: @((_partialTax.Amount - _partialTax.PaidAmount).ToString("N2")) Br</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Чек / документ</label>
+                        <input class="form-input" @bind="_partialReceipt" placeholder="Номер платёжки, ссылка на файл" />
+                    </div>
+                </div>
+                <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
+                    <button class="btn btn-primary" @onclick="SavePartialPay">Записать оплату</button>
+                    <button class="btn btn-outline" @onclick="() => _showPartialForm = false">Отмена</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_showTaxForm)
+    {
+        <div class="card mb-3">
+            <div class="card-header">@(_editTaxId == 0 ? "Новый налоговый платёж" : "Редактирование")</div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Вид налога</label>
+                        <select class="form-input" @bind="_taxTypeSelect" @bind:after="OnTaxTypeChanged">
+                            <option value="НДС">НДС</option>
+                            <option value="УСН">УСН</option>
+                            <option value="ФСЗН">ФСЗН / соц. взносы</option>
+                            <option value="Подоходный">Подоходный / НДФЛ</option>
+                            <option value="Другое">Другое</option>
+                        </select>
+                    </div>
+                    @if (_taxTypeSelect == "Другое")
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Название</label>
+                            <input class="form-input" @bind="_customTaxName" placeholder="Название платежа" />
                         </div>
-                        <div>
-                            <label class="label">Сумма</label>
-                            <InputNumber class="input" @bind-Value="newBillAmount" />
-                        </div>
-                        <div>
-                            <label class="label">Категория</label>
-                            <input list="billCategoryList" class="input" @bind="newBillCategory" placeholder="Категория" />
-                            <datalist id="billCategoryList">
-                                @foreach (var c in _categories) { <option value="@c"></option> }
-                            </datalist>
-                        </div>
-                        <div>
-                            <label class="label">Дата уплаты</label>
-                            <InputDate class="input" @bind-Value="newBillDueDate" />
-                        </div>
-                        <div>
-                            <button class="btn btn-primary mt-3" @onclick="AddBill">Добавить</button>
+                    }
+                    <div class="form-group">
+                        <label class="form-label">Сумма *</label>
+                        <input type="number" class="form-input" @bind="_taxAmount" step="0.01" min="0.01" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Срок уплаты *</label>
+                        <input type="date" class="form-input" @bind="_taxDueDate" />
+                        <div class="small text-muted mt-1" style="display:flex;flex-wrap:wrap;gap:.35rem">
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => SetTaxDuePreset(0)">Сегодня</button>
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => SetTaxDuePreset(7)">+7 дн.</button>
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="SetTaxDueEndOfMonth">Конец месяца</button>
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="SetTaxDueQuarterEnd">Конец квартала</button>
                         </div>
                     </div>
                 </div>
+                <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
+                    <button class="btn btn-primary" @onclick="SaveTax">@(_editTaxId == 0 ? "Добавить" : "Сохранить")</button>
+                    <button class="btn btn-outline" @onclick="CancelTaxForm">Отмена</button>
+                </div>
             </div>
+        </div>
+    }
 
-            <!-- Bills table -->
-            <div class="card">
-                <div class="card-body" style="padding:0">
-                    @if (isLoading)
-                    {
-                        <div class="center text-muted py-4">Загрузка...</div>
-                    }
-                    else if (!bills.Any())
-                    {
-                        <div class="empty-state">Нет счетов</div>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Название</th>
-                                    <th>Категория</th>
-                                    <th>Дата уплаты</th>
-                                    <th class="text-end">Сумма</th>
-                                    <th>Статус</th>
-                                    <th class="text-center">Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var bill in bills)
-                                {
-                                    var isOverdue = !bill.IsPaid && bill.Date < DateTime.Today;
-                                    <tr>
-                                        <td><strong>@bill.Name</strong></td>
-                                        <td class="text-muted">@(string.IsNullOrWhiteSpace(bill.Category) ? "—" : bill.Category)</td>
-                                        <td class="@(isOverdue ? "text-danger" : "text-muted")">@bill.Date.ToString("dd.MM.yyyy")</td>
-                                        <td class="text-end">@bill.Amount.ToString("N2") Br</td>
-                                        <td>
-                                            @if (bill.IsPaid)
-                                            {
-                                                <span class="badge badge-success">Оплачено</span>
-                                            }
-                                            else if (isOverdue)
-                                            {
-                                                <span class="badge badge-danger">Просрочено</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge">Ожидает</span>
-                                            }
-                                        </td>
-                                        <td class="text-center">
-                                            @if (!bill.IsPaid)
-                                            {
-                                                <button class="btn btn-sm btn-success" @onclick="() => MarkBillPaid(bill.Id)">Отметить оплаченным</button>
-                                            }
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteBill(bill.Id)">Удалить</button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
+    <div class="card">
+        <div class="card-header">
+            <span class="text-muted small">@GetFilteredTaxes().Count() записей</span>
+        </div>
+        <div class="card-body" style="padding:0">
+            @if (_loading)
+            {
+                <div class="loading-state"><div class="spinner"></div><p class="text-muted mt-2">Загрузка...</p></div>
+            }
+            else if (!GetFilteredTaxes().Any())
+            {
+                <div class="empty-state">
+                    <div class="empty-state-title">@GetTaxEmptyTitle()</div>
+                    <div class="empty-state-text">@GetTaxEmptyText()</div>
+                    <button class="btn btn-primary" @onclick="OpenTaxForm">Добавить налог</button>
+                </div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Налог</th>
+                            <th>Срок</th>
+                            <th class="text-end">Сумма</th>
+                            <th>Статус</th>
+                            <th class="text-center">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tax in GetFilteredTaxes())
+                        {
+                            var overdue = !tax.IsPaid && tax.DueDate.Date < DateTime.Today;
+                            var days = (int)(tax.DueDate.Date - DateTime.Today).TotalDays;
+                            <tr class="@(overdue ? "row-overdue" : "")">
+                                <td><strong>@tax.Name</strong></td>
+                                <td>
+                                    <div class="@(overdue ? "text-danger" : "")">@tax.DueDate.ToString("dd.MM.yyyy")</div>
+                                    @if (!tax.IsPaid)
+                                    {
+                                        <div class="small @(overdue ? "text-danger" : "text-muted")">@FormatDaysUntil(days)</div>
+                                    }
+                                    else if (tax.PaidDate.HasValue)
+                                    {
+                                        <div class="small text-muted">Оплачено @tax.PaidDate.Value.ToString("dd.MM.yyyy")</div>
+                                    }
+                                </td>
+                                <td class="text-end fw-bold">
+                                    @tax.Amount.ToString("N2") Br
+                                    @if (tax.PaidAmount > 0 && !tax.IsPaid)
+                                    {
+                                        <div class="small text-muted">оплачено @tax.PaidAmount.ToString("N2")</div>
+                                    }
+                                </td>
+                                <td>
+                                    @{
+                                        var statusLabel = TaxCalculatorHelper.GetPaymentStatusLabel(tax);
+                                    }
+                                    <span class="badge @(statusLabel switch {
+                                        "Оплачено" => "badge-success",
+                                        "Частично оплачено" => "badge-warning",
+                                        "Просрочено" => "badge-danger",
+                                        _ => "badge-info"
+                                    })">@statusLabel</span>
+                                    @if (!string.IsNullOrWhiteSpace(tax.ReceiptNote))
+                                    {
+                                        <div class="small text-muted" title="@tax.ReceiptNote">📎 чек</div>
+                                    }
+                                </td>
+                                <td class="text-center" style="white-space:nowrap">
+                                    @if (!tax.IsPaid)
+                                    {
+                                        <button class="btn btn-sm btn-outline" title="Частичная оплата" @onclick="() => OpenPartialPay(tax)">%</button>
+                                        <button class="btn btn-sm btn-success" title="Отметить оплаченным" @onclick="() => MarkPaid(tax.Id)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline" title="Редактировать" @onclick="() => EditTax(tax)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                        </button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-danger" title="Удалить" @onclick="() => DeleteTax(tax.Id)">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+else
+{
+    @if (_bills != null)
+    {
+        var upcomingBills = _bills.Where(b => !b.IsPaid && b.Date >= DateTime.Today).ToList();
+        if (upcomingBills.Any())
+        {
+            <div class="kpi-grid mb-3">
+                <div class="kpi-card">
+                    <div class="kpi-label">Счетов к оплате</div>
+                    <div class="kpi-value">@upcomingBills.Count</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Сумма</div>
+                    <div class="kpi-value">@upcomingBills.Sum(b => b.Amount).ToString("N0") Br</div>
                 </div>
             </div>
         }
-    </Authorized>
-</AuthorizeView>
+    }
+
+    <div class="card mb-3">
+        <div class="card-body" style="padding:.5rem">
+            <div class="tab-bar">
+                <button class="tab @(_billFilter == "upcoming" ? "active" : "")" @onclick="@(() => SetBillFilter("upcoming"))">Предстоящие</button>
+                <button class="tab @(_billFilter == "overdue" ? "active" : "")" @onclick="@(() => SetBillFilter("overdue"))">
+                    Просроченные
+                    @if (_billOverdueCount > 0) { <span class="tab-count tab-count-danger">@_billOverdueCount</span> }
+                </button>
+                <button class="tab @(_billFilter == "paid" ? "active" : "")" @onclick="@(() => SetBillFilter("paid"))">Оплаченные</button>
+                <button class="tab @(_billFilter == "all" ? "active" : "")" @onclick="@(() => SetBillFilter("all"))">Все</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_showBillForm)
+    {
+        <div class="card mb-3">
+            <div class="card-header">@(_editBillId == 0 ? "Новый счёт" : "Редактирование счёта")</div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Название *</label>
+                        <input class="form-input" @bind="_billName" placeholder="Аренда, связь, поставщик..." />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Сумма *</label>
+                        <input type="number" class="form-input" @bind="_billAmount" step="0.01" min="0.01" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Категория</label>
+                        <select class="form-input" @bind="_billCategory">
+                            <option value="">—</option>
+                            @foreach (var c in _categories) { <option value="@c">@c</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Срок оплаты *</label>
+                        <input type="date" class="form-input" @bind="_billDueDate" />
+                    </div>
+                </div>
+                <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
+                    <button class="btn btn-primary" @onclick="SaveBill">@(_editBillId == 0 ? "Добавить" : "Сохранить")</button>
+                    <button class="btn btn-outline" @onclick="CancelBillForm">Отмена</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header">
+            <span class="text-muted small">@GetFilteredBills().Count() записей · разовые счета</span>
+            <span class="small text-muted">Повторяющиеся платежи — в <a href="/reminders">напоминаниях</a></span>
+        </div>
+        <div class="card-body" style="padding:0">
+            @if (_loading)
+            {
+                <div class="loading-state"><div class="spinner"></div></div>
+            }
+            else if (!GetFilteredBills().Any())
+            {
+                <div class="empty-state">
+                    <div class="empty-state-title">Нет счетов</div>
+                    <button class="btn btn-primary" @onclick="OpenBillForm">Добавить счёт</button>
+                </div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Категория</th>
+                            <th>Срок</th>
+                            <th class="text-end">Сумма</th>
+                            <th>Статус</th>
+                            <th class="text-center">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var bill in GetFilteredBills())
+                        {
+                            var overdue = !bill.IsPaid && bill.Date.Date < DateTime.Today;
+                            var days = (int)(bill.Date.Date - DateTime.Today).TotalDays;
+                            <tr class="@(overdue ? "row-overdue" : "")">
+                                <td><strong>@bill.Name</strong></td>
+                                <td class="text-muted">@(string.IsNullOrWhiteSpace(bill.Category) ? "—" : bill.Category)</td>
+                                <td>
+                                    <div class="@(overdue ? "text-danger" : "")">@bill.Date.ToString("dd.MM.yyyy")</div>
+                                    @if (!bill.IsPaid) { <div class="small @(overdue ? "text-danger" : "text-muted")">@FormatDaysUntil(days)</div> }
+                                </td>
+                                <td class="text-end fw-bold">@bill.Amount.ToString("N2") Br</td>
+                                <td>
+                                    @if (bill.IsPaid) { <span class="badge badge-success">Оплачено</span> }
+                                    else if (overdue) { <span class="badge badge-danger">Просрочено</span> }
+                                    else { <span class="badge badge-info">К оплате</span> }
+                                </td>
+                                <td class="text-center" style="white-space:nowrap">
+                                    @if (!bill.IsPaid)
+                                    {
+                                        <button class="btn btn-sm btn-success" @onclick="() => MarkBillPaid(bill.Id)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline" @onclick="() => EditBill(bill)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                                        </button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteBill(bill.Id)">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
 
 @code {
-    private List<TaxPayment> taxes = new();
-    private List<Reminder> bills = new();
+    private string _userId = "";
+    private List<TaxPayment> _taxes = new();
+    private List<Reminder>? _bills;
     private List<string> _categories = new();
-    private bool isLoading = true;
-    private bool showMessage = false;
-    private string _message = string.Empty;
-    private string _activeTab = "taxes";
+    private TaxSummaryDto? _summary;
+    private TaxSystem? _taxSystem;
+    private string _companyName = "";
 
-    private string newTaxName = "НДС";
-    private decimal newTaxAmount;
-    private DateTime newTaxDueDate = DateTime.Today.AddMonths(1);
+    private bool _loading = true;
+    private string _message = "";
+    private bool _showMessage;
+    private string _errorMessage = "";
+    private bool _showError;
 
-    private string newBillName = string.Empty;
-    private decimal newBillAmount;
-    private string newBillCategory = string.Empty;
-    private DateTime newBillDueDate = DateTime.Today.AddMonths(1);
+    private string _mainTab = "taxes";
+    private string _taxFilter = "upcoming";
+    private string _billFilter = "upcoming";
+    private int _taxUpcomingCount;
+    private int _billOverdueCount;
+
+    private bool _showTaxForm;
+    private int _editTaxId;
+    private string _taxTypeSelect = "НДС";
+    private string _customTaxName = "";
+    private decimal _taxAmount;
+    private DateTime _taxDueDate = DateTime.Today.AddMonths(1);
+
+    private decimal _calcIncome;
+    private decimal _calcExpenses;
+    private TaxCalculationResult? _calcResult;
+    private bool _showPartialForm;
+    private TaxPayment? _partialTax;
+    private decimal _partialAmount;
+    private string _partialReceipt = "";
+
+    private bool _showBillForm;
+    private int _editBillId;
+    private string _billName = "";
+    private decimal _billAmount;
+    private string _billCategory = "";
+    private DateTime _billDueDate = DateTime.Today.AddMonths(1);
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadTaxes();
-        await LoadBills();
-        await LoadCategories();
-    }
-
-    private async Task LoadTaxes()
-    {
-        isLoading = true;
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user != null)
-        {
-            taxes = await TaxService.GetTaxesAsync(user.Id);
-        }
-        isLoading = false;
-    }
-
-    private async Task LoadBills()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user != null)
-        {
-            bills = await DbContext.Reminders
-                .Where(r => r.UserId == user.Id)
-                .ToListAsync();
-        }
-    }
-
-    private async Task LoadCategories()
-    {
-        _categories = await DbContext.Categories
-            .Select(c => c.Name)
-            .ToListAsync();
-    }
-
-    private async Task AddTax()
-    {
-        if (newTaxAmount <= 0) return;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
         if (user == null) return;
+        _userId = user.Id;
+        await ReloadAsync();
+    }
 
-        var tax = new TaxPayment
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var ctx = await TaxService.GetPageContextAsync(_userId);
+        _summary = ctx.Summary;
+        _taxSystem = ctx.TaxSystem;
+        _companyName = ctx.CompanyName;
+        _taxes = await TaxService.GetTaxesAsync(_userId);
+        _taxUpcomingCount = _taxes.Count(t => !t.IsPaid && t.DueDate.Date >= DateTime.Today);
+
+        _bills = await DbContext.Reminders
+            .Where(r => r.UserId == _userId && r.Frequency == ReminderFrequency.OneTime)
+            .OrderBy(r => r.IsPaid)
+            .ThenBy(r => r.Date)
+            .ToListAsync();
+
+        _billOverdueCount = _bills.Count(b => !b.IsPaid && b.Date.Date < DateTime.Today);
+
+        _categories = await DbContext.Categories.Select(c => c.Name).ToListAsync();
+        _loading = false;
+    }
+
+    private void SetMainTab(string tab) => _mainTab = tab;
+
+    private void SetTaxFilter(string filter) => _taxFilter = filter;
+
+    private void SetBillFilter(string filter) => _billFilter = filter;
+
+    private IEnumerable<TaxPayment> GetFilteredTaxes()
+    {
+        var today = DateTime.Today;
+        return _taxFilter switch
         {
-            Name = newTaxName,
-            Amount = newTaxAmount,
-            DueDate = newTaxDueDate,
-            UserId = user.Id
+            "upcoming" => _taxes.Where(t => !t.IsPaid && t.DueDate.Date >= today),
+            "overdue" => _taxes.Where(t => !t.IsPaid && t.DueDate.Date < today),
+            "paid" => _taxes.Where(t => t.IsPaid),
+            _ => _taxes
         };
+    }
 
-        await TaxService.AddTaxAsync(tax);
-        _message = $"Налог {newTaxName} добавлен";
-        showMessage = true;
-        newTaxAmount = 0;
-        newTaxDueDate = DateTime.Today.AddMonths(1);
-        await LoadTaxes();
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(3000);
-        showMessage = false;
-        await InvokeAsync(StateHasChanged);
+    private IEnumerable<Reminder> GetFilteredBills()
+    {
+        if (_bills == null) return Enumerable.Empty<Reminder>();
+        var today = DateTime.Today;
+        return _billFilter switch
+        {
+            "upcoming" => _bills.Where(b => !b.IsPaid && b.Date.Date >= today),
+            "overdue" => _bills.Where(b => !b.IsPaid && b.Date.Date < today),
+            "paid" => _bills.Where(b => b.IsPaid),
+            _ => _bills
+        };
+    }
+
+    private static string FormatDaysUntil(int days) => days switch
+    {
+        < 0 => $"Просрочено на {Math.Abs(days)} дн.",
+        0 => "Сегодня",
+        1 => "Завтра",
+        _ => $"Через {days} дн."
+    };
+
+    private static string GetTaxSystemLabel(TaxSystem? system) => system switch
+    {
+        TaxSystem.USN => "УСН",
+        TaxSystem.OSN => "ОСН (с НДС)",
+        _ => "не указана"
+    };
+
+    private string GetTaxEmptyTitle() => _taxFilter switch
+    {
+        "overdue" => "Нет просроченных налогов",
+        "paid" => "Нет оплаченных записей",
+        "upcoming" => "Нет предстоящих платежей",
+        _ => "Нет налоговых платежей"
+    };
+
+    private string GetTaxEmptyText() => _taxFilter == "upcoming"
+        ? "Добавьте плановый платёж или используйте шаблоны сроков выше"
+        : "Измените фильтр или добавьте новую запись";
+
+    private sealed record TaxHint(string Label, string Name, int DuePresetDays);
+
+    private static IEnumerable<TaxHint> GetTaxHints(TaxSystem system)
+    {
+        if (system == TaxSystem.USN)
+        {
+            yield return new("УСН за квартал", "УСН", 0);
+            yield return new("ФСЗН за месяц", "ФСЗН", 0);
+        }
+        else
+        {
+            yield return new("НДС за месяц", "НДС", 0);
+            yield return new("ФСЗН за месяц", "ФСЗН", 0);
+            yield return new("Подоходный", "Подоходный", 0);
+        }
+    }
+
+    private void ApplyTaxHint(TaxHint hint)
+    {
+        _taxTypeSelect = hint.Name is "УСН" or "НДС" or "ФСЗН" or "Подоходный" ? hint.Name : "Другое";
+        if (_taxTypeSelect == "Другое") _customTaxName = hint.Label;
+        SetTaxDuePreset(hint.DuePresetDays);
+        if (hint.Name == "УСН") SetTaxDueQuarterEnd();
+        else SetTaxDueEndOfMonth();
+        OpenTaxForm();
+    }
+
+    private void OpenTaxForm()
+    {
+        _showTaxForm = true;
+        if (_editTaxId == 0) ResetTaxForm();
+    }
+
+    private void OpenBillForm()
+    {
+        _showBillForm = true;
+        if (_editBillId == 0) ResetBillForm();
+    }
+
+    private void CancelTaxForm()
+    {
+        _showTaxForm = false;
+        _editTaxId = 0;
+        ResetTaxForm();
+    }
+
+    private void CancelBillForm()
+    {
+        _showBillForm = false;
+        _editBillId = 0;
+        ResetBillForm();
+    }
+
+    private void ResetTaxForm()
+    {
+        _taxTypeSelect = "НДС";
+        _customTaxName = "";
+        _taxAmount = 0;
+        _taxDueDate = DateTime.Today.AddMonths(1);
+    }
+
+    private void ResetBillForm()
+    {
+        _billName = "";
+        _billAmount = 0;
+        _billCategory = "";
+        _billDueDate = DateTime.Today.AddMonths(1);
+    }
+
+    private void OnTaxTypeChanged() { }
+
+    private string ResolveTaxName() =>
+        _taxTypeSelect == "Другое"
+            ? (string.IsNullOrWhiteSpace(_customTaxName) ? "Налог" : _customTaxName.Trim())
+            : _taxTypeSelect;
+
+    private void SetTaxDuePreset(int days) => _taxDueDate = DateTime.Today.AddDays(days);
+
+    private void SetTaxDueEndOfMonth()
+    {
+        var d = DateTime.Today;
+        _taxDueDate = new DateTime(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
+    }
+
+    private void SetTaxDueQuarterEnd()
+    {
+        var d = DateTime.Today;
+        var quarter = (d.Month - 1) / 3;
+        var endMonth = (quarter + 1) * 3;
+        _taxDueDate = new DateTime(d.Year, endMonth, DateTime.DaysInMonth(d.Year, endMonth));
+    }
+
+    private void EditTax(TaxPayment tax)
+    {
+        _editTaxId = tax.Id;
+        var known = new[] { "НДС", "УСН", "ФСЗН", "Подоходный" };
+        if (known.Contains(tax.Name))
+        {
+            _taxTypeSelect = tax.Name;
+            _customTaxName = "";
+        }
+        else
+        {
+            _taxTypeSelect = "Другое";
+            _customTaxName = tax.Name;
+        }
+        _taxAmount = tax.Amount;
+        _taxDueDate = tax.DueDate;
+        _showTaxForm = true;
+    }
+
+    private void EditBill(Reminder bill)
+    {
+        _editBillId = bill.Id;
+        _billName = bill.Name;
+        _billAmount = bill.Amount;
+        _billCategory = bill.Category ?? "";
+        _billDueDate = bill.Date;
+        _showBillForm = true;
+    }
+
+    private async Task SaveTax()
+    {
+        ClearAlerts();
+        var name = ResolveTaxName();
+        if (_taxAmount <= 0)
+        {
+            ShowError("Укажите сумму больше нуля");
+            return;
+        }
+
+        try
+        {
+            if (_editTaxId == 0)
+            {
+                await TaxService.AddTaxAsync(new TaxPayment
+                {
+                    Name = name,
+                    Amount = _taxAmount,
+                    DueDate = _taxDueDate,
+                    UserId = _userId
+                });
+                ShowSuccess($"Налог «{name}» добавлен");
+            }
+            else
+            {
+                await TaxService.UpdateTaxAsync(new TaxPayment
+                {
+                    Id = _editTaxId,
+                    Name = name,
+                    Amount = _taxAmount,
+                    DueDate = _taxDueDate
+                }, _userId);
+                ShowSuccess("Изменения сохранены");
+            }
+            _showTaxForm = false;
+            _editTaxId = 0;
+            ResetTaxForm();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void RunTaxCalculator()
+    {
+        var system = _taxSystem ?? TaxSystem.USN;
+        _calcResult = TaxCalculatorHelper.Calculate(system, _calcIncome, _calcExpenses);
+    }
+
+    private void ApplyCalcToTaxForm()
+    {
+        if (_calcResult == null) return;
+        _taxAmount = _calcResult.TaxAmount;
+        if (_taxSystem == TaxSystem.USN) _taxTypeSelect = "УСН";
+        else _taxTypeSelect = "НДС";
+        OpenTaxForm();
+    }
+
+    private void OpenPartialPay(TaxPayment tax)
+    {
+        _partialTax = tax;
+        _partialAmount = tax.Amount - tax.PaidAmount;
+        _partialReceipt = tax.ReceiptNote ?? "";
+        _showPartialForm = true;
+    }
+
+    private async Task SavePartialPay()
+    {
+        if (_partialTax == null) return;
+        ClearAlerts();
+        try
+        {
+            await TaxService.MarkPartialPaidAsync(_partialTax.Id, _partialAmount, _partialReceipt, _userId);
+            _showPartialForm = false;
+            ShowSuccess("Частичная оплата записана");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
     }
 
     private async Task MarkPaid(int id)
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        await TaxService.MarkAsPaidAsync(id, user.Id);
-        _message = "Налог отмечен как оплаченный. Создана транзакция.";
-        showMessage = true;
-        await LoadTaxes();
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(3000);
-        showMessage = false;
-        await InvokeAsync(StateHasChanged);
+        ClearAlerts();
+        await TaxService.MarkAsPaidAsync(id, _userId);
+        ShowSuccess("Налог оплачен, создана транзакция в категории «Налоги»");
+        await ReloadAsync();
     }
 
     private async Task DeleteTax(int id)
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить налог?");
-        if (!ok) return;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        await TaxService.DeleteTaxAsync(id, user.Id);
-        await LoadTaxes();
+        if (!await JS.InvokeAsync<bool>("confirm", "Удалить налоговый платёж?")) return;
+        await TaxService.DeleteTaxAsync(id, _userId);
+        await ReloadAsync();
     }
 
-    private async Task AddBill()
+    private async Task SaveBill()
     {
-        if (string.IsNullOrWhiteSpace(newBillName) || newBillAmount <= 0) return;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        var bill = new Reminder
+        ClearAlerts();
+        if (string.IsNullOrWhiteSpace(_billName) || _billAmount <= 0)
         {
-            Name = newBillName.Trim(),
-            Amount = newBillAmount,
-            Category = newBillCategory,
-            Frequency = ReminderFrequency.OneTime,
-            Date = newBillDueDate,
-            UserId = user.Id,
-            IsPaid = false
-        };
+            ShowError("Укажите название и сумму");
+            return;
+        }
 
-        DbContext.Reminders.Add(bill);
-        await DbContext.SaveChangesAsync();
-        _message = $"Счёт {newBillName} добавлен";
-        showMessage = true;
-        newBillName = string.Empty;
-        newBillAmount = 0;
-        newBillCategory = string.Empty;
-        newBillDueDate = DateTime.Today.AddMonths(1);
-        await LoadBills();
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(3000);
-        showMessage = false;
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (_editBillId == 0)
+            {
+                DbContext.Reminders.Add(new Reminder
+                {
+                    Name = _billName.Trim(),
+                    Amount = _billAmount,
+                    Category = _billCategory,
+                    Frequency = ReminderFrequency.OneTime,
+                    Date = _billDueDate,
+                    UserId = _userId,
+                    IsPaid = false
+                });
+            }
+            else
+            {
+                var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == _editBillId && r.UserId == _userId);
+                if (bill == null || bill.IsPaid) { ShowError("Счёт не найден или уже оплачен"); return; }
+                bill.Name = _billName.Trim();
+                bill.Amount = _billAmount;
+                bill.Category = _billCategory;
+                bill.Date = _billDueDate;
+            }
+            await DbContext.SaveChangesAsync();
+            ShowSuccess(_editBillId == 0 ? "Счёт добавлен" : "Счёт обновлён");
+            _showBillForm = false;
+            _editBillId = 0;
+            ResetBillForm();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
     }
 
     private async Task MarkBillPaid(int id)
     {
-        var bill = await DbContext.Reminders.FindAsync(id);
-        if (bill == null) return;
+        var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == _userId);
+        if (bill == null || bill.IsPaid) return;
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null) return;
-
-        // Create expense transaction
-        var tx = new Transaction
+        DbContext.Transactions.Add(new Transaction
         {
-            Date = bill.Date,
+            Date = DateTime.Today,
             Amount = -Math.Abs(bill.Amount),
             Description = $"Оплата счёта: {bill.Name}",
-            Category = bill.Category ?? string.Empty,
-            UserId = user.Id
-        };
-        DbContext.Transactions.Add(tx);
-
+            Category = string.IsNullOrWhiteSpace(bill.Category) ? "Прочее" : bill.Category,
+            UserId = _userId,
+            CreatedAt = DateTime.UtcNow
+        });
         bill.IsPaid = true;
         bill.PaidDate = DateTime.Now;
-
         await DbContext.SaveChangesAsync();
-        _message = "Счёт отмечен как оплаченный. Создана транзакция.";
-        showMessage = true;
-        await LoadBills();
-        await InvokeAsync(StateHasChanged);
-        await Task.Delay(3000);
-        showMessage = false;
-        await InvokeAsync(StateHasChanged);
+        ShowSuccess("Счёт оплачен, создана транзакция");
+        await ReloadAsync();
     }
 
     private async Task DeleteBill(int id)
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить счёт?");
-        if (!ok) return;
-
-        var bill = await DbContext.Reminders.FindAsync(id);
+        if (!await JS.InvokeAsync<bool>("confirm", "Удалить счёт?")) return;
+        var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == _userId);
         if (bill == null) return;
-
         DbContext.Reminders.Remove(bill);
         await DbContext.SaveChangesAsync();
-        await LoadBills();
+        await ReloadAsync();
+    }
+
+    private void ClearAlerts() { _showMessage = _showError = false; }
+
+    private void ShowSuccess(string msg)
+    {
+        _message = msg;
+        _showMessage = true;
+    }
+
+    private void ShowError(string msg)
+    {
+        _errorMessage = msg;
+        _showError = true;
     }
 }

@@ -1,0 +1,76 @@
+@using MiniFinance.Services
+@inject IJSRuntime JS
+
+<div class="card chart-panel h-100">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span>Прогноз баланса</span>
+        <div class="forecast-horizon-tabs">
+            @foreach (var d in new[] { 30, 60, 90 })
+            {
+                <button type="button"
+                        class="btn btn-sm @(HorizonDays == d ? "btn-primary" : "btn-outline")"
+                        @onclick="() => OnHorizonChanged.InvokeAsync(d)">
+                    @d дн.
+                </button>
+            }
+        </div>
+    </div>
+    <div class="card-body">
+        @if (Forecast.HasRisk)
+        {
+            <div class="alert alert-danger small mb-3">
+                <strong>Риск кассового разрыва</strong> — мин. остаток @Forecast.MinBalance.ToString("N0") Br
+            </div>
+        }
+        @if (!Forecast.Points.Any())
+        {
+            <div class="empty-state small">Недостаточно данных для прогноза</div>
+        }
+        else
+        {
+            <div class="chart-canvas-wrap" style="height:220px">
+                <canvas id="@_canvasId" aria-label="Прогноз баланса"></canvas>
+            </div>
+            @if (Forecast.Gaps.Any())
+            {
+                <div class="small text-muted mt-2">
+                    Периодов дефицита: @Forecast.Gaps.Count
+                    · <a href="/cash-forecast">Подробный прогноз →</a>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public CashForecastChartDto Forecast { get; set; } = new();
+    [Parameter] public int HorizonDays { get; set; } = 90;
+    [Parameter] public EventCallback<int> OnHorizonChanged { get; set; }
+
+    private readonly string _canvasId = $"forecastLine_{Guid.NewGuid():N}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await RenderChart();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await RenderChart();
+    }
+
+    private async Task RenderChart()
+    {
+        if (!Forecast.Points.Any()) return;
+        try
+        {
+            var labels = Forecast.Points.Select(p => p.Date.ToString("dd.MM")).ToArray();
+            var balances = Forecast.Points.Select(p => (double)p.Balance).ToArray();
+            var gapStarts = Forecast.Gaps.Select(g => g.Start.ToString("yyyy-MM-dd")).ToArray();
+            var gapEnds = Forecast.Gaps.Select(g => (g.End ?? g.Start).ToString("yyyy-MM-dd")).ToArray();
+            await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart", _canvasId, labels, balances, gapStarts, gapEnds);
+        }
+        catch { }
+    }
+}
+

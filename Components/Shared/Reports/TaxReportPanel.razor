@@ -1,0 +1,65 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Отчёт по налогам</div>
+    <div class="card-body">
+        <div class="reports-tax-summary">
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Начислено</span>
+                <span class="reports-tax-kpi-value">@Report.Accrued.ToString("N0") Br</span>
+            </div>
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Уплачено</span>
+                <span class="reports-tax-kpi-value text-success">@Report.Paid.ToString("N0") Br</span>
+            </div>
+            <div class="reports-tax-kpi">
+                <span class="reports-tax-kpi-label">Осталось</span>
+                <span class="reports-tax-kpi-value @(Report.Remaining > 0 ? "text-danger" : "")">@Report.Remaining.ToString("N0") Br</span>
+            </div>
+        </div>
+
+        @if (!Report.Lines.Any())
+        {
+            <div class="empty-state small mt-3">Нет налоговых операций и плановых платежей за период</div>
+        }
+        else
+        {
+            <table class="table mt-3">
+                <thead>
+                    <tr>
+                        <th>Налог / платёж</th>
+                        <th>Источник</th>
+                        <th>Дата</th>
+                        <th class="text-end">Сумма</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in Report.Lines)
+                    {
+                        <tr>
+                            <td>@line.Name</td>
+                            <td class="text-muted small">@line.Source</td>
+                            <td>@(line.Date?.ToString("dd.MM.yyyy") ?? "—")</td>
+                            <td class="text-end">@line.Amount.ToString("N2")</td>
+                            <td>
+                                @if (line.IsPaid)
+                                {
+                                    <span class="badge badge-success">Уплачено</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-warning">К оплате</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public TaxReportDto Report { get; set; } = new();
+}

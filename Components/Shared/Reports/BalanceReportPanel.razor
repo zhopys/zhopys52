@@ -1,0 +1,29 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Упрощённый баланс</div>
+    <div class="card-body">
+        <div class="reports-balance-grid">
+            <div class="reports-balance-section">
+                <h4 class="reports-forecast-title">Активы</h4>
+                <div class="reports-balance-row"><span>Деньги на счетах</span><strong>@Report.CashOnAccounts.ToString("N0") Br</strong></div>
+                <div class="reports-balance-row"><span>Дебиторка (нам должны)</span><strong class="text-success">@Report.Receivables.ToString("N0") Br</strong></div>
+                <div class="reports-balance-total"><span>Итого активы</span><strong>@Report.TotalAssets.ToString("N0") Br</strong></div>
+            </div>
+            <div class="reports-balance-section">
+                <h4 class="reports-forecast-title">Обязательства</h4>
+                <div class="reports-balance-row"><span>Кредиторка (мы должны)</span><strong class="text-danger">@Report.Payables.ToString("N0") Br</strong></div>
+                <div class="reports-balance-row"><span>Налоговый резерв (период)</span><strong>@Report.TaxReserve.ToString("N0") Br</strong></div>
+                <div class="reports-balance-total"><span>Итого обязательства</span><strong>@Report.TotalLiabilities.ToString("N0") Br</strong></div>
+            </div>
+        </div>
+        <div class="reports-balance-net mt-3">
+            <span>Чистая позиция (активы − обязательства)</span>
+            <strong class="@(Report.NetWorth >= 0 ? "text-success" : "text-danger")">@Report.NetWorth.ToString("N0") Br</strong>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public BalanceReportDto Report { get; set; } = new();
+}

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MiniFinance.Data.Models
 {
@@ -18,22 +19,26 @@ namespace MiniFinance.Data.Models
     {
         public int Id { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Укажите дату")]
         [DataType(DataType.Date)]
         public DateTime Date { get; set; } = DateTime.Today;
 
-        [Required]
-        [Range(-1000000, 1000000)]
+        [Required(ErrorMessage = "Укажите сумму")]
+        [Range(-1000000000, 1000000000, ErrorMessage = "Сумма вне допустимого диапазона")]
         public decimal Amount { get; set; }
 
-        [Required]
-        [StringLength(200)]
+        [NotMapped]
+        public bool IsIncome => Amount > 0;
+
+        [Required(ErrorMessage = "Укажите описание")]
+        [StringLength(200, MinimumLength = 1, ErrorMessage = "Описание до 200 символов")]
         public string Description { get; set; } = string.Empty;
 
-        [Required]
+        [Required(ErrorMessage = "Укажите категорию")]
         [StringLength(50)]
         public string Category { get; set; } = string.Empty;
 
+        [Required]
         public string UserId { get; set; } = string.Empty;
 
         public ApplicationUser? User { get; set; }
@@ -50,5 +55,22 @@ namespace MiniFinance.Data.Models
 
         public DateTime? CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+
+        [Display(Name = "Подтверждена")]
+        public bool IsConfirmed { get; set; } = true;
+
+        public int? CounterpartyId { get; set; }
+        public CounterpartyRecord? CounterpartyEntity { get; set; }
+
+        [StringLength(1000)]
+        public string? Notes { get; set; }
+
+        public TransactionApprovalStatus ApprovalStatus { get; set; } = TransactionApprovalStatus.Approved;
+
+        public string? SubmittedByUserId { get; set; }
+
+        public ICollection<TransactionTag> TransactionTags { get; set; } = new List<TransactionTag>();
+        public ICollection<TransactionAttachment> Attachments { get; set; } = new List<TransactionAttachment>();
+        public ICollection<TransactionComment> Comments { get; set; } = new List<TransactionComment>();
     }
 }

@@ -1,0 +1,58 @@
+@using MiniFinance.Services
+
+<div class="sync-status-bar sync-ok data-sources-card">
+    <div class="sync-status-icon reports-icon-data" aria-hidden="true"></div>
+    <div class="sync-status-body">
+        <div class="sync-status-title">
+            @if (Status.HasData)
+            {
+                <span>Данные: <strong>@Status.SourceLabel</strong></span>
+            }
+            else
+            {
+                <span>Нет транзакций для отчётов</span>
+            }
+        </div>
+        <div class="sync-status-meta text-muted">
+            @GetSubtitle()
+        </div>
+    </div>
+    <div class="data-sources-actions">
+        <button type="button" class="btn btn-sm btn-outline" @onclick="OnRefresh" disabled="@Refreshing">
+            @(Refreshing ? "…" : "Обновить")
+        </button>
+        <a href="/import" class="btn btn-sm btn-primary">Импорт CSV</a>
+        <a href="/transactions" class="btn btn-sm btn-outline">Операции</a>
+    </div>
+</div>
+
+@code {
+    [Parameter] public DataStatusDto Status { get; set; } = new();
+    [Parameter] public EventCallback OnRefreshRequested { get; set; }
+    [Parameter] public bool Refreshing { get; set; }
+
+    private Task OnRefresh() => OnRefreshRequested.InvokeAsync();
+
+    private string GetSubtitle()
+    {
+        if (!Status.HasData)
+            return "Загрузите выписку CSV или добавьте операции вручную";
+
+        var parts = new List<string>();
+        if (Status.PeriodTransactions > 0)
+            parts.Add($"{Status.PeriodTransactions} операций за период");
+        parts.Add($"{Status.TotalTransactions} всего");
+
+        if (Status.LastUpdatedAt.HasValue)
+        {
+            var ago = DateTime.Now - Status.LastUpdatedAt.Value;
+            var rel = ago.TotalMinutes < 1 ? "только что"
+                : ago.TotalMinutes < 60 ? $"{(int)ago.TotalMinutes} мин назад"
+                : ago.TotalHours < 24 ? $"{(int)ago.TotalHours} ч назад"
+                : $"{(int)ago.TotalDays} дн назад";
+            parts.Add($"обновлено {rel}");
+        }
+
+        return string.Join(" · ", parts);
+    }
+}

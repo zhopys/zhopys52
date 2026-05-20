@@ -1,0 +1,83 @@
+@using MiniFinance.Services
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="card chart-panel h-100 @(SelectedCategory != null ? "chart-filtered" : "")">
+    <div class="card-header chart-panel-header">
+        <span>Расходы по категориям</span>
+        @if (!string.IsNullOrEmpty(SelectedCategory))
+        {
+            <span class="chart-filter-badge" title="Нажмите ещё раз на категорию в легенде, чтобы сбросить">
+                @SelectedCategory
+            </span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!Chart.Labels.Any())
+        {
+            <div class="empty-state small">Нет расходов за период</div>
+        }
+        else
+        {
+            <p class="chart-hint text-muted small mb-2">Нажмите на сектор или строку в легенде, чтобы отфильтровать отчёт по категории</p>
+            <div class="chart-canvas-wrap" style="height:220px">
+                <canvas id="@_canvasId" aria-label="Диаграмма расходов"></canvas>
+            </div>
+            <div class="donut-legend mt-3">
+                @for (var i = 0; i < Chart.Labels.Count; i++)
+                {
+                    var idx = i;
+                    var label = Chart.Labels[idx];
+                    <button type="button" class="donut-legend-item @(SelectedCategory == label ? "active" : "")"
+                            @onclick="() => OnCategorySelected.InvokeAsync(label)"
+                            title="@(SelectedCategory == label ? "Снять фильтр" : "Показать только эту категорию")">
+                        <span class="donut-legend-dot" style="background:@Chart.Colors.ElementAtOrDefault(idx)"></span>
+                        <span>@label</span>
+                        <span class="ms-auto text-muted">@Chart.Amounts.ElementAtOrDefault(idx).ToString("N0") Br</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public CategoryBreakdownChartDto Chart { get; set; } = new();
+    [Parameter] public string? SelectedCategory { get; set; }
+    [Parameter] public EventCallback<string> OnCategorySelected { get; set; }
+
+    private readonly string _canvasId = $"expenseDonut_{Guid.NewGuid():N}";
+    private DotNetObjectReference<CategoryDonutChart>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Chart.Labels.Any()) return;
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("dashboardCharts.renderDonutChart",
+                _canvasId,
+                Chart.Labels.ToArray(),
+                Chart.Values.Select(v => (double)v).ToArray(),
+                Chart.Colors.ToArray(),
+                _dotNetRef);
+        }
+        catch { }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Chart.Labels.Any())
+            await OnAfterRenderAsync(false);
+    }
+
+    [JSInvokable]
+    public async Task OnSliceClick(int index)
+    {
+        if (index >= 0 && index < Chart.Labels.Count)
+            await OnCategorySelected.InvokeAsync(Chart.Labels[index]);
+    }
+
+    public void Dispose() => _dotNetRef?.Dispose();
+}

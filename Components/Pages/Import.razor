@@ -1,26 +1,25 @@
 @page "/import"
 @rendermode InteractiveServer
-@using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
 @using MiniFinance.Data.Models
 @using MiniFinance.Services
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
-@inject ApplicationDbContext DbContext
 @inject ICsvParser CsvParser
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+@inject ITransactionService TransactionService
+@inject ICategorizationService CategorizationService
 @attribute [Authorize]
 
 <PageTitle>Импорт транзакций - MiniFinance</PageTitle>
 
-<AuthorizeView Context="authContext">
-    <Authorized>
-        <div class="page-header" style="margin-bottom: 1.5rem;">
+<div class="page-header" style="margin-bottom: 1.5rem;">
             <div class="title">
                 <h1>Импорт транзакций</h1>
-                <div class="meta text-muted">Загрузите CSV файл с транзакциями</div>
+                <div class="meta text-muted">CSV с разделителем «;» или «,», кодировка UTF-8</div>
             </div>
         </div>
 
@@ -28,80 +27,121 @@
             <div class="card-header">Формат CSV</div>
             <div class="card-body">
                 <div class="alert alert-info">
-                    <p><code>Дата,Сумма,Описание,Категория</code></p>
-                    <p>Пример: <code>2024-01-15,-1500.00,Аренда офиса,Аренда</code></p>
-                    <p>Сумма: положительная — доход, отрицательная — расход</p>
+                    <p><code>Date;Amount;Description;Category</code></p>
+                    <p>Пример: <code>2025-01-15;-1500.00;Аренда офиса;Аренда</code></p>
+                    <p>Сумма: положительная — доход, отрицательная — расход. Дубликаты (дата+сумма+описание) пропускаются.</p>
                 </div>
 
                 <EditForm Model="@uploadModel" OnValidSubmit="@HandleImport">
                     <div style="margin-bottom: 1rem;">
-                        <label for="file" class="label">Выберите файл:</label>
-                        <InputFile id="file" class="input" OnChange="@OnFileSelected" accept=".csv" />
-                        <small class="text-muted">Поддерживается формат CSV</small>
+                        <label class="label">Выберите файл:</label>
+                        <InputFile class="input" OnChange="@OnFileSelected" accept=".csv,text/csv" />
                     </div>
 
                     @if (!string.IsNullOrEmpty(message))
                     {
                         <div class="alert @(isError ? "alert-danger" : "alert-success")" style="margin-bottom: 1rem;">
                             @message
+                            @if (importErrors.Any())
+                            {
+                                <ul class="mt-2 mb-0 small">
+                                    @foreach (var err in importErrors.Take(10))
+                                    {
+                                        <li>@err</li>
+                                    }
+                                    @if (importErrors.Count > 10)
+                                    {
+                                        <li>…и ещё @(importErrors.Count - 10) ошибок</li>
+                                    }
+                                </ul>
+                            }
                         </div>
                     }
 
-                    @if (importCount > 0)
-                    {
-                        <div class="card" style="margin-bottom: 1rem; background: var(--bg);">
-                            <div class="card-body" style="padding: 1rem;">
-                                <div>Импортировано транзакций: <strong>@importCount</strong></div>
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                        <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
+                            @(isProcessing ? "Разбор..." : "Предпросмотр")
+                        </button>
+                        <button type="button" class="btn btn-outline" @onclick="DownloadSample">Скачать пример CSV</button>
+                    </div>
+                </EditForm>
+
+                @if (showPreview && parsedPreview.Any())
+                {
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            Предпросмотр (@previewDisplayCount из @totalParsed)
+                            @if (skippedDuplicates > 0) { <span class="text-muted small"> · дубликатов: @skippedDuplicates</span> }
+                            @if (skippedInvalid > 0) { <span class="text-muted small"> · ошибок строк: @skippedInvalid</span> }
+                        </div>
+                        <div class="card-body" style="padding:0">
+                            <table class="table">
+                                <thead>
+                                    <tr><th>Дата</th><th class="text-end">Сумма</th><th>Описание</th><th>Категория</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in parsedPreview.Take(50))
+                                    {
+                                        <tr class="@(p.Amount < 0 ? "negative-balance" : null)">
+                                            <td>@p.Date.ToString("dd.MM.yyyy")</td>
+                                            <td class="text-end">@p.Amount.ToString("N2")</td>
+                                            <td>@p.Description</td>
+                                            <td>@p.Category</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div style="padding:1rem;display:flex;gap:.5rem">
+                                <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@isProcessing">
+                                    Подтвердить импорт (@totalParsed)
+                                </button>
+                                <button class="btn btn-outline" @onclick="CancelPreview">Отмена</button>
                             </div>
                         </div>
-                    }
-
-                    <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
-                        @(isProcessing ? "Импорт..." : "Импортировать")
-                    </button>
-                </EditForm>
+                    </div>
+                }
             </div>
         </div>
-    </Authorized>
-</AuthorizeView>
 
 @code {
-    private ApplicationUser? _currentUser;
     private class UploadModel { }
     private UploadModel uploadModel = new();
 
     private IBrowserFile? selectedFile;
     private string message = string.Empty;
-    private bool isError = false;
-    private bool isProcessing = false;
-    private int importCount;
+    private bool isError;
+    private bool isProcessing;
+    private bool showPreview;
 
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _currentUser = await UserManager.GetUserAsync(authState.User);
-    }
+    private List<Transaction> allPending = new();
+    private List<Transaction> parsedPreview = new();
+    private List<string> importErrors = new();
+    private int totalParsed;
+    private int previewDisplayCount;
+    private int skippedDuplicates;
+    private int skippedInvalid;
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
         message = $"Выбран файл: {selectedFile.Name} ({selectedFile.Size / 1024:N0} КБ)";
         isError = false;
-        importCount = 0;
+        showPreview = false;
+        allPending.Clear();
     }
 
     private async Task HandleImport()
     {
         if (selectedFile == null)
         {
-            message = "Пожалуйста, выберите файл";
+            message = "Выберите файл CSV";
             isError = true;
             return;
         }
 
         isProcessing = true;
-        message = "Импорт...";
-        importCount = 0;
+        message = "Разбор файла...";
+        importErrors.Clear();
 
         try
         {
@@ -114,27 +154,36 @@
                 return;
             }
 
-            using var stream = selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-            var transactions = await CsvParser.ParseAsync(stream, user.Id);
+            await CategorizationService.EnsureDefaultCategoriesAsync();
+            var existingHashes = await TransactionService.GetExistingHashesAsync(user.Id);
 
-            if (!transactions.Any())
+            await using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            var parseResult = await CsvParser.ParseAsync(stream, user.Id, existingHashes);
+
+            allPending = parseResult.Transactions;
+            parsedPreview = allPending;
+            totalParsed = allPending.Count;
+            previewDisplayCount = Math.Min(50, totalParsed);
+            skippedDuplicates = parseResult.SkippedDuplicates;
+            skippedInvalid = parseResult.SkippedInvalid;
+
+            importErrors.AddRange(parseResult.Errors.Select(e => $"Строка {e.LineNumber}: {e.Message}"));
+
+            if (!allPending.Any())
             {
-                message = "Не найдено транзакций в файле. Проверьте формат.";
+                message = "Не найдено валидных транзакций. Проверьте формат файла.";
                 isError = true;
+                showPreview = false;
                 return;
             }
 
-            await DbContext.Transactions.AddRangeAsync(transactions);
-            await DbContext.SaveChangesAsync();
-
-            importCount = transactions.Count;
-            message = $"Успешно импортировано {transactions.Count} транзакций!";
-            isError = false;
-            selectedFile = null;
+            showPreview = true;
+            message = $"Готово к импорту: {totalParsed} транзакций. Пропущено дубликатов: {skippedDuplicates}, ошибок строк: {skippedInvalid}.";
+            isError = skippedInvalid > 0;
         }
         catch (Exception ex)
         {
-            message = $"Ошибка при импорте: {ex.Message}";
+            message = $"Ошибка при разборе: {ex.Message}";
             isError = true;
         }
         finally
@@ -142,4 +191,44 @@
             isProcessing = false;
         }
     }
+
+    private async Task ConfirmImport()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null)
+        {
+            message = "Ошибка авторизации";
+            isError = true;
+            return;
+        }
+
+        isProcessing = true;
+        message = "Импорт...";
+
+        var result = await TransactionService.ImportManyAsync(allPending, user.Id);
+        importErrors = result.Errors;
+
+        message = $"Импорт завершён. Успешно: {result.SuccessCount}, ошибок: {result.FailedCount}.";
+        isError = result.FailedCount > 0;
+        showPreview = false;
+        allPending.Clear();
+        parsedPreview.Clear();
+        isProcessing = false;
+    }
+
+    private void CancelPreview()
+    {
+        showPreview = false;
+        allPending.Clear();
+        parsedPreview.Clear();
+        message = "Импорт отменён";
+        isError = false;
+    }
+
+    private void DownloadSample()
+    {
+        JS.InvokeVoidAsync("downloadFile", "/samples/sample_import.csv", "sample_import.csv");
+    }
 }
+

@@ -1,0 +1,203 @@
+@page "/counterparties"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject ICounterpartyService CounterpartyService
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize]
+
+<PageTitle>Контрагенты — MiniFinance</PageTitle>
+
+<div class="page-header">
+    <div class="title">
+        <h1>Контрагенты</h1>
+        <div class="meta text-muted">Справочник клиентов и поставщиков</div>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" @onclick="OpenCreate">Добавить</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success") mb-3">@_message</div>
+}
+
+@if (_showForm)
+{
+    <div class="card mb-3">
+        <div class="card-header">@(_editId.HasValue ? "Редактирование" : "Новый контрагент")</div>
+        <div class="card-body">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+                <div><label class="label">Название *</label><input class="input" @bind="_form.Name" /></div>
+                <div>
+                    <label class="label">Тип</label>
+                    <select class="input" @bind="_form.Type">
+                        <option value="@CounterpartyType.Client">Клиент</option>
+                        <option value="@CounterpartyType.Supplier">Поставщик</option>
+                        <option value="@CounterpartyType.Both">Клиент и поставщик</option>
+                    </select>
+                </div>
+                <div><label class="label">Контакт</label><input class="input" @bind="_form.ContactPerson" /></div>
+                <div><label class="label">Email</label><input class="input" @bind="_form.Email" /></div>
+                <div><label class="label">Телефон</label><input class="input" @bind="_form.Phone" /></div>
+            </div>
+            <div class="mt-2"><label class="label">Заметки</label><textarea class="input" rows="2" @bind="_form.Notes"></textarea></div>
+            <div class="mt-3" style="display:flex;gap:.5rem">
+                <button class="btn btn-primary" @onclick="Save">Сохранить</button>
+                <button class="btn btn-outline" @onclick="() => _showForm = false">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body" style="padding:0">
+        @if (_list == null)
+        {
+            <div class="empty-state small">Загрузка...</div>
+        }
+        else if (!_list.Any())
+        {
+            <div class="empty-state">Нет контрагентов</div>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr><th>Название</th><th>Тип</th><th>Контакт</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _list)
+                    {
+                        <tr>
+                            <td class="fw-bold"><a href="#" @onclick="() => ShowDetail(c.Id)" @onclick:preventDefault>@c.Name</a></td>
+                            <td>@TypeLabel(c.Type)</td>
+                            <td class="text-muted small">@(c.ContactPerson ?? c.Email ?? "—")</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline" @onclick="() => Edit(c)">Изменить</button>
+                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => Delete(c.Id)">Удалить</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (_detail != null)
+{
+    <div class="card mt-3">
+        <div class="card-header">@_detail.Record.Name — история</div>
+        <div class="card-body" style="padding:0">
+            <div class="p-3 small">
+                Доход: <span class="text-success">@_detail.TotalIncome.ToString("N0")</span>
+                · Расход: <span class="text-danger">@_detail.TotalExpense.ToString("N0")</span>
+            </div>
+            @if (!_detail.Transactions.Any())
+            {
+                <div class="empty-state small">Нет операций</div>
+            }
+            else
+            {
+                <table class="table table-sm">
+                    <thead><tr><th>Дата</th><th>Описание</th><th class="text-end">Сумма</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _detail.Transactions)
+                        {
+                            <tr>
+                                <td>@t.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@t.Description</td>
+                                <td class="text-end @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string _userId = "";
+    private List<CounterpartyRecord>? _list;
+    private CounterpartyDetailDto? _detail;
+    private bool _showForm;
+    private int? _editId;
+    private CounterpartyRecord _form = new();
+    private string? _message;
+    private bool _isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        if (user == null) return;
+        _userId = user.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _list = await CounterpartyService.ListAsync(_userId);
+
+    private void OpenCreate()
+    {
+        _editId = null;
+        _form = new CounterpartyRecord { Type = CounterpartyType.Both };
+        _showForm = true;
+    }
+
+    private void Edit(CounterpartyRecord c)
+    {
+        _editId = c.Id;
+        _form = new CounterpartyRecord
+        {
+            Id = c.Id, Name = c.Name, Type = c.Type, ContactPerson = c.ContactPerson,
+            Email = c.Email, Phone = c.Phone, TaxId = c.TaxId, Notes = c.Notes
+        };
+        _showForm = true;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            if (_editId.HasValue)
+            {
+                _form.Id = _editId.Value;
+                await CounterpartyService.UpdateAsync(_form, _userId);
+            }
+            else
+                await CounterpartyService.CreateAsync(_form, _userId);
+            _showForm = false;
+            _message = "Сохранено";
+            _isError = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _message = ex.Message; _isError = true; }
+    }
+
+    private async Task Delete(int id)
+    {
+        await CounterpartyService.DeleteAsync(id, _userId);
+        await LoadAsync();
+    }
+
+    private async Task ShowDetail(int id)
+    {
+        try { _detail = await CounterpartyService.GetDetailAsync(id, _userId); }
+        catch { _detail = null; }
+    }
+
+    private static string TypeLabel(CounterpartyType t) => t switch
+    {
+        CounterpartyType.Client => "Клиент",
+        CounterpartyType.Supplier => "Поставщик",
+        _ => "Клиент и поставщик"
+    };
+}

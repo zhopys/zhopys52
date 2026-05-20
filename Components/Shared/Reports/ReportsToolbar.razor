@@ -1,0 +1,212 @@
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+
+<div class="card mb-3 reports-toolbar">
+    <div class="card-body">
+        <div class="reports-toolbar-grid">
+            <div class="reports-filter-group">
+                <label class="label">Тип периода</label>
+                <select class="input" value="@PeriodType" @onchange="OnPeriodTypeChange">
+                    <option value="Month">Месяц</option>
+                    <option value="Quarter">Квартал</option>
+                    <option value="Year">Год</option>
+                    <option value="Custom">Свой диапазон</option>
+                </select>
+            </div>
+
+            @if (PeriodType != "Custom")
+            {
+                <div class="reports-filter-group">
+                    <label class="label">@(PeriodType == "Year" ? "Год" : PeriodType == "Quarter" ? "Квартал" : "Месяц")</label>
+                    <select class="input" value="@SelectedMonthKey" @onchange="OnMonthKeyChange">
+                        @foreach (var m in AvailableMonths)
+                        {
+                            <option value="@ToMonthKey(m)">@FormatAnchorLabel(m)</option>
+                        }
+                    </select>
+                </div>
+            }
+            else
+            {
+                <div class="reports-filter-group">
+                    <label class="label">С</label>
+                    <input type="date" class="input" value="@CustomStart.ToString("yyyy-MM-dd")" @onchange="OnCustomStartChange" />
+                </div>
+                <div class="reports-filter-group">
+                    <label class="label">По</label>
+                    <input type="date" class="input" value="@CustomEnd.ToString("yyyy-MM-dd")" @onchange="OnCustomEndChange" />
+                </div>
+            }
+
+            <div class="reports-filter-group">
+                <label class="label">Сравнение</label>
+                <select class="input" value="@CompareMode" @onchange="OnCompareModeChange">
+                    <option value="mom">Месяц к месяцу</option>
+                    <option value="yoy">Год к году</option>
+                    <option value="none">Без сравнения</option>
+                </select>
+            </div>
+
+            <div class="reports-filter-group">
+                <label class="label">Проект</label>
+                <select class="input" value="@ProjectIdValue" @onchange="OnProjectChange">
+                    <option value="">Все проекты</option>
+                    @foreach (var p in Projects)
+                    {
+                        <option value="@p.Id">@p.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="reports-filter-group">
+                <label class="label">Категория</label>
+                <select class="input" value="@CategoryValue" @onchange="OnCategoryChange">
+                    <option value="">Все категории</option>
+                    @foreach (var c in Categories)
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+            </div>
+
+            <div class="reports-filter-group">
+                <label class="label">Прогноз</label>
+                <select class="input" value="@ForecastDays.ToString()" @onchange="OnForecastChange">
+                    <option value="30">30 дней</option>
+                    <option value="60">60 дней</option>
+                    <option value="90">90 дней</option>
+                </select>
+            </div>
+
+            <div class="reports-toolbar-actions">
+                <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyFilters" disabled="@Disabled">
+                    Применить
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @onclick="ResetFilters" disabled="@Disabled">
+                    Сбросить
+                </button>
+            </div>
+        </div>
+
+        @if (HasActiveFilters)
+        {
+            <div class="reports-active-filters mt-2">
+                <span class="text-muted small">Активные фильтры:</span>
+                @if (ProjectId.HasValue)
+                {
+                    <span class="filter-chip">Проект: @GetProjectName() <button type="button" class="filter-chip-clear" @onclick="ClearProject" aria-label="Сбросить проект">×</button></span>
+                }
+                @if (!string.IsNullOrEmpty(SelectedCategory))
+                {
+                    <span class="filter-chip">Категория: @SelectedCategory <button type="button" class="filter-chip-clear" @onclick="ClearCategory" aria-label="Сбросить категорию">×</button></span>
+                }
+            </div>
+        }
+
+        <div class="reports-toolbar-export-row mt-2">
+            <span class="text-muted small">Экспорт с учётом фильтров:</span>
+            <div class="reports-toolbar-export">
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf")' disabled="@Disabled" title="Полный отчёт PDF">
+                    PDF
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("xlsx")' disabled="@Disabled" title="P&L, Cash Flow, KPI">
+                    Excel
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("csv")' disabled="@Disabled" title="Сырые транзакции">
+                    CSV
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string PeriodType { get; set; } = "Month";
+    [Parameter] public EventCallback<string> PeriodTypeChanged { get; set; }
+    [Parameter] public string SelectedMonthKey { get; set; } = "";
+    [Parameter] public EventCallback<string> SelectedMonthKeyChanged { get; set; }
+    [Parameter] public DateTime CustomStart { get; set; } = DateTime.Today.AddMonths(-1);
+    [Parameter] public EventCallback<DateTime> CustomStartChanged { get; set; }
+    [Parameter] public DateTime CustomEnd { get; set; } = DateTime.Today;
+    [Parameter] public EventCallback<DateTime> CustomEndChanged { get; set; }
+    [Parameter] public string CompareMode { get; set; } = "mom";
+    [Parameter] public EventCallback<string> CompareModeChanged { get; set; }
+    [Parameter] public int? ProjectId { get; set; }
+    [Parameter] public EventCallback<int?> ProjectIdChanged { get; set; }
+    [Parameter] public string? SelectedCategory { get; set; }
+    [Parameter] public EventCallback<string?> SelectedCategoryChanged { get; set; }
+    [Parameter] public int ForecastDays { get; set; } = 90;
+    [Parameter] public EventCallback<int> ForecastDaysChanged { get; set; }
+    [Parameter] public IReadOnlyList<DateTime> AvailableMonths { get; set; } = Array.Empty<DateTime>();
+    [Parameter] public IReadOnlyList<Project> Projects { get; set; } = Array.Empty<Project>();
+    [Parameter] public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback OnFiltersChanged { get; set; }
+    [Parameter] public EventCallback<string> OnExport { get; set; }
+    [Parameter] public EventCallback OnReset { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
+
+    private string ProjectIdValue => ProjectId?.ToString() ?? "";
+    private string CategoryValue => SelectedCategory ?? "";
+
+    private bool HasActiveFilters => ProjectId.HasValue || !string.IsNullOrEmpty(SelectedCategory);
+
+    private static string ToMonthKey(DateTime d) =>
+        d.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
+
+    private string FormatAnchorLabel(DateTime m) => PeriodType switch
+    {
+        "Year" => m.Year.ToString(),
+        "Quarter" => $"Q{((m.Month - 1) / 3) + 1} {m.Year}",
+        _ => m.ToString("MMMM yyyy", RuCulture)
+    };
+
+    private string GetProjectName() =>
+        Projects.FirstOrDefault(p => p.Id == ProjectId)?.Name ?? "Проект";
+
+    private Task OnPeriodTypeChange(ChangeEventArgs e) =>
+        PeriodTypeChanged.InvokeAsync(e.Value?.ToString() ?? "Month");
+
+    private Task OnMonthKeyChange(ChangeEventArgs e) =>
+        SelectedMonthKeyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    private Task OnCustomStartChange(ChangeEventArgs e) =>
+        DateTime.TryParse(e.Value?.ToString(), out var d)
+            ? CustomStartChanged.InvokeAsync(d)
+            : Task.CompletedTask;
+
+    private Task OnCustomEndChange(ChangeEventArgs e) =>
+        DateTime.TryParse(e.Value?.ToString(), out var d)
+            ? CustomEndChanged.InvokeAsync(d)
+            : Task.CompletedTask;
+
+    private Task OnCompareModeChange(ChangeEventArgs e) =>
+        CompareModeChanged.InvokeAsync(e.Value?.ToString() ?? "mom");
+
+    private Task OnProjectChange(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        int? id = int.TryParse(v, out var parsed) && parsed > 0 ? parsed : null;
+        return ProjectIdChanged.InvokeAsync(id);
+    }
+
+    private Task OnCategoryChange(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        return SelectedCategoryChanged.InvokeAsync(string.IsNullOrWhiteSpace(v) ? null : v);
+    }
+
+    private Task OnForecastChange(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var d) && d is 30 or 60 or 90
+            ? ForecastDaysChanged.InvokeAsync(d)
+            : Task.CompletedTask;
+
+    private Task ApplyFilters() => OnFiltersChanged.InvokeAsync();
+    private Task Export(string format) => OnExport.InvokeAsync(format);
+    private Task ResetFilters() => OnReset.InvokeAsync();
+
+    private Task ClearProject() => ProjectIdChanged.InvokeAsync(null);
+
+    private Task ClearCategory() => SelectedCategoryChanged.InvokeAsync(null);
+}

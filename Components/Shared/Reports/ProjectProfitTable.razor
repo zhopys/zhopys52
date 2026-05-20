@@ -1,0 +1,63 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Рентабельность проектов и отделов</div>
+    <div class="card-body" style="padding:0">
+        @if (!Rows.Any())
+        {
+            <div class="empty-state small">Нет данных по проектам</div>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Проект / отдел</th>
+                        <th class="text-end">Доход</th>
+                        <th class="text-end">Расход</th>
+                        <th class="text-end">Прибыль</th>
+                        <th class="text-end" title="Рентабельность инвестиций — доходность проекта относительно бюджета">Рентабельность</th>
+                        <th class="text-end">Операций</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Rows)
+                    {
+                        <tr class="@(row.IsProfitable ? "profit-positive" : "profit-negative")">
+                            <td>
+                                <div class="fw-bold">@row.Name</div>
+                                @if (!string.IsNullOrEmpty(row.Department))
+                                {
+                                    <div class="small text-muted">@row.Department</div>
+                                }
+                            </td>
+                            <td class="text-end text-success">@row.Income.ToString("N0")</td>
+                            <td class="text-end text-danger">@row.Expense.ToString("N0")</td>
+                            <td class="text-end fw-bold @(row.IsProfitable ? "text-success" : "text-danger")">
+                                @row.Profit.ToString("N0") Br
+                            </td>
+                            <td class="text-end">
+                                @if (row.ActualRoi.HasValue)
+                                {
+                                    <span class="@(row.ActualRoi >= 0 ? "text-success" : "text-danger")">
+                                        @row.ActualRoi.Value.ToString("F1")%
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end text-muted">@row.Transactions</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ProjectProfitRowDto> Rows { get; set; } = Array.Empty<ProjectProfitRowDto>();
+}
+

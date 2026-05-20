@@ -11,24 +11,28 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IForecastingService ForecastingService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 <PageTitle>Главная — MiniFinance</PageTitle>
 
-<div class="main">
-    <AuthorizeView Context="authContext">
-        <Authorized>
-            <div class="page-header">
-                <div class="title">
-                    <h1>Обзор</h1>
-                    <div class="meta">@DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("ru-RU"))</div>
+<AuthorizeView Context="authContext">
+    <Authorized>
+        <div class="dashboard">
+            <header class="dashboard-header">
+                <div>
+                    <h1>Обзор капитала</h1>
+                    <div class="dashboard-meta">
+                        <span class="live-pill">Live</span>
+                        <span>@DateTime.Now.ToString("dd MMMM yyyy · HH:mm", new System.Globalization.CultureInfo("ru-RU"))</span>
+                    </div>
                 </div>
                 <div class="page-actions">
                     <a href="/transactions/create" class="btn btn-primary">
                         <span>+</span> Новая операция
                     </a>
                 </div>
-            </div>
+            </header>
 
             @if (isLoading)
             {
@@ -40,72 +44,93 @@
             {
                 @if (cashGaps.Any())
                 {
-                    <div class="alert alert-danger d-flex align-items-center mb-4">
-                        <div style="font-size: 1.5rem; margin-right: 12px;">⚠️</div>
+                    <div class="alert-glass">
+                        <span class="alert-glass-icon" aria-hidden="true">⚠</span>
                         <div style="flex: 1">
-                            <div class="fw-bold">Внимание: Риск кассового разрыва</div>
-                            <div class="small">Ближайший дефицит ожидается @cashGaps.First().StartDate.ToString("dd MMM").</div>
+                            <div class="fw-bold">Риск кассового разрыва</div>
+                            <div class="small text-muted">Ближайший дефицит — @cashGaps.First().StartDate.ToString("dd MMM yyyy")</div>
                         </div>
-                        <a href="/cash-forecast" class="btn btn-sm btn-danger text-white">Подробнее</a>
+                        <a href="/cash-forecast" class="btn btn-sm btn-danger">Подробнее</a>
                     </div>
                 }
 
-                <div class="kpi-grid mb-4">
-                    <div class="kpi-card">
-                        <div class="kpi-label">Общий баланс</div>
-                        <div class="kpi-value @(balance >= 0 ? "text-success" : "text-danger")">
-                            @balance.ToString("N0") <small class="text-muted">Br</small>
+                <section class="capital-monitor" aria-label="Статус капитала">
+                    <div class="capital-monitor-inner">
+                        <div class="capital-monitor-top">
+                            <div>
+                                <p class="capital-label">Общий капитал</p>
+                                <div class="capital-value @(balance >= 0 ? "positive" : "text-danger")">
+                                    @(balance >= 0 ? "" : "−")@Math.Abs(balance).ToString("N0")
+                                    <span class="capital-currency">Br</span>
+                                </div>
+                            </div>
+                            <span class="live-pill">Обновлено сейчас</span>
+                        </div>
+                        <div class="capital-stats">
+                            <div>
+                                <div class="capital-stat-label">Доход за месяц</div>
+                                <div class="capital-stat-value text-success">+@CurrentMonthIncome.ToString("N0") <small class="text-muted">Br</small></div>
+                            </div>
+                            <div>
+                                <div class="capital-stat-label">Расход за месяц</div>
+                                <div class="capital-stat-value text-danger">@CurrentMonthExpense.ToString("N0") <small class="text-muted">Br</small></div>
+                            </div>
+                            <div>
+                                <div class="capital-stat-label">Чистый поток</div>
+                                <div class="capital-stat-value @(monthNet >= 0 ? "text-success" : "text-danger")">
+                                    @(monthNet >= 0 ? "+" : "")@monthNet.ToString("N0") <small class="text-muted">Br</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">Доход за месяц</div>
-                        <div class="kpi-value text-success">
-                            +@CurrentMonthIncome.ToString("N0") <small style="font-size: 14px">Br</small>
-                        </div>
+                </section>
+
+                <div class="dashboard-kpi-row">
+                    <div class="dashboard-kpi accent-teal">
+                        <div class="kpi-label">Операций за месяц</div>
+                        <div class="kpi-value">@monthTransactionCount</div>
                     </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">Расход за месяц</div>
-                        <div class="kpi-value text-danger">
-                            -@Math.Abs(CurrentMonthExpense).ToString("N0") <small style="font-size: 14px">Br</small>
+                    <div class="dashboard-kpi accent-blue">
+                        <div class="kpi-label">Средняя операция</div>
+                        <div class="kpi-value" style="font-size: 22px;">@avgTransaction.ToString("N0") <small class="text-muted" style="font-size: 14px">Br</small></div>
+                    </div>
+                    <div class="dashboard-kpi accent-rose">
+                        <div class="kpi-label">Прогноз риска</div>
+                        <div class="kpi-value @(cashGaps.Any() ? "text-danger" : "text-success")" style="font-size: 22px;">
+                            @(cashGaps.Any() ? "Есть" : "Нет")
                         </div>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px;">
+                <div class="dashboard-grid">
                     <div style="min-width: 0;">
                         @if (monthlyData.Any())
                         {
-                            <div class="card mb-4">
-                                <div class="card-header">Динамика (последние 6 месяцев)</div>
-                                <div class="card-body">
-                                    <div class="chart-bar-container">
-                                        @foreach (var m in monthlyData)
-                                        {
-                                            var maxVal = monthlyData.Max(x => Math.Abs(x.Value));
-                                            var height = maxVal > 0 ? (int)(Math.Abs(m.Value) / maxVal * 120) : 0;
-                                            <div class="chart-bar">
-                                                <div class="chart-bar-fill @(m.Value >= 0 ? "income" : "expense")" 
-                                                     style="height:@(height + 2)px" 
-                                                     title="@m.Value.ToString("N0") Br"></div>
-                                                <div class="chart-bar-label">@m.Label</div>
-                                            </div>
-                                        }
+                            <div class="card chart-panel mb-4">
+                                <div class="card-header">
+                                    <span>Динамика прибыли</span>
+                                    <div class="chart-legend">
+                                        <span class="chart-legend-item"><span class="chart-legend-dot teal"></span> Прибыль</span>
+                                        <span class="chart-legend-item"><span class="chart-legend-dot blue"></span> Доход</span>
                                     </div>
+                                </div>
+                                <div class="chart-canvas-wrap">
+                                    <canvas id="profitChart" aria-label="График динамики прибыли"></canvas>
                                 </div>
                             </div>
                         }
 
-                        <div class="card">
+                        <div class="card glass-card">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <span>Последние транзакции</span>
-                                <a href="/transactions" class="btn btn-ghost btn-sm">Все</a>
+                                <a href="/transactions" class="btn btn-ghost btn-sm">Все →</a>
                             </div>
-                            <div class="table-responsive">
+                            <div class="table-responsive tx-table">
                                 <table class="table mb-0">
                                     <thead>
                                         <tr>
                                             <th>Дата</th>
-                                            <th>Контрагент / Описание</th>
+                                            <th>Контрагент</th>
                                             <th class="text-end">Сумма</th>
                                         </tr>
                                     </thead>
@@ -118,7 +143,7 @@
                                                     <div class="fw-bold">@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</div>
                                                     <div class="small text-muted">@t.Description</div>
                                                 </td>
-                                                <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                                <td class="text-end tx-amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                                     @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2")
                                                 </td>
                                             </tr>
@@ -133,20 +158,20 @@
                         </div>
                     </div>
 
-                    <div>
-                        <div class="card mb-4" style="@(upcomingTaxes.Any() ? "border-left: 3px solid var(--warning)" : "")">
+                    <div class="side-stack">
+                        <div class="card glass-card" style="@(upcomingTaxes.Any() ? "border-left: 3px solid var(--warning)" : "")">
                             <div class="card-header">Налоги к оплате</div>
                             <div class="card-body p-0">
                                 @foreach (var tax in upcomingTaxes.Take(4))
                                 {
-                                    <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                    <div class="tax-row">
                                         <div>
                                             <div class="fw-bold small">@tax.Name</div>
                                             <div class="small text-muted">до @tax.DueDate.ToString("dd.MM.yyyy")</div>
                                         </div>
                                         <div class="text-end">
                                             <div class="fw-bold">@tax.Amount.ToString("N0") Br</div>
-                                            <a href="/taxes" class="small text-accent">Оплатить</a>
+                                            <a href="/taxes" class="small" style="color: var(--accent)">Оплатить</a>
                                         </div>
                                     </div>
                                 }
@@ -157,20 +182,18 @@
                             </div>
                         </div>
 
-                        <div class="card" style="background: var(--surface-hover); border: none;">
-                            <div class="card-body text-center p-4">
-                                <div style="font-size: 2rem; margin-bottom: 8px;">📊</div>
-                                <h4 class="mb-2">Аналитика роста</h4>
-                                <p class="small text-muted mb-3">Узнайте, насколько эффективно масштабируется ваш бизнес.</p>
-                                <a href="/insights" class="btn btn-outline w-100">Открыть отчет</a>
-                            </div>
+                        <div class="cta-glass">
+                            <div class="cta-icon" aria-hidden="true">◈</div>
+                            <h4 class="mb-2" style="font-size: 16px; font-weight: 600;">Финансовая аналитика</h4>
+                            <p class="small text-muted mb-3">Рентабельность, тренды и прогноз кассовых разрывов в реальном времени.</p>
+                            <a href="/analytics" class="btn btn-primary w-100">Открыть аналитику</a>
                         </div>
                     </div>
                 </div>
             }
-        </Authorized>
-    </AuthorizeView>
-</div>
+        </div>
+    </Authorized>
+</AuthorizeView>
 
 @code {
     private bool isLoading = true;
@@ -189,6 +212,11 @@
         .Sum(t => t.Amount);
 
     private decimal balance => transactions.Sum(t => t.Amount);
+    private decimal monthNet => CurrentMonthIncome + CurrentMonthExpense;
+    private int monthTransactionCount => transactions.Count(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month);
+    private decimal avgTransaction => monthTransactionCount > 0
+        ? Math.Abs(transactions.Where(t => t.Date.Year == DateTime.Today.Year && t.Date.Month == DateTime.Today.Month).Average(t => t.Amount))
+        : 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -204,24 +232,26 @@
 
             recentTransactions = transactions.Take(6).ToList();
 
-            // Динамика за 6 месяцев
             var ruCulture = new System.Globalization.CultureInfo("ru-RU");
             for (int i = 5; i >= 0; i--)
             {
                 var month = DateTime.Today.AddMonths(-i);
                 var monthTx = transactions.Where(t => t.Date.Year == month.Year && t.Date.Month == month.Month).ToList();
+                var income = monthTx.Where(t => t.Amount > 0).Sum(t => t.Amount);
+                var expense = Math.Abs(monthTx.Where(t => t.Amount < 0).Sum(t => t.Amount));
                 monthlyData.Add(new MonthlyDataPoint
                 {
                     Label = month.ToString("MMM", ruCulture),
-                    Value = monthTx.Sum(t => t.Amount)
+                    Value = monthTx.Sum(t => t.Amount),
+                    Income = income,
+                    Expense = expense
                 });
             }
 
-            // Прогноз
             var reminders = await DbContext.Reminders.Where(r => r.UserId == user.Id).ToListAsync();
-            cashGaps = ForecastingService.DetectCashGaps(transactions, reminders, 90, 0);
+            var confirmedTx = transactions.Where(t => t.IsConfirmed).ToList();
+            cashGaps = ForecastingService.DetectCashGaps(confirmedTx, reminders, 90, 0);
 
-            // Налоги
             upcomingTaxes = await DbContext.TaxPayments
                 .Where(t => t.UserId == user.Id && !t.IsPaid && t.DueDate >= DateTime.Today)
                 .OrderBy(t => t.DueDate)
@@ -231,9 +261,32 @@
         isLoading = false;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isLoading && monthlyData.Any())
+        {
+            await RenderProfitChart();
+        }
+    }
+
+    private async Task RenderProfitChart()
+    {
+        try
+        {
+            var labels = monthlyData.Select(m => m.Label).ToArray();
+            var profit = monthlyData.Select(m => (double)m.Value).ToArray();
+            var income = monthlyData.Select(m => (double)m.Income).ToArray();
+            var expense = monthlyData.Select(m => (double)m.Expense).ToArray();
+            await JS.InvokeVoidAsync("dashboardCharts.renderProfitChart", "profitChart", labels, profit, income, expense);
+        }
+        catch { }
+    }
+
     private class MonthlyDataPoint
     {
         public string Label { get; set; } = string.Empty;
         public decimal Value { get; set; }
+        public decimal Income { get; set; }
+        public decimal Expense { get; set; }
     }
 }

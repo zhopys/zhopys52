@@ -1,0 +1,55 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Матрица рентабельности (проекты / отделы)</div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+        @if (!Rows.Any())
+        {
+            <div class="empty-state small">Нет данных по проектам</div>
+        }
+        else
+        {
+            <table class="table profitability-matrix">
+                <thead>
+                    <tr>
+                        <th>Проект / отдел</th>
+                        <th class="text-end">Выручка</th>
+                        <th class="text-end" title="Доля прибыли в выручке">Маржа, %</th>
+                        <th class="text-end">Зарплаты</th>
+                        <th class="text-end">Аренда</th>
+                        <th class="text-end">Налоги</th>
+                        <th class="text-end">Чистый доход</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Rows)
+                    {
+                        <tr class="@(row.IsProfitable ? "profit-positive" : "profit-negative")">
+                            <td>
+                                <div class="fw-bold">@row.Name</div>
+                                @if (!string.IsNullOrEmpty(row.Department))
+                                {
+                                    <div class="small text-muted">@row.Department</div>
+                                }
+                            </td>
+                            <td class="text-end">@row.Revenue.ToString("N0")</td>
+                            <td class="text-end @(row.MarginPercent >= 0 ? "text-success" : "text-danger")">
+                                @row.MarginPercent.ToString("F1")%
+                            </td>
+                            <td class="text-end text-muted">@row.Payroll.ToString("N0")</td>
+                            <td class="text-end text-muted">@row.Rent.ToString("N0")</td>
+                            <td class="text-end text-muted">@row.Taxes.ToString("N0")</td>
+                            <td class="text-end fw-bold @(row.IsProfitable ? "text-success" : "text-danger")">
+                                @row.NetIncome.ToString("N0") Br
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ProfitabilityMatrixRowDto> Rows { get; set; } = Array.Empty<ProfitabilityMatrixRowDto>();
+}

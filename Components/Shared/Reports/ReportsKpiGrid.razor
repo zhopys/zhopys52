@@ -1,0 +1,60 @@
+@using MiniFinance.Services
+
+<div class="reports-kpi-grid mb-3">
+    @if (Loading)
+    {
+        @for (var i = 0; i < 7; i++)
+        {
+            <div class="kpi-card skeleton-card reports-kpi">
+                <div class="skeleton-line" style="width:60%"></div>
+                <div class="skeleton-line" style="width:80%;height:28px;margin-top:8px"></div>
+                <div class="skeleton-line" style="width:40%;margin-top:8px"></div>
+            </div>
+        }
+    }
+    else
+    {
+        @foreach (var k in Metrics)
+        {
+            <div class="kpi-card reports-kpi" title="@k.Hint" data-animate>
+                <div class="kpi-label">@k.Label</div>
+                @if (!string.IsNullOrWhiteSpace(k.Hint))
+                {
+                    <div class="kpi-hint">@TruncateHint(k.Hint)</div>
+                }
+                <div class="kpi-value">
+                    @if (k.Format == "percent")
+                    {
+                        @k.Value.ToString("F1")<small>%</small>
+                    }
+                    else
+                    {
+                        @k.Value.ToString("N0")<small class="text-muted"> Br</small>
+                    }
+                </div>
+                @if (Math.Abs(k.ChangePercent) > 0.05m)
+                {
+                    <div class="kpi-delta @GetDeltaClass(k)">
+                        @(k.ChangePercent >= 0 ? "+" : "")@k.ChangePercent.ToString("F1")%
+                        <span class="text-muted small"> к пред. периоду</span>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<KpiMetricDto> Metrics { get; set; } = Array.Empty<KpiMetricDto>();
+    [Parameter] public bool Loading { get; set; }
+
+    private static string GetDeltaClass(KpiMetricDto k) => k.Trend switch
+    {
+        "up" => "text-success",
+        "down" => "text-danger",
+        _ => "text-muted"
+    };
+
+    private static string TruncateHint(string hint) =>
+        hint.Length <= 72 ? hint : hint[..69] + "…";
+}

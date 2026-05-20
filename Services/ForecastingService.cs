@@ -4,8 +4,12 @@ namespace MiniFinance.Services
 {
     public class ForecastingService : IForecastingService
     {
+        private static List<Transaction> ConfirmedOnly(List<Transaction> transactions) =>
+            transactions.Where(t => t.IsConfirmed).ToList();
+
         public ForecastResult PredictNextMonth(List<Transaction> transactions)
         {
+            transactions = ConfirmedOnly(transactions);
             if (!transactions.Any())
             {
                 return new ForecastResult
@@ -53,6 +57,7 @@ namespace MiniFinance.Services
 
         public List<CategoryForecast> PredictByCategory(List<Transaction> transactions)
         {
+            transactions = ConfirmedOnly(transactions);
             var threeMonthsAgo = DateTime.Today.AddMonths(-3);
             var recentTransactions = transactions
                 .Where(t => t.Date >= threeMonthsAgo)
@@ -87,6 +92,7 @@ namespace MiniFinance.Services
 
         public List<CashForecastPoint> PredictCashflowNextDays(List<Transaction> transactions, List<Reminder> reminders, int days = 30)
         {
+            transactions = ConfirmedOnly(transactions);
             var result = new List<CashForecastPoint>();
 
             var today = DateTime.Today;
@@ -187,8 +193,19 @@ namespace MiniFinance.Services
             List<Transaction> transactions,
             List<Reminder> reminders,
             List<TaxPayment> taxPayments,
-            int days = 90)
+            int days = 90) =>
+            ForecastCashGapsAdvanced(transactions, reminders, taxPayments, days, 0, 0, 0);
+
+        public AdvancedCashForecast ForecastCashGapsAdvanced(
+            List<Transaction> transactions,
+            List<Reminder> reminders,
+            List<TaxPayment> taxPayments,
+            int days,
+            decimal expenseAdjustPercent,
+            int incomeDelayDays,
+            decimal minCashThreshold)
         {
+            transactions = ConfirmedOnly(transactions);
             var today = DateTime.Today;
             var endDate = today.AddDays(days);
 
@@ -223,18 +240,20 @@ namespace MiniFinance.Services
             var last6 = monthlyGroups.TakeLast(6).ToList();
             var (incomeTrend, expenseTrend) = ComputeTrends(last6);
 
-            // Build scenarios
+            var expenseFactor = 1m + expenseAdjustPercent / 100m;
+            var incomeFactor = 1.0m;
+
             var baseScenario = BuildScenario(transactions, reminders, taxPayments, today, days,
-                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, 1.0m);
+                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, incomeFactor, expenseFactor, incomeDelayDays);
 
             var optimisticScenario = BuildScenario(transactions, reminders, taxPayments, today, days,
-                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, 1.2m);
+                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, 1.2m, 1.0m, 0);
 
             var pessimisticScenario = BuildScenario(transactions, reminders, taxPayments, today, days,
-                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, 0.7m);
+                currentBalance, seasonalIncome, seasonalExpense, incomeTrend, expenseTrend, 0.85m, expenseFactor * 1.1m, incomeDelayDays + 5);
 
-            // Detect gaps in base scenario
-            var gaps = DetectGapsInForecast(baseScenario.Points, 0);
+            var threshold = minCashThreshold > 0 ? minCashThreshold : 0;
+            var gaps = DetectGapsInForecast(baseScenario.Points, threshold);
 
             // Key dates: reminders + tax payments
             var keyDates = new List<KeyDate>();
@@ -261,11 +280,16 @@ namespace MiniFinance.Services
 
             // Metrics
             var minBalance = baseScenario.Points.Any() ? baseScenario.Points.Min(p => p.Balance) : 0;
+            var belowMinDays = threshold > 0
+                ? baseScenario.Points.Count(p => p.Balance < threshold)
+                : 0;
             var maxBalance = baseScenario.Points.Any() ? baseScenario.Points.Max(p => p.Balance) : 0;
             var avgDailyIncome = baseScenario.Points.Any() ? baseScenario.Points.Average(p => p.Income) : 0;
             var avgDailyExpense = baseScenario.Points.Any() ? baseScenario.Points.Average(p => p.Expense) : 0;
             var daysInRed = baseScenario.Points.Count(p => p.Balance < 0);
             var recoveryDays = gaps.Any() ? gaps.Min(g => (g.EndDate ?? g.StartDate) - g.StartDate).Days + 1 : 0;
+
+            var recommendations = BuildRecommendations(gaps, keyDates, minBalance, threshold, expenseAdjustPercent);
 
             return new AdvancedCashForecast
             {
@@ -281,9 +305,46 @@ namespace MiniFinance.Services
                 AvgDailyExpense = avgDailyExpense,
                 DaysInRed = daysInRed,
                 RecoveryDays = recoveryDays,
-                HasRisk = minBalance < 0,
-                RiskLevel = minBalance < -100000 ? "critical" : minBalance < -50000 ? "high" : minBalance < -10000 ? "medium" : minBalance < 0 ? "low" : "safe"
+                HasRisk = minBalance < threshold,
+                RiskLevel = minBalance < -100000 ? "critical" : minBalance < -50000 ? "high" : minBalance < -10000 ? "medium" : minBalance < threshold ? "low" : "safe",
+                MinCashThreshold = threshold,
+                DaysBelowMinCash = belowMinDays,
+                Recommendations = recommendations
             };
+        }
+
+        private static List<string> BuildRecommendations(
+            List<CashGap> gaps,
+            List<KeyDate> keyDates,
+            decimal minBalance,
+            decimal threshold,
+            decimal expenseAdjustPercent)
+        {
+            var list = new List<string>();
+            var firstGap = gaps.OrderBy(g => g.StartDate).FirstOrDefault();
+            if (firstGap != null)
+            {
+                var deficit = threshold - firstGap.MinBalance;
+                if (deficit < 0) deficit = Math.Abs(firstGap.MinBalance);
+                list.Add($"Чтобы избежать разрыва {firstGap.StartDate:dd MMMM}, отложите необязательные платежи или привлеките ~{deficit:N0} BYN.");
+                var near = keyDates.Where(k => k.Date >= firstGap.StartDate.AddDays(-14) && k.Date <= firstGap.StartDate)
+                    .OrderByDescending(k => Math.Abs(k.Amount)).FirstOrDefault();
+                if (near != null)
+                    list.Add($"Рассмотрите перенос «{near.Label}» ({Math.Abs(near.Amount):N0} BYN) на более поздний срок.");
+            }
+            else if (threshold > 0 && minBalance < threshold)
+            {
+                list.Add($"Остаток опустится ниже порога {threshold:N0} BYN. Увеличьте резерв или сократите расходы.");
+            }
+            else
+            {
+                list.Add("Кассовый разрыв в выбранном периоде не прогнозируется.");
+            }
+
+            if (expenseAdjustPercent > 0)
+                list.Add($"При росте расходов на {expenseAdjustPercent:N0}% риск усиливается — проверьте пессимистичный сценарий.");
+
+            return list;
         }
 
         private (decimal incomeTrend, decimal expenseTrend) ComputeTrends(List<(DateTime Date, decimal Income, decimal Expense, decimal Net)> monthlyData)
@@ -321,7 +382,9 @@ namespace MiniFinance.Services
             Dictionary<int, decimal> seasonalExpense,
             decimal incomeTrend,
             decimal expenseTrend,
-            decimal multiplier)
+            decimal incomeMultiplier,
+            decimal expenseMultiplier,
+            int incomeDelayDays)
         {
             var points = new List<ScenarioPoint>();
             var endDate = today.AddDays(days);
@@ -341,10 +404,10 @@ namespace MiniFinance.Services
             var threeMonthsAgo = today.AddMonths(-3);
             var recentIncome = transactions.Where(t => t.Date >= threeMonthsAgo && t.Date <= today && t.Amount > 0).ToList();
             var totalDays = Math.Max((today - threeMonthsAgo).Days, 1);
-            var baseDailyIncome = recentIncome.Sum(t => t.Amount) / totalDays * multiplier;
+            var baseDailyIncome = recentIncome.Sum(t => t.Amount) / totalDays * incomeMultiplier;
 
             var recentExpense = transactions.Where(t => t.Date >= threeMonthsAgo && t.Date <= today && t.Amount < 0).ToList();
-            var baseDailyExpense = Math.Abs(recentExpense.Sum(t => t.Amount)) / totalDays * multiplier;
+            var baseDailyExpense = Math.Abs(recentExpense.Sum(t => t.Amount)) / totalDays * expenseMultiplier;
 
             decimal balance = currentBalance;
             for (int i = 1; i <= days; i++)
@@ -367,14 +430,14 @@ namespace MiniFinance.Services
                 dailyIncome = Math.Max(0, dailyIncome);
                 dailyExpense = Math.Max(0, dailyExpense);
 
-                balance += dailyIncome;
+                if (i > incomeDelayDays)
+                    balance += dailyIncome;
+
                 balance -= dailyExpense;
 
-                // Subtract reminders
                 if (reminderByDate.TryGetValue(d.Date, out var remAmount))
                     balance -= remAmount;
 
-                // Subtract tax payments
                 if (taxByDate.TryGetValue(d.Date, out var taxAmount))
                     balance -= taxAmount;
 
@@ -394,7 +457,7 @@ namespace MiniFinance.Services
 
             return new CashScenario
             {
-                Name = multiplier == 1.0m ? "Базовый" : multiplier > 1.0m ? "Оптимистичный" : "Пессимистичный",
+                Name = incomeMultiplier >= 1.15m ? "Оптимистичный" : expenseMultiplier > 1.05m ? "Пессимистичный" : "Базовый",
                 Points = points,
                 TotalIncome = Math.Round(totalIncome, 2),
                 TotalExpense = Math.Round(totalExpense, 2),
@@ -506,6 +569,9 @@ namespace MiniFinance.Services
         public int RecoveryDays { get; set; }
         public bool HasRisk { get; set; }
         public string RiskLevel { get; set; } = "safe";
+        public decimal MinCashThreshold { get; set; }
+        public int DaysBelowMinCash { get; set; }
+        public List<string> Recommendations { get; set; } = new();
     }
 
     public class CashScenario

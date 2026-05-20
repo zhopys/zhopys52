@@ -1,0 +1,102 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Прогноз и сценарии (@Data.HorizonDays дн.)</div>
+    <div class="card-body">
+        <div class="alert alert-info small mb-3">@Data.BalanceProjection.Message</div>
+
+        <div class="reports-forecast-grid mb-3">
+            <div class="reports-forecast-block">
+                <h4 class="reports-forecast-title">Прогноз дохода (в месяц)</h4>
+                <div class="reports-forecast-metrics">
+                    <div><span class="text-muted">Среднее</span><strong>@Data.Income.MeanMonthly.ToString("N0") Br</strong></div>
+                    <div><span class="text-muted">Медиана</span><strong>@Data.Income.MedianMonthly.ToString("N0") Br</strong></div>
+                    <div><span class="text-muted">Тренд</span><strong>@Data.Income.TrendMonthly.ToString("N0") Br</strong></div>
+                    <div class="reports-forecast-rec">
+                        <span class="text-muted">Рекомендация</span>
+                        <strong>@MethodLabel(Data.Income.RecommendedMethod): @Data.Income.RecommendedValue.ToString("N0") Br</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="reports-forecast-block">
+                <h4 class="reports-forecast-title">Прогноз расходов</h4>
+                <p class="small text-muted mb-2">Следующий месяц с учётом сезонности</p>
+                <div class="fw-bold fs-5 mb-2">@Data.Expense.NextMonthForecast.ToString("N0") Br</div>
+                @if (Data.Expense.SeasonalPattern.Any())
+                {
+                    <div class="reports-seasonal-row">
+                        @foreach (var s in Data.Expense.SeasonalPattern)
+                        {
+                            <span class="reports-seasonal-chip @(s.IndexPercent >= 110 ? "high" : s.IndexPercent <= 90 ? "low" : "")"
+                                  title="@s.MonthName: @s.AvgExpense.ToString("N0") Br">
+                                @s.MonthName.Substring(0, 3) @s.IndexPercent%
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <h4 class="reports-forecast-title mb-2">Что если…</h4>
+        <table class="table table-sm mb-3">
+            <thead>
+                <tr>
+                    <th>Сценарий</th>
+                    <th>Описание</th>
+                    <th class="text-end">Баланс через @Data.HorizonDays дн.</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in Data.WhatIfScenarios)
+                {
+                    <tr class="@(s.HasRisk ? "profit-negative" : "")">
+                        <td class="fw-bold">@s.Name</td>
+                        <td class="text-muted small">@s.Description</td>
+                        <td class="text-end fw-bold @(s.ProjectedBalance < 0 ? "text-danger" : "text-success")">
+                            @s.ProjectedBalance.ToString("N0") Br
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (Data.Anomalies.Any())
+        {
+            <h4 class="reports-forecast-title mb-2">Аномальные расходы</h4>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Описание</th>
+                        <th>Категория</th>
+                        <th class="text-end">Сумма</th>
+                        <th>Причина</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in Data.Anomalies)
+                    {
+                        <tr>
+                            <td>@a.Date.ToString("dd.MM.yyyy")</td>
+                            <td>@a.Description</td>
+                            <td class="small">@a.Category</td>
+                            <td class="text-end text-danger">@a.Amount.ToString("N0")</td>
+                            <td class="small text-muted">@a.Reason</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public ForecastInsightsDto Data { get; set; } = new();
+
+    private static string MethodLabel(string m) => m switch
+    {
+        "median" => "Медиана",
+        "trend" => "Тренд",
+        _ => "Среднее"
+    };
+}

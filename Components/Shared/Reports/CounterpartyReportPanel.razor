@@ -1,0 +1,106 @@
+@using MiniFinance.Services
+
+<div class="card mb-3">
+    <div class="card-header">Отчёт по контрагенту</div>
+    <div class="card-body">
+        <div class="reports-filter-group mb-3" style="max-width:320px">
+            <label class="label">Контрагент</label>
+            <select class="input" value="@SelectedValue" @onchange="OnCounterpartyChange">
+                <option value="">Все контрагенты (топ-20)</option>
+                @foreach (var cp in Report.TopCounterparties)
+                {
+                    <option value="@cp.Name">@cp.Name (@cp.Count оп.)</option>
+                }
+            </select>
+        </div>
+
+        @if (string.IsNullOrEmpty(Report.SelectedCounterparty))
+        {
+            @if (!Report.TopCounterparties.Any())
+            {
+                <div class="empty-state small">Укажите контрагента в операциях или выберите из списка</div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Контрагент</th>
+                            <th class="text-end">Доход</th>
+                            <th class="text-end">Расход</th>
+                            <th class="text-end">Сальдо</th>
+                            <th class="text-end">Операций</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cp in Report.TopCounterparties)
+                        {
+                            <tr class="reports-cp-row" @onclick="() => SelectCounterparty(cp.Name)" style="cursor:pointer">
+                                <td class="fw-bold">@cp.Name</td>
+                                <td class="text-end text-success">@cp.Income.ToString("N0")</td>
+                                <td class="text-end text-danger">@cp.Expense.ToString("N0")</td>
+                                <td class="text-end fw-bold">@((cp.Income - cp.Expense).ToString("N0"))</td>
+                                <td class="text-end text-muted">@cp.Count</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+        else
+        {
+            <div class="reports-cp-summary mb-3">
+                <span class="text-muted">Итого по «@Report.SelectedCounterparty»:</span>
+                <span class="text-success ms-2">+@Report.TotalIncome.ToString("N0")</span>
+                <span class="text-danger ms-2">−@Report.TotalExpense.ToString("N0")</span>
+                <span class="fw-bold ms-2">= @Report.Net.ToString("N0") Br</span>
+            </div>
+
+            @if (!Report.Transactions.Any())
+            {
+                <div class="empty-state small">Нет операций с этим контрагентом за период</div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Описание</th>
+                            <th>Категория</th>
+                            <th class="text-end">Сумма</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var tx in Report.Transactions)
+                        {
+                            <tr>
+                                <td>@tx.Date.ToString("dd.MM.yyyy")</td>
+                                <td>@tx.Description</td>
+                                <td class="text-muted small">@tx.Category</td>
+                                <td class="text-end @(tx.Amount >= 0 ? "text-success" : "text-danger")">
+                                    @tx.Amount.ToString("N2") Br
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public CounterpartyReportDto Report { get; set; } = new();
+    [Parameter] public EventCallback<string?> OnCounterpartySelected { get; set; }
+
+    private string SelectedValue => Report.SelectedCounterparty ?? "";
+
+    private Task OnCounterpartyChange(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        return OnCounterpartySelected.InvokeAsync(string.IsNullOrWhiteSpace(v) ? null : v);
+    }
+
+    private Task SelectCounterparty(string name) => OnCounterpartySelected.InvokeAsync(name);
+}

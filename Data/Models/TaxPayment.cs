@@ -23,5 +23,10 @@ namespace MiniFinance.Data.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? NotificationSentDate { get; set; }
+
+        public decimal PaidAmount { get; set; }
+
+        [StringLength(500)]
+        public string? ReceiptNote { get; set; }
     }
 }

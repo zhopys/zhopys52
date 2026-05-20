@@ -1,73 +1,120 @@
 ﻿@page "/Account/ResendEmailConfirmation"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
 @using System.ComponentModel.DataAnnotations
-@using System.Text
-@using System.Text.Encodings.Web
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.WebUtilities
 @using MiniFinance.Data
+@using MiniFinance.Components.Account
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IEmailSender<ApplicationUser> EmailSender
 @inject NavigationManager NavigationManager
-@inject IdentityRedirectManager RedirectManager
+@inject ILogger<ResendEmailConfirmation> Logger
 
-<PageTitle>Resend email confirmation</PageTitle>
+<PageTitle>Повторная отправка — MiniFinance</PageTitle>
 
-<h1>Resend email confirmation</h1>
-<h2>Enter your email.</h2>
-<hr />
-<StatusMessage Message="@message" />
-<div class="row">
-    <div class="col-md-4">
-        <EditForm Model="Input" FormName="resend-email-confirmation" OnValidSubmit="OnValidSubmitAsync" method="post">
+<div class="login-page">
+    <div class="login-container">
+        <h1>Подтверждение email</h1>
+        <p class="text-muted">Введите email — мы отправим новую ссылку.</p>
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <div class="alert @(_success ? "alert-success" : "alert-danger")">@_message</div>
+        }
+
+        <EditForm EditContext="_editContext" FormName="resend-email-confirmation" OnSubmit="OnSubmitAsync" method="post">
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" aria-required="true" placeholder="name@example.com" />
-                <label for="Input.Email" class="form-label">Email</label>
-                <ValidationMessage For="() => Input.Email" class="text-danger" />
+            <div class="form-group">
+                <label class="label">Email</label>
+                <InputText @bind-Value="Input.Email" class="input" placeholder="name@example.com" />
+                <ValidationMessage For="() => Input.Email" />
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Resend</button>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem" disabled="@_submitting">
+                @if (_submitting) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
+                Отправить письмо
+            </button>
         </EditForm>
+
+        <p class="login-footer mt-3"><a href="/login">Вернуться ко входу</a></p>
     </div>
 </div>
 
 @code {
-    private string? message;
+    private EditContext _editContext = default!;
+    private string? _message;
+    private bool _success;
+    private bool _submitting;
 
     [SupplyParameterFromForm]
     private InputModel Input { get; set; } = default!;
 
+    [SupplyParameterFromQuery]
+    private string? Email { get; set; }
+
     protected override void OnInitialized()
     {
         Input ??= new();
+        if (!string.IsNullOrWhiteSpace(Email))
+            Input.Email = Email.Trim().ToLowerInvariant();
+        _editContext = new EditContext(Input);
     }
 
-    private async Task OnValidSubmitAsync()
+    private async Task OnSubmitAsync()
     {
-        var user = await UserManager.FindByEmailAsync(Input.Email!);
-        if (user is null)
+        if (!_editContext.Validate()) return;
+
+        _submitting = true;
+        _message = null;
+        _success = false;
+
+        try
         {
-            message = "Verification email sent. Please check your email.";
-            return;
+            var email = Input.Email.Trim().ToLowerInvariant();
+            var user = await UserManager.FindByEmailAsync(email);
+
+            if (user is null)
+            {
+                _success = true;
+                _message = "Если аккаунт существует, письмо отправлено. Проверьте почту и папку «Спам».";
+                return;
+            }
+
+            if (user.EmailConfirmed)
+            {
+                _success = true;
+                _message = "Email уже подтверждён. Можно войти в систему.";
+                return;
+            }
+
+            var userId = await UserManager.GetUserIdAsync(user);
+            var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            var confirmUrl = IdentityEmailLinks.BuildConfirmEmailUrl(
+                NavigationManager.BaseUri,
+                userId!,
+                token);
+
+            await EmailSender.SendConfirmationLinkAsync(user, email, confirmUrl);
+            _success = true;
+            _message = "Письмо отправлено. Проверьте почту и папку «Спам».";
         }
-
-        var userId = await UserManager.GetUserIdAsync(user);
-        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
-        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
-            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
-        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
-
-        message = "Verification email sent. Please check your email.";
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Resend confirmation failed");
+            _message = "Не удалось отправить письмо. Попробуйте позже.";
+        }
+        finally
+        {
+            _submitting = false;
+        }
     }
 
     private sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
+        [Required(ErrorMessage = "Email обязателен")]
+        [EmailAddress(ErrorMessage = "Некорректный email")]
         public string Email { get; set; } = "";
     }
 }
