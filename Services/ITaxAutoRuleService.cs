@@ -29,4 +29,5 @@ public interface ITaxAutoRuleService
     Task<List<TaxRulePreview>> PreviewAsync(string userId, DateTime? referenceDate = null);
     Task<TaxRuleGenerateResult> GeneratePaymentsAsync(string userId, bool skipExisting = true, DateTime? referenceDate = null);
     Task EnsureDefaultRulesAsync(string userId, TaxSystem? taxSystem);
+    Task SyncRulesForTaxSystemAsync(string userId, TaxSystem taxSystem, bool replaceExisting = false);
 }

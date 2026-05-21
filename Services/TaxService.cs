@@ -32,7 +32,12 @@ public class TaxService : ITaxService
         userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var taxes = await GetTaxesAsync(userId);
         var today = DateTime.Today;
-        var yearStart = new DateTime(today.Year, 1, 1);
+
+        var settings = await _db.OrganizationSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId);
+
+        var yearStart = GetFinancialYearStart(today, settings?.FinancialYearStartMonth ?? 1);
 
         var unpaid = taxes.Where(t => !t.IsPaid).ToList();
         var next = unpaid.Where(t => t.DueDate >= today).OrderBy(t => t.DueDate).FirstOrDefault()
@@ -49,26 +54,32 @@ public class TaxService : ITaxService
                         && (t.Category == "Налоги" || EF.Functions.Like(t.Category, "%налог%")))
             .SumAsync(t => -t.Amount);
 
-        var settings = await _db.OrganizationSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.UserId == userId);
-
         return new TaxPageContextDto
         {
             TaxSystem = settings?.TaxSystem,
             CompanyName = settings?.CompanyName ?? string.Empty,
+            CompanyUnp = settings?.UNP ?? string.Empty,
             Summary = new TaxSummaryDto
             {
-                UnpaidTotal = unpaid.Sum(t => t.Amount),
+                UnpaidTotal = unpaid.Sum(t => t.Amount - t.PaidAmount),
                 PaidYearToDate = paidFromPlans,
                 PaidInTransactionsYearToDate = paidFromTx,
                 OverdueCount = unpaid.Count(t => t.DueDate < today),
                 UpcomingCount = unpaid.Count(t => t.DueDate >= today),
                 NextDueDate = next?.DueDate,
                 NextDueName = next?.Name,
-                NextDueAmount = next?.Amount ?? 0
+                NextDueAmount = next == null ? 0 : next.Amount - next.PaidAmount
             }
         };
+    }
+
+    private static DateTime GetFinancialYearStart(DateTime today, int startMonth)
+    {
+        startMonth = Math.Clamp(startMonth, 1, 12);
+        var year = today.Year;
+        if (today.Month < startMonth)
+            year--;
+        return new DateTime(year, startMonth, 1);
     }
 
     public async Task MarkAsPaidAsync(int taxId, string userId)

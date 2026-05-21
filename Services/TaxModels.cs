@@ -19,4 +19,5 @@ public sealed class TaxPageContextDto
     public TaxSummaryDto Summary { get; init; } = new();
     public TaxSystem? TaxSystem { get; init; }
     public string CompanyName { get; init; } = string.Empty;
+    public string CompanyUnp { get; init; } = string.Empty;
 }

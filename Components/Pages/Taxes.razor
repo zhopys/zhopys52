@@ -13,6 +13,7 @@
 @inject ITaxAutoRuleService TaxAutoRuleService
 @inject ITransactionService TxService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDataScopeService DataScope
 @inject IJSRuntime JS
 @attribute [Authorize]
 
@@ -24,7 +25,12 @@
         <div class="meta text-muted">
             @if (!string.IsNullOrWhiteSpace(_companyName))
             {
-                <span>@_companyName · </span>
+                <span>@_companyName</span>
+                @if (!string.IsNullOrWhiteSpace(_companyUnp))
+                {
+                    <span> · УНП @_companyUnp</span>
+                }
+                <span> · </span>
             }
             Система: <strong>@GetTaxSystemLabel(_taxSystem)</strong>
             <a href="/settings" class="small" style="margin-left:.5rem">Настроить</a>
@@ -57,6 +63,12 @@
 @if (_showError)
 {
     <div class="alert alert-error">@_errorMessage</div>
+}
+@if (!_taxSystem.HasValue && _mainTab == "taxes")
+{
+    <div class="alert alert-warning mb-3">
+        Укажите систему налогообложения в <a href="/settings">настройках организации</a> — от неё зависят калькулятор, шаблоны сроков и автоматические правила.
+    </div>
 }
 
 <!-- Main tabs: taxes / bills -->
@@ -123,10 +135,13 @@
                     <label class="form-label">Доход за период (Br)</label>
                     <input type="number" class="form-input" @bind="_calcIncome" step="100" min="0" />
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Расходы (для УСН 15%)</label>
-                    <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
-                </div>
+                @if (_taxSystem != TaxSystem.OSN)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Расходы (для УСН 15%)</label>
+                        <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
+                    </div>
+                }
                 <div class="form-group" style="display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap">
                     <button type="button" class="btn btn-outline" @onclick="FillCalcFromTransactions">Из транзакций</button>
                     <button class="btn btn-primary" @onclick="RunTaxCalculator">Рассчитать</button>
@@ -626,6 +641,7 @@ else
     private TaxSummaryDto? _summary;
     private TaxSystem? _taxSystem;
     private string _companyName = "";
+    private string _companyUnp = "";
 
     private bool _loading = true;
     private string _message = "";
@@ -674,7 +690,7 @@ else
         var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = await UserManager.GetUserAsync(auth.User);
         if (user == null) return;
-        _userId = user.Id;
+        _userId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
         await ReloadAsync();
     }
 
@@ -685,6 +701,7 @@ else
         _summary = ctx.Summary;
         _taxSystem = ctx.TaxSystem;
         _companyName = ctx.CompanyName;
+        _companyUnp = ctx.CompanyUnp;
         _taxes = await TaxService.GetTaxesAsync(_userId);
         _taxUpcomingCount = _taxes.Count(t => !t.IsPaid && t.DueDate.Date >= DateTime.Today);
 
@@ -698,7 +715,10 @@ else
 
         _categories = await DbContext.Categories.Select(c => c.Name).ToListAsync();
 
-        await TaxAutoRuleService.EnsureDefaultRulesAsync(_userId, _taxSystem);
+        if (_taxSystem.HasValue)
+            await TaxAutoRuleService.SyncRulesForTaxSystemAsync(_userId, _taxSystem.Value);
+        else
+            await TaxAutoRuleService.EnsureDefaultRulesAsync(_userId, null);
         _autoRulePreviews = await TaxAutoRuleService.PreviewAsync(_userId);
 
         _loading = false;
@@ -821,11 +841,18 @@ else
 
     private void ResetTaxForm()
     {
-        _taxTypeSelect = "НДС";
+        _taxTypeSelect = GetDefaultTaxTypeSelect();
         _customTaxName = "";
         _taxAmount = 0;
         _taxDueDate = DateTime.Today.AddMonths(1);
     }
+
+    private string GetDefaultTaxTypeSelect() => _taxSystem switch
+    {
+        TaxSystem.USN => "УСН",
+        TaxSystem.OSN => "НДС",
+        _ => "УСН"
+    };
 
     private void ResetBillForm()
     {
@@ -1040,8 +1067,20 @@ else
 
     private void OpenNewAutoRule()
     {
-        _editRule = new TaxAutoRule { PaymentName = "УСН", Formula = "income * 0.06", Period = TaxRulePeriod.Quarterly, DueDayOfMonth = 25, DueMonthOffset = 1, IsEnabled = true };
-        _editRulePeriodInt = 1;
+        var (payName, formula, period) = _taxSystem == TaxSystem.OSN
+            ? ("НДС", "income * 20 / 120", TaxRulePeriod.Monthly)
+            : ("УСН", "income * 0.06", TaxRulePeriod.Quarterly);
+        _editRule = new TaxAutoRule
+        {
+            Name = _taxSystem == TaxSystem.OSN ? "НДС (оценка)" : "УСН 6% (доход)",
+            PaymentName = payName,
+            Formula = formula,
+            Period = period,
+            DueDayOfMonth = 25,
+            DueMonthOffset = 1,
+            IsEnabled = true
+        };
+        _editRulePeriodInt = (int)period;
         _ruleFormulaPreview = PreviewRuleFormula(_editRule.Formula);
         _showAutoRuleForm = true;
     }

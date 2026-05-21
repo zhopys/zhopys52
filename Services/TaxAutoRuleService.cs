@@ -125,11 +125,15 @@ public class TaxAutoRuleService : ITaxAutoRuleService
 
             if (skipExisting)
             {
+                var dueStart = p.DueDate.Date;
+                var dueEnd = dueStart.AddDays(1);
+                var amountMin = p.CalculatedAmount - 0.01m;
+                var amountMax = p.CalculatedAmount + 0.01m;
                 var exists = await _db.TaxPayments.AnyAsync(t =>
                     t.UserId == userId && !t.IsPaid &&
                     t.Name == paymentName &&
-                    t.DueDate.Date == p.DueDate.Date &&
-                    Math.Abs(t.Amount - p.CalculatedAmount) < 0.01m);
+                    t.DueDate >= dueStart && t.DueDate < dueEnd &&
+                    t.Amount >= amountMin && t.Amount <= amountMax);
                 if (exists)
                 {
                     skipped++;
@@ -149,6 +153,25 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         }
 
         return new TaxRuleGenerateResult { CreatedCount = created, SkippedCount = skipped, Messages = messages };
+    }
+
+    public async Task SyncRulesForTaxSystemAsync(string userId, TaxSystem taxSystem, bool replaceExisting = false)
+    {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
+        var hasRules = await _db.TaxAutoRules.AnyAsync(r => r.UserId == userId);
+        if (!hasRules)
+        {
+            await EnsureDefaultRulesAsync(userId, taxSystem);
+            return;
+        }
+
+        if (!replaceExisting)
+            return;
+
+        var rules = await _db.TaxAutoRules.Where(r => r.UserId == userId).ToListAsync();
+        _db.TaxAutoRules.RemoveRange(rules);
+        await _db.SaveChangesAsync();
+        await EnsureDefaultRulesAsync(userId, taxSystem);
     }
 
     public async Task EnsureDefaultRulesAsync(string userId, TaxSystem? taxSystem)

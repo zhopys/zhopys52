@@ -11,6 +11,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
 @inject IUserContextService UserContext
+@inject ITaxAutoRuleService TaxAutoRuleService
 @inject IJSRuntime JS
 @attribute [Authorize]
 
@@ -165,6 +166,7 @@
                 parsedTax = TaxSystem.USN;
 
             var settings = await DbContext.OrganizationSettings.FirstOrDefaultAsync(s => s.UserId == _userId);
+            var previousTaxSystem = settings?.TaxSystem;
             if (settings == null)
             {
                 settings = new OrganizationSettings { UserId = _userId };
@@ -177,7 +179,13 @@
             settings.MinCashBalance = minCashBalance;
 
             await DbContext.SaveChangesAsync();
-            ShowMessage("Настройки сохранены");
+
+            if (previousTaxSystem != parsedTax)
+                await TaxAutoRuleService.SyncRulesForTaxSystemAsync(_userId, parsedTax, replaceExisting: true);
+
+            ShowMessage(previousTaxSystem != parsedTax
+                ? "Настройки сохранены. Правила автоматических налогов обновлены под новую систему."
+                : "Настройки сохранены");
         }
         catch (Exception ex)
         {
