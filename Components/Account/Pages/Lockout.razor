@@ -1,8 +1,12 @@
 ﻿@page "/Account/Lockout"
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
-<PageTitle>Locked out</PageTitle>
+<PageTitle>Блокировка — MiniFinance</PageTitle>
 
-<header>
-    <h1 class="text-danger">Locked out</h1>
-    <p class="text-danger" role="alert">This account has been locked out, please try again later.</p>
-</header>
+<div class="login-page">
+    <div class="login-container">
+        <h1 class="text-danger">Учётная запись заблокирована</h1>
+        <p class="text-muted">Слишком много неудачных попыток входа. Повторите через 15 минут.</p>
+        <a href="/login" class="btn btn-primary mt-3">Ко входу</a>
+    </div>
+</div>

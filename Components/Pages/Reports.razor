@@ -18,7 +18,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
-@attribute [Authorize]
+@attribute [Authorize(Policy = "CanViewReports")]
 
 <PageTitle>Отчёты — MiniFinance</PageTitle>
 
@@ -148,7 +148,6 @@
             <div class="tabs reports-extended-tabs mb-3">
                 <button type="button" class="tab @(_extendedTab == "forecast" ? "active" : "")" @onclick='() => SetExtendedTab("forecast")'>Прогноз</button>
                 <button type="button" class="tab @(_extendedTab == "tax" ? "active" : "")" @onclick='() => SetExtendedTab("tax")'>Налоги</button>
-                <button type="button" class="tab @(_extendedTab == "counterparty" ? "active" : "")" @onclick='() => SetExtendedTab("counterparty")'>Контрагент</button>
                 <button type="button" class="tab @(_extendedTab == "compare" ? "active" : "")" @onclick='() => SetExtendedTab("compare")'>Сравнение</button>
                 <button type="button" class="tab @(_extendedTab == "weekday" ? "active" : "")" @onclick='() => SetExtendedTab("weekday")'>По дням</button>
                 <button type="button" class="tab @(_extendedTab == "balance" ? "active" : "")" @onclick='() => SetExtendedTab("balance")'>Баланс</button>
@@ -163,10 +162,6 @@
                 else if (_extendedTab == "tax")
                 {
                     <TaxReportPanel Report="@_extended.Tax" />
-                }
-                else if (_extendedTab == "counterparty")
-                {
-                    <CounterpartyReportPanel Report="@_extended.Counterparty" OnCounterpartySelected="OnCounterpartySelected" />
                 }
                 else if (_extendedTab == "compare")
                 {
@@ -275,7 +270,6 @@
     private ExtendedAnalyticsDto? _extended;
     private BalanceReportDto? _balance;
     private string _extendedTab = "forecast";
-    private string? _selectedCounterparty;
     private string _userId = "";
     private bool _loading = true;
     private bool _refreshing;
@@ -381,7 +375,7 @@
 
             var filters = BuildFilters();
             _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
-            _extended = await ExtendedReportService.BuildAsync(_userId, filters, _selectedCounterparty);
+            _extended = await ExtendedReportService.BuildAsync(_userId, filters, null);
             _balance = await BalanceReportService.BuildAsync(_userId, filters);
         }
         catch (Exception ex)
@@ -403,7 +397,6 @@
         _compareMode = "mom";
         _projectId = null;
         _selectedCategory = null;
-        _selectedCounterparty = null;
         _forecastDays = 90;
         _selectedMonth = _availableMonths.Count > 0 ? _availableMonths[0] : DateTime.Today;
         _selectedMonthKey = ToMonthKey(_selectedMonth);
@@ -466,12 +459,6 @@
 
     private void SetExtendedTab(string tab) => _extendedTab = tab;
 
-    private async Task OnCounterpartySelected(string? name)
-    {
-        _selectedCounterparty = name;
-        await ReloadAsync();
-    }
-
     private async Task FilterByCategory(string category)
     {
         _selectedCategory = string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase) ? null : category;
@@ -490,10 +477,18 @@
         await ReloadAsync();
     }
 
-    private void ExportAsync(string format)
+    private void ExportAsync((string Format, string? Report) request) =>
+        ExportReport(request.Format, request.Report);
+
+    private void ExportReport(string format, string? report = null)
     {
-        var report = format.Equals("csv", StringComparison.OrdinalIgnoreCase) ? "transactions" : "full";
-        var qs = BuildFilters(report).ToQueryString(format, report);
+        var exportReport = report ?? format.ToLowerInvariant() switch
+        {
+            "csv" => "transactions",
+            "pdf" => MapTabForExport(_activeTab),
+            _ => MapTabForExport(_activeTab)
+        };
+        var qs = BuildFilters(exportReport).ToQueryString(format, exportReport);
         NavigationManager.NavigateTo($"/api/reports/export?{qs}", forceLoad: true);
     }
 
@@ -524,8 +519,6 @@
         }
         if (!string.IsNullOrEmpty(_selectedCategory))
             parts.Add($"категория: {_selectedCategory}");
-        if (!string.IsNullOrEmpty(_selectedCounterparty))
-            parts.Add($"контрагент: {_selectedCounterparty}");
         if (_compareMode != "none")
             parts.Add(ReportKpiLabels.FormatCompareHint(_compareMode));
         return parts.Count == 0 ? null : string.Join(" · ", parts);
@@ -546,8 +539,8 @@
     private static string MapTabForExport(string tab) => tab switch
     {
         "cashflow" => "cashflow",
-        "trial" => "categories",
-        "book" => "transactions",
+        "trial" => "trial",
+        "book" => "book",
         "pl" => "pl",
         _ => "full"
     };

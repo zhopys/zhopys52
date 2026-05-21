@@ -1,8 +1,7 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MiniFinance.Data;
 using MiniFinance.Data.Models;
 using MiniFinance.Services;
-using ClosedXML.Excel;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication;
@@ -23,14 +22,17 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
         options.SignIn.RequireConfirmedAccount = requireConfirmedEmail;
         options.User.RequireUniqueEmail = true;
-        options.Password.RequireDigit = false;
-        options.Password.RequiredLength = 3;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireDigit = true;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
         options.Password.RequireLowercase = false;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders();
+    .AddDefaultTokenProviders()
+    .AddErrorDescriber<RussianIdentityErrorDescriber>();
 
 builder.Services.AddAuthorization(options =>
 {
@@ -76,7 +78,7 @@ builder.Services.AddScoped<IBalanceReportService, BalanceReportService>();
 builder.Services.AddScoped<IPaymentCalendarService, PaymentCalendarService>();
 builder.Services.AddScoped<IDataScopeService, DataScopeService>();
 builder.Services.AddScoped<IUserContextService, UserContextService>();
-builder.Services.AddScoped<ITeamService, TeamService>(); // UI отключено; сервис оставлен для будущего включения
+builder.Services.AddScoped<ITeamService, TeamService>(); // UI РѕС‚РєР»СЋС‡РµРЅРѕ; СЃРµСЂРІРёСЃ РѕСЃС‚Р°РІР»РµРЅ РґР»СЏ Р±СѓРґСѓС‰РµРіРѕ РІРєР»СЋС‡РµРЅРёСЏ
 builder.Services.AddScoped<MiniFinance.Components.Account.IdentityRedirectManager>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, IdentitySmtpEmailSender>();
 
@@ -103,407 +105,15 @@ app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// CSV export endpoint
-app.MapGet("/reports/export/csv", async (HttpContext http, ApplicationDbContext db, UserManager<ApplicationUser> userManager, IReportService reportService) =>
-{
-    var user = await userManager.GetUserAsync(http.User);
-    if (user == null) return Results.Unauthorized();
-
-    var qs = http.Request.Query;
-    DateTime.TryParse(qs["start"], out var start);
-    DateTime.TryParse(qs["end"], out var end);
-    var tab = qs["tab"].ToString();
-    int.TryParse(qs["projectId"], out var projectId);
-
-    if (start == default) start = DateTime.Today.AddMonths(-1);
-    if (end == default) end = DateTime.Today;
-
-    var transactions = await db.Transactions
-        .Include(t => t.Project)
-        .Where(t => t.UserId == user.Id && t.Date >= start && t.Date <= end)
-        .OrderBy(t => t.Date)
-        .ToListAsync();
-
-    var sb = new System.Text.StringBuilder();
-
-    if (!string.IsNullOrEmpty(tab) && tab.Equals("projects", StringComparison.OrdinalIgnoreCase))
-    {
-        var tx = transactions;
-        if (projectId > 0) tx = tx.Where(t => t.ProjectId == projectId).ToList();
-        var projReport = reportService.GetProjectReport(tx);
-        sb.AppendLine("Project,Income,Expense,Profit,Transactions");
-        foreach (var p in projReport)
-        {
-            sb.AppendLine($"{Escape(p.Project)},{p.Income.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Expense.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Profit.ToString(System.Globalization.CultureInfo.InvariantCulture)},{p.Transactions}");
-        }
-    }
-    else if (!string.IsNullOrEmpty(tab) && tab.Equals("categories", StringComparison.OrdinalIgnoreCase))
-    {
-        var catReport = reportService.GetCategoryBreakdown(transactions);
-        sb.AppendLine("Category,Amount,Count,Percentage,Type");
-        foreach (var c in catReport.ExpenseByCategory)
-        {
-            sb.AppendLine($"{Escape(c.Category)},{c.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)},{c.Count},{c.Percentage.ToString(System.Globalization.CultureInfo.InvariantCulture)},Expense");
-        }
-        foreach (var c in catReport.IncomeByCategory)
-        {
-            sb.AppendLine($"{Escape(c.Category)},{c.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)},{c.Count},{c.Percentage.ToString(System.Globalization.CultureInfo.InvariantCulture)},Income");
-        }
-    }
-    else
-    {
-        sb.AppendLine("Date,Description,Category,Amount,Project");
-        foreach (var t in transactions)
-        {
-            string esc(string? s) => '"' + (s ?? string.Empty).Replace("\"", "\"\"") + '"';
-            sb.AppendLine($"{t.Date:yyyy-MM-dd},{esc(t.Description)},{esc(t.Category)},{t.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)},{esc(t.Project?.Name)}");
-        }
-    }
-
-    // Prepend UTF-8 BOM so Excel on Windows recognizes UTF-8 with Russian characters correctly
-    var bom = new byte[] { 0xEF, 0xBB, 0xBF };
-    var content = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-    var bytes = new byte[bom.Length + content.Length];
-    Buffer.BlockCopy(bom, 0, bytes, 0, bom.Length);
-    Buffer.BlockCopy(content, 0, bytes, bom.Length, content.Length);
-    var fileName = $"report_{tab ?? "all"}_{start:yyyyMMdd}_{end:yyyyMMdd}.csv";
-    return Results.File(bytes, "text/csv; charset=utf-8", fileName);
-
-    static string Escape(string? s) => '"' + (s ?? string.Empty).Replace("\"", "\"\"") + '"';
-}).RequireAuthorization();
-
-// Excel export endpoint
-app.MapGet("/reports/export/xlsx", async (HttpContext http, ApplicationDbContext db, UserManager<ApplicationUser> userManager, IReportService reportService) =>
-{
-    var user = await userManager.GetUserAsync(http.User);
-    if (user == null) return Results.Unauthorized();
-
-    var qs = http.Request.Query;
-    DateTime.TryParse(qs["start"], out var start);
-    DateTime.TryParse(qs["end"], out var end);
-    var tab = qs["tab"].ToString();
-    int.TryParse(qs["projectId"], out var projectId);
-
-    if (start == default) start = DateTime.Today.AddMonths(-1);
-    if (end == default) end = DateTime.Today;
-
-    var transactions = await db.Transactions
-        .Include(t => t.Project)
-        .Where(t => t.UserId == user.Id && t.Date >= start && t.Date <= end)
-        .OrderBy(t => t.Date)
-        .ToListAsync();
-
-    // Use streaming to handle large datasets: ClosedXML supports saving from memory, but we will build worksheets carefully
-    using var wb = new XLWorkbook();
-
-    if (!string.IsNullOrEmpty(tab) && tab.Equals("projects", StringComparison.OrdinalIgnoreCase))
-    {
-        var tx = transactions;
-        if (projectId > 0) tx = tx.Where(t => t.ProjectId == projectId).ToList();
-        var projects = reportService.GetProjectReport(tx);
-        var wsProj = wb.Worksheets.Add("Projects");
-        wsProj.Cell(1, 1).Value = "Project";
-        wsProj.Cell(1, 2).Value = "Income";
-        wsProj.Cell(1, 3).Value = "Expense";
-        wsProj.Cell(1, 4).Value = "Profit";
-        wsProj.Cell(1, 5).Value = "Transactions";
-        for (int i = 0; i < projects.Count; i++)
-        {
-            var r = i + 2;
-            var p = projects[i];
-            wsProj.Cell(r, 1).Value = p.Project;
-            wsProj.Cell(r, 2).Value = p.Income;
-            wsProj.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
-            wsProj.Cell(r, 3).Value = p.Expense;
-            wsProj.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
-            wsProj.Cell(r, 4).Value = p.Profit;
-            wsProj.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
-            wsProj.Cell(r, 5).Value = p.Transactions;
-        }
-        // Format headers and table
-        var lastRowProj = projects.Count + 1;
-        var lastColProj = 5;
-        var projRange = wsProj.Range(1, 1, lastRowProj, lastColProj);
-        // Create a styled table for better Excel rendering
-        var projTableName = "ProjectsTable_" + System.Guid.NewGuid().ToString("N");
-        var projTable = projRange.CreateTable(projTableName);
-        projTable.Theme = XLTableTheme.TableStyleMedium2;
-        // Conditional formatting: highlight negative balances in numeric columns (B..D)
-        for (int c = 2; c <= 4; c++)
-        {
-            var colRange = wsProj.Range(2, c, lastRowProj, c);
-            var cf = colRange.AddConditionalFormat();
-            cf.WhenLessThan(0).Fill.SetBackgroundColor(XLColor.FromHtml("#fdecea"));
-            cf.WhenLessThan(0).Font.SetFontColor(XLColor.DarkRed);
-        }
-        wsProj.Row(1).Style.Font.Bold = true;
-        wsProj.SheetView.FreezeRows(1);
-        // Number formatting and alignment
-        wsProj.Column(2).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsProj.Column(3).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsProj.Column(4).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsProj.Columns().AdjustToContents();
-    }
-    else if (!string.IsNullOrEmpty(tab) && tab.Equals("pl", StringComparison.OrdinalIgnoreCase))
-    {
-        var pl = reportService.GetProfitLossReport(transactions, start, end);
-        var ws = wb.Worksheets.Add("P&L");
-        ws.Cell(1, 1).Value = "Показатель";
-        ws.Cell(1, 2).Value = "Сумма";
-        ws.Cell(2, 1).Value = "Доходы";
-        ws.Cell(2, 2).Value = pl.TotalIncome;
-        ws.Cell(3, 1).Value = "Расходы";
-        ws.Cell(3, 2).Value = pl.TotalExpense;
-        ws.Cell(4, 1).Value = "Чистая прибыль";
-        ws.Cell(4, 2).Value = pl.NetProfit;
-        ws.Cell(5, 1).Value = "Маржинальность %";
-        ws.Cell(5, 2).Value = (double)pl.ProfitMargin;
-        int row = 7;
-        ws.Cell(row, 1).Value = "Расходы по категориям";
-        row++;
-        foreach (var c in pl.ExpenseByCategory)
-        {
-            ws.Cell(row, 1).Value = c.Category;
-            ws.Cell(row, 2).Value = c.Amount;
-            ws.Cell(row, 3).Value = (double)c.Percentage;
-            row++;
-        }
-        ws.Columns().AdjustToContents();
-    }
-    else if (!string.IsNullOrEmpty(tab) && tab.Equals("cashflow", StringComparison.OrdinalIgnoreCase))
-    {
-        var cf = reportService.GetCashFlowStatement(transactions, start, end);
-        var ws = wb.Worksheets.Add("Cash Flow");
-        ws.Cell(1, 1).Value = "Деятельность";
-        ws.Cell(1, 2).Value = "Сумма";
-        ws.Cell(2, 1).Value = "Операционная";
-        ws.Cell(2, 2).Value = cf.OperatingCashFlow;
-        ws.Cell(3, 1).Value = "Инвестиционная";
-        ws.Cell(3, 2).Value = cf.InvestmentCashFlow;
-        ws.Cell(4, 1).Value = "Финансовая";
-        ws.Cell(4, 2).Value = cf.FinancingCashFlow;
-        ws.Cell(5, 1).Value = "Чистый поток";
-        ws.Cell(5, 2).Value = cf.NetCashFlow;
-        int row = 7;
-        foreach (var c in cf.CategoryDetails)
-        {
-            ws.Cell(row, 1).Value = c.Category;
-            ws.Cell(row, 2).Value = c.Income;
-            ws.Cell(row, 3).Value = c.Expense;
-            ws.Cell(row, 4).Value = c.NetFlow;
-            row++;
-        }
-        ws.Columns().AdjustToContents();
-    }
-    else if (!string.IsNullOrEmpty(tab) && tab.Equals("categories", StringComparison.OrdinalIgnoreCase))
-    {
-        var catReport = reportService.GetCategoryBreakdown(transactions);
-        var wsCat = wb.Worksheets.Add("Categories");
-        wsCat.Cell(1, 1).Value = "Category";
-        wsCat.Cell(1, 2).Value = "Amount";
-        wsCat.Cell(1, 3).Value = "Count";
-        wsCat.Cell(1, 4).Value = "Percentage";
-        wsCat.Cell(1, 5).Value = "Type";
-        for (int i = 0; i < catReport.ExpenseByCategory.Count; i++)
-        {
-            var r = i + 2;
-            var c = catReport.ExpenseByCategory[i];
-            wsCat.Cell(r, 1).Value = c.Category;
-            wsCat.Cell(r, 2).Value = c.Amount;
-            wsCat.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
-            wsCat.Cell(r, 3).Value = c.Count;
-            wsCat.Cell(r, 4).Value = (double)c.Percentage;
-            wsCat.Cell(r, 4).Style.NumberFormat.Format = "0.0%";
-            wsCat.Cell(r, 5).Value = "Expense";
-        }
-        for (int i = 0; i < catReport.IncomeByCategory.Count; i++)
-        {
-            var r = i + 2 + catReport.ExpenseByCategory.Count;
-            var c = catReport.IncomeByCategory[i];
-            wsCat.Cell(r, 1).Value = c.Category;
-            wsCat.Cell(r, 2).Value = c.Amount;
-            wsCat.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
-            wsCat.Cell(r, 3).Value = c.Count;
-            wsCat.Cell(r, 4).Value = (double)c.Percentage;
-            wsCat.Cell(r, 4).Style.NumberFormat.Format = "0.0%";
-            wsCat.Cell(r, 5).Value = "Income";
-        }
-        var lastRowCat = catReport.ExpenseByCategory.Count + catReport.IncomeByCategory.Count + 1;
-        var lastColCat = 5;
-        var catRange = wsCat.Range(1, 1, lastRowCat, lastColCat);
-        var catTableName = "CategoriesTable_" + System.Guid.NewGuid().ToString("N");
-        var catTable = catRange.CreateTable(catTableName);
-        catTable.Theme = XLTableTheme.TableStyleMedium9;
-        // Conditional formatting for categories amounts (column B)
-        var catAmountRange = wsCat.Range(2, 2, lastRowCat, 2);
-        var catCf = catAmountRange.AddConditionalFormat();
-        catCf.WhenLessThan(0).Fill.SetBackgroundColor(XLColor.FromHtml("#fdecea"));
-        catCf.WhenLessThan(0).Font.SetFontColor(XLColor.DarkRed);
-        wsCat.Row(1).Style.Font.Bold = true;
-        wsCat.SheetView.FreezeRows(1);
-        wsCat.Column(2).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsCat.Column(4).Style.NumberFormat.Format = "0.0%";
-        wsCat.Columns().AdjustToContents();
-    }
-    else
-    {
-        var ws = wb.Worksheets.Add("Transactions");
-        ws.Cell(1, 1).Value = "Date";
-        ws.Cell(1, 2).Value = "Description";
-        ws.Cell(1, 3).Value = "Category";
-        ws.Cell(1, 4).Value = "Amount";
-        for (int i = 0; i < transactions.Count; i++)
-        {
-            var r = i + 2;
-            var t = transactions[i];
-            ws.Cell(r, 1).Value = t.Date;
-            ws.Cell(r, 1).Style.DateFormat.Format = "dd.MM.yyyy";
-            ws.Cell(r, 2).Value = t.Description;
-            ws.Cell(r, 3).Value = t.Category;
-            ws.Cell(r, 4).Value = t.Amount;
-            ws.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
-        }
-        var lastRow = transactions.Count + 1;
-        var lastCol = 4;
-        var txRange = ws.Range(1, 1, lastRow, lastCol);
-        var txTableName = "TransactionsTable_" + System.Guid.NewGuid().ToString("N");
-        var txTable = txRange.CreateTable(txTableName);
-        txTable.Theme = XLTableTheme.TableStyleMedium9;
-        // Conditional formatting: transactions amount (column 4)
-        var txAmountRange = ws.Range(2, 4, lastRow, 4);
-        var txCf = txAmountRange.AddConditionalFormat();
-        txCf.WhenLessThan(0).Fill.SetBackgroundColor(XLColor.FromHtml("#fdecea"));
-        txCf.WhenLessThan(0).Font.SetFontColor(XLColor.DarkRed);
-        ws.Row(1).Style.Font.Bold = true;
-        ws.SheetView.FreezeRows(1);
-        ws.Column(1).Style.DateFormat.Format = "dd.MM.yyyy";
-        ws.Column(4).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        ws.Column(4).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Right;
-        ws.Columns().AdjustToContents();
-
-        var cashflow = reportService.GetCashflow(transactions);
-        var wsCash = wb.Worksheets.Add("Cashflow");
-        wsCash.Cell(1, 1).Value = "Date";
-        wsCash.Cell(1, 2).Value = "Income";
-        wsCash.Cell(1, 3).Value = "Expense";
-        wsCash.Cell(1, 4).Value = "Cumulative Balance";
-        for (int i = 0; i < cashflow.Count; i++)
-        {
-            var r = i + 2;
-            var c = cashflow[i];
-            wsCash.Cell(r, 1).Value = c.Date;
-            wsCash.Cell(r, 1).Style.DateFormat.Format = "dd.MM.yyyy";
-            wsCash.Cell(r, 2).Value = c.Income;
-            wsCash.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
-            wsCash.Cell(r, 3).Value = c.Expense;
-            wsCash.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
-            wsCash.Cell(r, 4).Value = c.Balance;
-            wsCash.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
-        }
-        var lastRowCash = cashflow.Count + 1;
-        var lastColCash = 4;
-        var cashRange = wsCash.Range(1, 1, lastRowCash, lastColCash);
-        var cashTableName = "CashflowTable_" + System.Guid.NewGuid().ToString("N");
-        var cashTable = cashRange.CreateTable(cashTableName);
-        cashTable.Theme = XLTableTheme.TableStyleMedium2;
-        // Conditional formatting for cashflow columns (B..D)
-        for (int c = 2; c <= 4; c++)
-        {
-            var cashColRange = wsCash.Range(2, c, lastRowCash, c);
-            var cf = cashColRange.AddConditionalFormat();
-            cf.WhenLessThan(0).Fill.SetBackgroundColor(XLColor.FromHtml("#fdecea"));
-            cf.WhenLessThan(0).Font.SetFontColor(XLColor.DarkRed);
-        }
-        wsCash.Row(1).Style.Font.Bold = true;
-        wsCash.SheetView.FreezeRows(1);
-        wsCash.Column(1).Style.DateFormat.Format = "dd.MM.yyyy";
-        wsCash.Column(2).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsCash.Column(3).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsCash.Column(4).Style.NumberFormat.Format = "#,##0.00 \"Br\"";
-        wsCash.Columns().AdjustToContents();
-    }
-
-    using var ms = new System.IO.MemoryStream();
-    wb.SaveAs(ms);
-    ms.Position = 0;
-    var fileName = $"report_{tab ?? "all"}_{start:yyyyMMdd}_{end:yyyyMMdd}.xlsx";
-    return Results.File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-}).RequireAuthorization();
-
-// Legacy HTML Excel export
-app.MapGet("/reports/export/excel", async (HttpContext http, ApplicationDbContext db, UserManager<ApplicationUser> userManager) =>
-{
-    var user = await userManager.GetUserAsync(http.User);
-    if (user == null) return Results.Unauthorized();
-
-    var qs = http.Request.Query;
-    DateTime.TryParse(qs["start"], out var start);
-    DateTime.TryParse(qs["end"], out var end);
-
-    if (start == default) start = DateTime.Today.AddMonths(-1);
-    if (end == default) end = DateTime.Today;
-
-    var transactions = await db.Transactions
-        .Where(t => t.UserId == user.Id && t.Date >= start && t.Date <= end)
-        .OrderBy(t => t.Date)
-        .ToListAsync();
-
-    var sb = new System.Text.StringBuilder();
-    sb.AppendLine("<table border=1>");
-    sb.AppendLine("<tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr>");
-    foreach (var t in transactions)
-    {
-        sb.AppendLine($"<tr><td>{t.Date:dd.MM.yyyy}</td><td>{System.Net.WebUtility.HtmlEncode(t.Description)}</td><td>{System.Net.WebUtility.HtmlEncode(t.Category)}</td><td>{t.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}</td></tr>");
-    }
-    sb.AppendLine("</table>");
-
-    var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-    var fileName = $"transactions_{start:yyyyMMdd}_{end:yyyyMMdd}.xls";
-    return Results.File(bytes, "application/vnd.ms-excel", fileName);
-}).RequireAuthorization();
-
-// PDF export
-app.MapGet("/reports/export/pdf", async (
-    HttpContext http,
-    ApplicationDbContext db,
-    UserManager<ApplicationUser> userManager,
-    IReportService reportService,
-    IReportPdfService pdfService) =>
-{
-    var user = await userManager.GetUserAsync(http.User);
-    if (user == null) return Results.Unauthorized();
-
-    var qs = http.Request.Query;
-    DateTime.TryParse(qs["start"], out var start);
-    DateTime.TryParse(qs["end"], out var end);
-    var tab = qs["tab"].ToString();
-
-    if (start == default) start = DateTime.Today.AddMonths(-1);
-    if (end == default) end = DateTime.Today;
-
-    var transactions = await db.Transactions
-        .Where(t => t.UserId == user.Id && t.Date >= start && t.Date <= end)
-        .ToListAsync();
-
-    byte[] bytes;
-    var fileStem = tab.Equals("cashflow", StringComparison.OrdinalIgnoreCase) ? "cashflow" : "pl";
-
-    if (tab.Equals("cashflow", StringComparison.OrdinalIgnoreCase))
-    {
-        var cf = reportService.GetCashFlowStatement(transactions, start, end);
-        bytes = pdfService.GenerateCashFlowPdf(cf, start, end);
-    }
-    else
-    {
-        var pl = reportService.GetProfitLossReport(transactions, start, end);
-        bytes = pdfService.GenerateProfitLossPdf(pl, start, end);
-    }
-
-    return Results.File(bytes, "application/pdf", $"report_{fileStem}_{start:yyyyMMdd}_{end:yyyyMMdd}.pdf");
-}).RequireAuthorization();
+// Legacy export URLs redirect to unified API
+app.MapGet("/reports/export/csv", (HttpContext http) => ReportExportRedirects.RedirectToUnifiedExport(http, "csv")).RequireAuthorization("CanViewReports");
+app.MapGet("/reports/export/xlsx", (HttpContext http) => ReportExportRedirects.RedirectToUnifiedExport(http, "xlsx")).RequireAuthorization("CanViewReports");
+app.MapGet("/reports/export/excel", (HttpContext http) => ReportExportRedirects.RedirectToUnifiedExport(http, "xlsx")).RequireAuthorization("CanViewReports");
+app.MapGet("/reports/export/pdf", (HttpContext http) => ReportExportRedirects.RedirectToUnifiedExport(http, "pdf")).RequireAuthorization("CanViewReports");
 
 // Reports API
-var reportsApi = app.MapGroup("/api/reports").RequireAuthorization();
+var reportsApi = app.MapGroup("/api/reports").RequireAuthorization("CanViewReports");
+
 
 reportsApi.MapGet("/analytics", async (
     HttpContext ctx,
@@ -635,7 +245,7 @@ app.MapGet("/do-logout", async (HttpContext ctx, SignInManager<ApplicationUser> 
 {
     await signInManager.SignOutAsync();
     return Results.Redirect("/login");
-});
+}).RequireAuthorization();
 
 ConfirmEmailEndpoint.MapConfirmEmailEndpoint(app);
 LoginEndpoint.MapLoginEndpoint(app);
@@ -661,7 +271,7 @@ using (var scope = app.Services.CreateScope())
 
         using (var cmd = connection.CreateCommand())
         {
-            // Ensure Projects table exists (INTEGER Status — matches EF enum)
+            // Ensure Projects table exists (INTEGER Status вЂ” matches EF enum)
             cmd.CommandText = @"CREATE TABLE IF NOT EXISTS Projects (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL,
@@ -1260,16 +870,16 @@ using (var scope = app.Services.CreateScope())
             {
                 var defaults = new[]
                 {
-                    new Category { Name = "Налоги", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Аренда", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Зарплата", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Реклама", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Продукты", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Канцелярия", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Транспорт", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Интернет", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Связь", IsDefault = true, Type = CategoryType.Expense },
-                    new Category { Name = "Доход", IsDefault = true, Type = CategoryType.Income }
+                    new Category { Name = "РќР°Р»РѕРіРё", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РђСЂРµРЅРґР°", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "Р—Р°СЂРїР»Р°С‚Р°", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "Р РµРєР»Р°РјР°", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РџСЂРѕРґСѓРєС‚С‹", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РљР°РЅС†РµР»СЏСЂРёСЏ", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РўСЂР°РЅСЃРїРѕСЂС‚", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РРЅС‚РµСЂРЅРµС‚", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "РЎРІСЏР·СЊ", IsDefault = true, Type = CategoryType.Expense },
+                    new Category { Name = "Р”РѕС…РѕРґ", IsDefault = true, Type = CategoryType.Income }
                 };
                 db.Categories.AddRange(defaults);
                 db.SaveChanges();
@@ -1297,7 +907,7 @@ app.MapPost("/api/transactions/{id:int}/attachments", async (
     var user = await userManager.GetUserAsync(http.User);
     if (user == null) return Results.Unauthorized();
     var file = http.Request.Form.Files.FirstOrDefault();
-    if (file == null || file.Length == 0) return Results.BadRequest("Файл не передан.");
+    if (file == null || file.Length == 0) return Results.BadRequest("Р¤Р°Р№Р» РЅРµ РїРµСЂРµРґР°РЅ.");
     try
     {
         await using var stream = file.OpenReadStream();

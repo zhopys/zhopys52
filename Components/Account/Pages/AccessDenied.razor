@@ -1,8 +1,12 @@
 ﻿@page "/Account/AccessDenied"
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
-<PageTitle>Access denied</PageTitle>
+<PageTitle>Доступ запрещён — MiniFinance</PageTitle>
 
-<header>
-    <h1 class="text-danger">Access denied</h1>
-    <p class="text-danger">You do not have access to this resource.</p>
-</header>
+<div class="login-page">
+    <div class="login-container">
+        <h1 class="text-danger">Доступ запрещён</h1>
+        <p class="text-muted">У вашей учётной записи нет прав для этого раздела.</p>
+        <a href="/" class="btn btn-primary mt-3">На главную</a>
+    </div>
+</div>

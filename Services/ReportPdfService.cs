@@ -1,3 +1,4 @@
+using System.Globalization;
 using iText.IO.Font;
 using iText.IO.Font.Constants;
 using iText.Kernel.Colors;
@@ -63,16 +64,66 @@ public class ReportPdfService : IReportPdfService
                 table.AddHeaderCell(H("Нетто"));
                 foreach (var c in report.CategoryDetails)
                 {
-                    table.AddCell(c.Category);
-                    table.AddCell($"{c.Income:N0}");
-                    table.AddCell($"{c.Expense:N0}");
-                    table.AddCell($"{c.NetFlow:N0}");
+                    table.AddCell(D(c.Category));
+                    table.AddCell(N(c.Income));
+                    table.AddCell(N(c.Expense));
+                    table.AddCell(N(c.NetFlow));
                 }
                 body.Add(table);
             }
         });
 
-    public byte[] GenerateFullReportPdf(ReportAnalyticsSnapshot snapshot)
+    public byte[] GenerateTrialBalancePdf(TrialBalanceReport report, DateTime start, DateTime end) =>
+        BuildPdf("Оборотно-сальдовая ведомость (ОСВ)", start, end, body =>
+        {
+            body.Add(BuildTrialBalanceTable(report));
+            body.Add(Spacer(8));
+            body.Add(Line($"Итого сальдо на начало: {report.TotalOpeningBalance:N0} Br"));
+            body.Add(Line($"Итого дебет: {report.TotalDebit:N0} Br  |  кредит: {report.TotalCredit:N0} Br"));
+            body.Add(Line($"Итого сальдо на конец: {report.TotalClosingBalance:N0} Br", bold: true));
+        });
+
+    public byte[] GenerateIncomeBookPdf(IReadOnlyList<IncomeExpenseBookEntry> entries, DateTime start, DateTime end) =>
+        BuildPdf("Книга учёта доходов и расходов", start, end, body =>
+        {
+            var totalIncome = entries.Sum(e => e.Income);
+            var totalExpense = entries.Sum(e => e.Expense);
+            body.Add(Line($"Записей: {entries.Count}  |  доходы: {totalIncome:N0} Br  |  расходы: {totalExpense:N0} Br"));
+            body.Add(Spacer(6));
+            body.Add(BuildIncomeBookTable(entries));
+        });
+
+    public byte[] GenerateProfitabilityPdf(IReadOnlyList<ProfitabilityMatrixRowDto> rows, DateTime start, DateTime end) =>
+        BuildPdf("Рентабельность проектов и отделов", start, end, body =>
+        {
+            if (rows.Count == 0)
+                body.Add(Line("Нет данных за выбранный период."));
+            else
+                body.Add(BuildProfitabilityTable(rows));
+        });
+
+    public byte[] GenerateForecastPdf(CashForecastChartDto forecast, DateTime start, DateTime end) =>
+        BuildPdf($"Прогноз ликвидности ({forecast.HorizonDays} дн.)", start, end, body =>
+        {
+            body.Add(Line($"Текущий остаток: {forecast.CurrentBalance:N0} Br"));
+            if (forecast.HasRisk)
+                body.Add(Line($"Риск кассового разрыва — мин. остаток: {forecast.MinBalance:N0} Br", color: Danger));
+            else
+                body.Add(Line("Критических зон не выявлено"));
+            body.Add(Spacer(8));
+            body.Add(BuildForecastTable(forecast));
+        });
+
+    public byte[] GenerateTransactionsPdf(IReadOnlyList<TransactionPdfRow> rows, DateTime start, DateTime end) =>
+        BuildPdf("Реестр транзакций", start, end, body =>
+        {
+            var total = rows.Sum(r => r.Amount);
+            body.Add(Line($"Операций: {rows.Count}  |  итого по суммам: {total:N2} Br", bold: true));
+            body.Add(Spacer(6));
+            body.Add(BuildTransactionsTable(rows));
+        });
+
+    public byte[] GenerateFullReportPdf(ReportAnalyticsSnapshot snapshot, IReadOnlyList<TransactionPdfRow> transactions)
     {
         var f = snapshot.Filters;
         using var ms = new MemoryStream();
@@ -82,7 +133,7 @@ public class ReportPdfService : IReportPdfService
         doc.SetMargins(48, 48, 72, 48);
 
         doc.Add(new Paragraph("MiniFinance").SetFont(_fontBold).SetFontSize(22).SetFontColor(Accent));
-        doc.Add(SectionTitle("Финансовый отчёт").SetFontSize(18));
+        doc.Add(SectionTitle("Полный финансовый отчёт").SetFontSize(18));
         doc.Add(Line($"Период: {f.Start:dd.MM.yyyy} — {f.End:dd.MM.yyyy}", size: 10, color: ColorConstants.GRAY));
         doc.Add(Line($"Сформировано: {DateTime.Now:dd.MM.yyyy HH:mm}", size: 9, color: ColorConstants.GRAY));
         if (f.ProjectId.HasValue)
@@ -92,87 +143,44 @@ public class ReportPdfService : IReportPdfService
         doc.Add(Spacer(12));
 
         doc.Add(SectionTitle("Ключевые показатели"));
-        var kpiTable = new Table(UnitValue.CreatePercentArray(new float[] { 38, 32, 30 })).UseAllAvailableWidth();
-        kpiTable.AddHeaderCell(H("Показатель"));
-        kpiTable.AddHeaderCell(H("Значение"));
-        kpiTable.AddHeaderCell(H("Δ %"));
-        foreach (var k in snapshot.Kpi)
-        {
-            kpiTable.AddCell(k.Label);
-            kpiTable.AddCell(k.Format == "percent" ? $"{k.Value:F1}%" : $"{k.Value:N0} Br");
-            var sign = k.ChangePercent >= 0 ? "+" : "";
-            kpiTable.AddCell(f.CompareMode == "none" ? "—" : $"{sign}{k.ChangePercent:F1}%");
-        }
-        doc.Add(kpiTable);
+        doc.Add(BuildKpiTable(snapshot.Kpi, f.CompareMode));
         doc.Add(Line($"Налоговый резерв: {snapshot.TaxReserve:N0} Br  |  Свободные деньги: {snapshot.FreeCash:N0} Br")
             .SetMarginTop(10));
 
         if (snapshot.ProfitLoss != null)
         {
             doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-            doc.Add(SectionTitle("P&L — Прибыли и убытки"));
-            var pl = snapshot.ProfitLoss;
-            doc.Add(Line($"Доходы: {pl.TotalIncome:N0} Br"));
-            doc.Add(Line($"Расходы: {Math.Abs(pl.TotalExpense):N0} Br"));
-            doc.Add(Line($"Чистая прибыль: {pl.NetProfit:N0} Br ({pl.ProfitMargin:F1}%)", bold: true));
-            if (pl.ExpenseByCategory.Any())
-            {
-                doc.Add(SectionTitle("Структура расходов").SetFontSize(12).SetMarginTop(12));
-                doc.Add(BuildCategoryTable(pl.ExpenseByCategory.Select(c => (c.Category, c.Amount, c.Percentage))));
-            }
+            AddProfitLossSection(doc, snapshot.ProfitLoss);
         }
 
         if (snapshot.CashFlow != null)
         {
             doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-            doc.Add(SectionTitle("Cash Flow"));
-            var cf = snapshot.CashFlow;
-            doc.Add(Line($"Операционная: {cf.OperatingCashFlow:N0} Br"));
-            doc.Add(Line($"Инвестиционная: {cf.InvestmentCashFlow:N0} Br"));
-            doc.Add(Line($"Финансовая: {cf.FinancingCashFlow:N0} Br"));
-            doc.Add(Line($"Чистый поток: {cf.NetCashFlow:N0} Br", bold: true));
-            if (cf.CategoryDetails.Any())
-            {
-                doc.Add(Spacer());
-                var t = new Table(UnitValue.CreatePercentArray(new float[] { 40, 20, 20, 20 })).UseAllAvailableWidth();
-                t.AddHeaderCell(H("Категория"));
-                t.AddHeaderCell(H("Приход"));
-                t.AddHeaderCell(H("Расход"));
-                t.AddHeaderCell(H("Нетто"));
-                foreach (var c in cf.CategoryDetails.Take(20))
-                {
-                    t.AddCell(c.Category);
-                    t.AddCell($"{c.Income:N0}");
-                    t.AddCell($"{c.Expense:N0}");
-                    t.AddCell($"{c.NetFlow:N0}");
-                }
-                doc.Add(t);
-            }
+            AddCashFlowSection(doc, snapshot.CashFlow);
+        }
+
+        if (snapshot.TrialBalance?.Entries.Count > 0)
+        {
+            doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+            doc.Add(SectionTitle("Оборотно-сальдовая ведомость"));
+            doc.Add(BuildTrialBalanceTable(snapshot.TrialBalance));
+        }
+
+        if (snapshot.IncomeExpenseBook.Count > 0)
+        {
+            doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+            doc.Add(SectionTitle("Книга учёта доходов и расходов"));
+            var inc = snapshot.IncomeExpenseBook.Sum(e => e.Income);
+            var exp = snapshot.IncomeExpenseBook.Sum(e => e.Expense);
+            doc.Add(Line($"Записей: {snapshot.IncomeExpenseBook.Count}  |  доходы: {inc:N0} Br  |  расходы: {exp:N0} Br"));
+            doc.Add(BuildIncomeBookTable(snapshot.IncomeExpenseBook).SetMarginTop(8));
         }
 
         if (snapshot.ProfitabilityMatrix.Any())
         {
             doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
             doc.Add(SectionTitle("Рентабельность проектов"));
-            var t = new Table(UnitValue.CreatePercentArray(new float[] { 28, 14, 12, 14, 12, 12, 14 })).UseAllAvailableWidth();
-            t.AddHeaderCell(H("Проект"));
-            t.AddHeaderCell(H("Выручка"));
-            t.AddHeaderCell(H("Маржа%"));
-            t.AddHeaderCell(H("Зарплаты"));
-            t.AddHeaderCell(H("Аренда"));
-            t.AddHeaderCell(H("Налоги"));
-            t.AddHeaderCell(H("Чистый доход"));
-            foreach (var row in snapshot.ProfitabilityMatrix.Take(15))
-            {
-                t.AddCell(row.Name);
-                t.AddCell($"{row.Revenue:N0}");
-                t.AddCell($"{row.MarginPercent:F1}");
-                t.AddCell($"{row.Payroll:N0}");
-                t.AddCell($"{row.Rent:N0}");
-                t.AddCell($"{row.Taxes:N0}");
-                t.AddCell($"{row.NetIncome:N0}");
-            }
-            doc.Add(t);
+            doc.Add(BuildProfitabilityTable(snapshot.ProfitabilityMatrix));
         }
 
         if (snapshot.Forecast.Points.Any())
@@ -181,38 +189,224 @@ public class ReportPdfService : IReportPdfService
             doc.Add(SectionTitle($"Прогноз ликвидности ({snapshot.Forecast.HorizonDays} дн.)"));
             doc.Add(Line($"Текущий остаток: {snapshot.Forecast.CurrentBalance:N0} Br"));
             if (snapshot.Forecast.HasRisk)
-                doc.Add(Line($"⚠ Риск кассового разрыва — мин. остаток: {snapshot.Forecast.MinBalance:N0} Br", color: Danger));
-            else
-                doc.Add(Line("Критических зон не выявлено"));
-
-            var ft = new Table(UnitValue.CreatePercentArray(new float[] { 30, 35, 35 })).UseAllAvailableWidth();
-            ft.AddHeaderCell(H("Дата"));
-            ft.AddHeaderCell(H("Баланс"));
-            ft.AddHeaderCell(H("Риск"));
-            foreach (var p in snapshot.Forecast.Points.Where((_, i) => i % 7 == 0 || i == snapshot.Forecast.Points.Count - 1).Take(20))
-            {
-                ft.AddCell(p.Date.ToString("dd.MM.yyyy"));
-                ft.AddCell($"{p.Balance:N0} Br");
-                ft.AddCell(p.IsGap ? "⚠" : "");
-            }
-            doc.Add(ft.SetMarginTop(12));
+                doc.Add(Line($"Риск кассового разрыва — мин. остаток: {snapshot.Forecast.MinBalance:N0} Br", color: Danger));
+            doc.Add(BuildForecastTable(snapshot.Forecast).SetMarginTop(8));
         }
 
         if (snapshot.CriticalReminders.Any())
         {
             doc.Add(Spacer());
             doc.Add(SectionTitle("Налоговый календарь").SetFontSize(12));
-            foreach (var a in snapshot.CriticalReminders.Take(6))
+            foreach (var a in snapshot.CriticalReminders.Take(8))
                 doc.Add(Line($"• {a.Title} — {a.DueDate:dd.MM.yyyy}: {a.Amount:N0} Br ({a.Severity})"));
         }
 
+        if (transactions.Count > 0)
+        {
+            doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+            doc.Add(SectionTitle("Все транзакции за период"));
+            var total = transactions.Sum(t => t.Amount);
+            doc.Add(Line($"Операций: {transactions.Count}  |  итого: {total:N2} Br", bold: true));
+            doc.Add(BuildTransactionsTable(transactions).SetMarginTop(8));
+        }
+
         doc.Add(Spacer(16));
-        doc.Add(new Paragraph($"— MiniFinance · {DateTime.Now:dd.MM.yyyy HH:mm} —")
-            .SetFont(_fontRegular).SetFontSize(8).SetFontColor(ColorConstants.GRAY)
-            .SetTextAlignment(TextAlignment.CENTER));
+        doc.Add(FooterParagraph());
         doc.Close();
         return ms.ToArray();
     }
+
+    private void AddProfitLossSection(Document doc, ProfitLossReport pl)
+    {
+        doc.Add(SectionTitle("P&L — Прибыли и убытки"));
+        doc.Add(Line($"Доходы: {pl.TotalIncome:N0} Br"));
+        doc.Add(Line($"Расходы: {Math.Abs(pl.TotalExpense):N0} Br"));
+        doc.Add(Line($"Чистая прибыль: {pl.NetProfit:N0} Br ({pl.ProfitMargin:F1}%)", bold: true));
+        if (pl.ExpenseByCategory.Any())
+        {
+            doc.Add(SectionTitle("Структура расходов").SetFontSize(12).SetMarginTop(12));
+            doc.Add(BuildCategoryTable(pl.ExpenseByCategory.Select(c => (c.Category, c.Amount, c.Percentage))));
+        }
+        if (pl.IncomeByCategory.Any())
+        {
+            doc.Add(SectionTitle("Доходы по категориям").SetFontSize(12).SetMarginTop(12));
+            doc.Add(BuildCategoryTable(pl.IncomeByCategory.Select(c => (c.Category, c.Amount, c.Percentage))));
+        }
+    }
+
+    private void AddCashFlowSection(Document doc, CashFlowStatementReport cf)
+    {
+        doc.Add(SectionTitle("Движение денежных средств"));
+        doc.Add(Line($"Операционная: {cf.OperatingCashFlow:N0} Br"));
+        doc.Add(Line($"Инвестиционная: {cf.InvestmentCashFlow:N0} Br"));
+        doc.Add(Line($"Финансовая: {cf.FinancingCashFlow:N0} Br"));
+        doc.Add(Line($"Чистый поток: {cf.NetCashFlow:N0} Br", bold: true));
+        if (cf.CategoryDetails.Any())
+        {
+            doc.Add(Spacer());
+            var t = new Table(UnitValue.CreatePercentArray(new float[] { 40, 20, 20, 20 })).UseAllAvailableWidth();
+            t.AddHeaderCell(H("Категория"));
+            t.AddHeaderCell(H("Приход"));
+            t.AddHeaderCell(H("Расход"));
+            t.AddHeaderCell(H("Нетто"));
+            foreach (var c in cf.CategoryDetails)
+            {
+                t.AddCell(D(c.Category));
+                t.AddCell(N(c.Income));
+                t.AddCell(N(c.Expense));
+                t.AddCell(N(c.NetFlow));
+            }
+            doc.Add(t);
+        }
+    }
+
+    private Table BuildKpiTable(IReadOnlyList<KpiMetricDto> kpi, string compareMode)
+    {
+        var kpiTable = new Table(UnitValue.CreatePercentArray(new float[] { 38, 32, 30 })).UseAllAvailableWidth();
+        kpiTable.AddHeaderCell(H("Показатель"));
+        kpiTable.AddHeaderCell(H("Значение"));
+        kpiTable.AddHeaderCell(H("Δ %"));
+        foreach (var k in kpi)
+        {
+            kpiTable.AddCell(D(k.Label));
+            kpiTable.AddCell(D(k.Format == "percent" ? $"{k.Value:F1}%" : $"{Fmt(k.Value)} Br", TextAlignment.RIGHT));
+            var sign = k.ChangePercent >= 0 ? "+" : "";
+            kpiTable.AddCell(D(compareMode == "none" ? "-" : $"{sign}{k.ChangePercent:F1}%", TextAlignment.RIGHT));
+        }
+        return kpiTable;
+    }
+
+    private Table BuildTrialBalanceTable(TrialBalanceReport report)
+    {
+        var t = new Table(UnitValue.CreatePercentArray(new float[] { 32, 17, 17, 17, 17 })).UseAllAvailableWidth();
+        t.AddHeaderCell(H("Категория"));
+        t.AddHeaderCell(H("Сальдо нач."));
+        t.AddHeaderCell(H("Дебет"));
+        t.AddHeaderCell(H("Кредит"));
+        t.AddHeaderCell(H("Сальдо кон."));
+        foreach (var e in report.Entries)
+        {
+            t.AddCell(D(e.Category));
+            t.AddCell(N(e.OpeningBalance));
+            t.AddCell(N(e.Debit));
+            t.AddCell(N(e.Credit));
+            t.AddCell(N(e.ClosingBalance));
+        }
+        return t;
+    }
+
+    private Table BuildIncomeBookTable(IReadOnlyList<IncomeExpenseBookEntry> entries)
+    {
+        var t = new Table(UnitValue.CreatePercentArray(new float[] { 7, 13, 12, 20, 28, 10, 10 })).UseAllAvailableWidth();
+        t.AddHeaderCell(H("№"));
+        t.AddHeaderCell(H("Дата"));
+        t.AddHeaderCell(H("Док."));
+        t.AddHeaderCell(H("Контрагент"));
+        t.AddHeaderCell(H("Содержание"));
+        t.AddHeaderCell(H("Доход"));
+        t.AddHeaderCell(H("Расход"));
+        foreach (var e in entries)
+        {
+            t.AddCell(D(e.EntryNumber.ToString(), TextAlignment.CENTER));
+            t.AddCell(D(e.Date.ToString("dd.MM.yyyy")));
+            t.AddCell(D(e.DocumentNumber));
+            t.AddCell(D(e.Counterparty));
+            t.AddCell(D(e.Description));
+            t.AddCell(N(e.Income));
+            t.AddCell(N(e.Expense));
+        }
+        return t;
+    }
+
+    private Table BuildProfitabilityTable(IReadOnlyList<ProfitabilityMatrixRowDto> rows)
+    {
+        var t = new Table(UnitValue.CreatePercentArray(new float[] { 28, 14, 12, 14, 12, 12, 14 })).UseAllAvailableWidth();
+        t.AddHeaderCell(H("Проект"));
+        t.AddHeaderCell(H("Выручка"));
+        t.AddHeaderCell(H("Маржа%"));
+        t.AddHeaderCell(H("Зарплаты"));
+        t.AddHeaderCell(H("Аренда"));
+        t.AddHeaderCell(H("Налоги"));
+        t.AddHeaderCell(H("Чистый доход"));
+        foreach (var row in rows)
+        {
+            t.AddCell(D(row.Name));
+            t.AddCell(N(row.Revenue));
+            t.AddCell(D($"{row.MarginPercent:F1}%", TextAlignment.RIGHT));
+            t.AddCell(N(row.Payroll));
+            t.AddCell(N(row.Rent));
+            t.AddCell(N(row.Taxes));
+            t.AddCell(N(row.NetIncome));
+        }
+        return t;
+    }
+
+    private Table BuildForecastTable(CashForecastChartDto forecast)
+    {
+        var ft = new Table(UnitValue.CreatePercentArray(new float[] { 30, 35, 35 })).UseAllAvailableWidth();
+        ft.AddHeaderCell(H("Дата"));
+        ft.AddHeaderCell(H("Баланс"));
+        ft.AddHeaderCell(H("Риск"));
+        var points = forecast.Points;
+        for (var i = 0; i < points.Count; i++)
+        {
+            if (i % 7 != 0 && i != points.Count - 1) continue;
+            var p = points[i];
+            ft.AddCell(D(p.Date.ToString("dd.MM.yyyy")));
+            ft.AddCell(D($"{Fmt(p.Balance)} Br", TextAlignment.RIGHT));
+            ft.AddCell(D(p.IsGap ? "!" : "-", TextAlignment.CENTER));
+        }
+        return ft;
+    }
+
+    private Table BuildTransactionsTable(IReadOnlyList<TransactionPdfRow> rows)
+    {
+        var t = new Table(UnitValue.CreatePercentArray(new float[] { 11, 30, 18, 13, 14, 14 })).UseAllAvailableWidth();
+        t.AddHeaderCell(H("Дата"));
+        t.AddHeaderCell(H("Описание"));
+        t.AddHeaderCell(H("Категория"));
+        t.AddHeaderCell(H("Сумма"));
+        t.AddHeaderCell(H("Проект"));
+        t.AddHeaderCell(H("Контрагент"));
+        foreach (var row in rows)
+        {
+            t.AddCell(D(row.Date.ToString("dd.MM.yyyy")));
+            t.AddCell(D(row.Description));
+            t.AddCell(D(row.Category));
+            t.AddCell(N(row.Amount, decimals: true));
+            t.AddCell(D(row.Project));
+            t.AddCell(D(row.Counterparty));
+        }
+        return t;
+    }
+
+    private static string Fmt(decimal value, bool decimals = false) =>
+        value.ToString(decimals ? "#,##0.00" : "#,##0", CultureInfo.InvariantCulture);
+
+    private Cell D(string? text, TextAlignment align = TextAlignment.LEFT, float size = 9, bool bold = false)
+    {
+        var display = string.IsNullOrWhiteSpace(text) ? "-" : text.Trim();
+        return new Cell()
+            .Add(new Paragraph(display)
+                .SetFont(bold ? _fontBold : _fontRegular)
+                .SetFontSize(size)
+                .SetMultipliedLeading(1f))
+            .SetTextAlignment(align)
+            .SetVerticalAlignment(VerticalAlignment.MIDDLE)
+            .SetPaddingTop(4)
+            .SetPaddingBottom(4)
+            .SetPaddingLeft(5)
+            .SetPaddingRight(5)
+            .SetBorder(Border.NO_BORDER);
+    }
+
+    private Cell N(decimal value, bool decimals = false) =>
+        D(Fmt(value, decimals), TextAlignment.RIGHT);
+
+    private Paragraph FooterParagraph() =>
+        new Paragraph($"— MiniFinance · {DateTime.Now:dd.MM.yyyy HH:mm} —")
+            .SetFont(_fontRegular).SetFontSize(8).SetFontColor(ColorConstants.GRAY)
+            .SetTextAlignment(TextAlignment.CENTER);
 
     private Paragraph SectionTitle(string text) =>
         new Paragraph(text).SetFont(_fontBold).SetFontSize(14).SetMarginBottom(6);
@@ -227,8 +421,7 @@ public class ReportPdfService : IReportPdfService
     private static Paragraph Spacer(float size = 8) => new Paragraph(" ").SetFontSize(size);
 
     private Cell H(string text) =>
-        new Cell().Add(new Paragraph(text).SetFont(_fontBold).SetFontSize(10))
-            .SetBackgroundColor(HeaderBg).SetBorder(Border.NO_BORDER);
+        D(text, bold: true, size: 10).SetBackgroundColor(HeaderBg);
 
     private Table BuildCategoryTable(IEnumerable<(string Category, decimal Amount, decimal Pct)> rows)
     {
@@ -238,9 +431,9 @@ public class ReportPdfService : IReportPdfService
         table.AddHeaderCell(H("%"));
         foreach (var (cat, amt, pct) in rows)
         {
-            table.AddCell(cat);
-            table.AddCell($"{amt:N0} Br");
-            table.AddCell($"{pct:F0}%");
+            table.AddCell(D(cat));
+            table.AddCell(D($"{Fmt(amt)} Br", TextAlignment.RIGHT));
+            table.AddCell(D($"{pct:F0}%", TextAlignment.RIGHT));
         }
         return table;
     }

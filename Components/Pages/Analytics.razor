@@ -14,7 +14,7 @@
 @inject IExtendedReportService ExtendedReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
-@attribute [Authorize]
+@attribute [Authorize(Policy = "CanViewReports")]
 
 <PageTitle>Финансовая аналитика — MiniFinance</PageTitle>
 
@@ -147,10 +147,16 @@ else if (_snapshot != null)
                             Период: @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
                         </p>
                         <div class="export-actions-grid">
-                            <button class="btn btn-outline" @onclick='() => Export("csv", "full")'>CSV — полный отчёт</button>
-                            <button class="btn btn-outline" @onclick='() => Export("xlsx", "full")'>Excel — полный отчёт</button>
+                            <button class="btn btn-primary" @onclick='() => Export("pdf", "full")'>PDF — полный (все разделы + транзакции)</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "transactions")'>PDF — все транзакции</button>
                             <button class="btn btn-outline" @onclick='() => Export("pdf", "pl")'>PDF — P&amp;L</button>
                             <button class="btn btn-outline" @onclick='() => Export("pdf", "cashflow")'>PDF — Cash Flow</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "trial")'>PDF — ОСВ</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "book")'>PDF — книга учёта</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "profitability")'>PDF — рентабельность</button>
+                            <button class="btn btn-outline" @onclick='() => Export("pdf", "forecast")'>PDF — прогноз</button>
+                            <button class="btn btn-outline" @onclick='() => Export("xlsx", "full")'>Excel — всё</button>
+                            <button class="btn btn-outline" @onclick='() => Export("csv", "transactions")'>CSV — транзакции</button>
                         </div>
                         <p class="small text-muted mt-3">
                             Также доступны отчёты на странице <a href="/reports">Финансовые отчёты</a>.
@@ -266,12 +272,6 @@ else if (_snapshot != null)
     private void Export(string format, string report)
     {
         var qs = BuildFilters(report).ToQueryString(format, report);
-        var path = format switch
-        {
-            "xlsx" => $"/reports/export/xlsx?{qs}",
-            "pdf" => $"/reports/export/pdf?{qs}&tab={report}",
-            _ => $"/reports/export/csv?{qs}"
-        };
-        NavigationManager.NavigateTo(path, forceLoad: true);
+        NavigationManager.NavigateTo($"/api/reports/export?{qs}", forceLoad: true);
     }
 }

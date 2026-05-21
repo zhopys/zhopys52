@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -9,25 +10,46 @@ internal static class LoginEndpoint
 {
     public static void MapLoginEndpoint(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/Account/Login", HandleLoginAsync);
+        endpoints.MapGet("/Account/Login", (string? returnUrl) =>
+        {
+            var q = new Dictionary<string, string?>();
+            if (!string.IsNullOrWhiteSpace(returnUrl))
+                q["ReturnUrl"] = returnUrl;
+            return Results.Redirect(QueryHelpers.AddQueryString("/login", q));
+        });
+
+        endpoints.MapPost("/Account/Login", HandleLoginAsync).DisableAntiforgery();
     }
 
     private static async Task<IResult> HandleLoginAsync(
+        HttpContext httpContext,
         [FromServices] SignInManager<ApplicationUser> signInManager,
         [FromServices] UserManager<ApplicationUser> userManager,
-        [FromForm] string email,
-        [FromForm] string password,
-        [FromForm] bool? rememberMe,
-        [FromForm] string? returnUrl,
-        ILogger<Program> logger)
+        [FromServices] IAntiforgery antiforgery,
+        [FromServices] ILogger<Program> logger)
     {
-        var persist = rememberMe == true;
-        email = (email ?? "").Trim().ToLowerInvariant();
+        if (!httpContext.Request.HasFormContentType)
+            return Results.Redirect(AccountUrls.Login(error: "empty"));
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Login antiforgery validation failed");
+            return Results.Redirect(AccountUrls.Login(error: "session_expired"));
+        }
+
+        var form = await httpContext.Request.ReadFormAsync();
+        var email = (form["email"].ToString() ?? "").Trim().ToLowerInvariant();
+        var password = form["password"].ToString() ?? "";
+        var rememberMe = form["rememberMe"].ToString();
+        var returnUrl = form["returnUrl"].ToString();
+        var persist = rememberMe is "true" or "on";
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
-        {
             return Results.Redirect(AccountUrls.Login(error: "empty", email: email));
-        }
 
         var user = await userManager.FindByEmailAsync(email)
                    ?? await userManager.FindByNameAsync(email);
@@ -39,13 +61,11 @@ internal static class LoginEndpoint
         }
 
         if (!user.EmailConfirmed)
-        {
             return Results.Redirect(AccountUrls.Login(error: "unconfirmed", email: email));
-        }
 
         var loginName = user.UserName ?? email;
         var result = await signInManager.PasswordSignInAsync(
-            loginName, password, persist, lockoutOnFailure: false);
+            loginName, password, persist, lockoutOnFailure: true);
 
         if (result.Succeeded)
         {
@@ -55,9 +75,7 @@ internal static class LoginEndpoint
         }
 
         if (result.IsLockedOut)
-        {
             return Results.Redirect("/Account/Lockout");
-        }
 
         if (result.RequiresTwoFactor)
         {

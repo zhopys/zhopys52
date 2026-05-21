@@ -17,7 +17,7 @@
 <div class="page-header">
     <div class="title">
         <h1>Контрагенты</h1>
-        <div class="meta text-muted">Справочник клиентов и поставщиков</div>
+        <div class="meta text-muted">Справочник клиентов и поставщиков · обороты и долги</div>
     </div>
     <div class="page-actions">
         <button class="btn btn-primary" @onclick="OpenCreate">Добавить</button>
@@ -34,7 +34,7 @@
     <div class="card mb-3">
         <div class="card-header">@(_editId.HasValue ? "Редактирование" : "Новый контрагент")</div>
         <div class="card-body">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+            <div class="cp-form-grid">
                 <div><label class="label">Название *</label><input class="input" @bind="_form.Name" /></div>
                 <div>
                     <label class="label">Тип</label>
@@ -47,11 +47,12 @@
                 <div>
                     <label class="label">URL логотипа</label>
                     <input class="input" @bind="_form.LogoUrl" placeholder="https://…" />
-                    <span class="small text-muted">Если пусто — сгенерируется аватар по имени</span>
+                    <span class="small text-muted">Если пусто — аватар по имени</span>
                 </div>
                 <div><label class="label">Контакт</label><input class="input" @bind="_form.ContactPerson" /></div>
-                <div><label class="label">Email</label><input class="input" @bind="_form.Email" /></div>
+                <div><label class="label">Email</label><input class="input" type="email" @bind="_form.Email" /></div>
                 <div><label class="label">Телефон</label><input class="input" @bind="_form.Phone" /></div>
+                <div><label class="label">УНП</label><input class="input" @bind="_form.TaxId" placeholder="123456789" /></div>
             </div>
             <div class="mt-2"><label class="label">Заметки</label><textarea class="input" rows="2" @bind="_form.Notes"></textarea></div>
             @if (!string.IsNullOrWhiteSpace(_form.Name))
@@ -61,7 +62,7 @@
                     <span class="small text-muted">Предпросмотр</span>
                 </div>
             }
-            <div class="mt-3" style="display:flex;gap:.5rem">
+            <div class="mt-3 d-flex gap-2">
                 <button class="btn btn-primary" @onclick="Save">Сохранить</button>
                 <button class="btn btn-outline" @onclick="() => _showForm = false">Отмена</button>
             </div>
@@ -70,7 +71,7 @@
 }
 
 <div class="card">
-    <div class="card-body" style="padding:0">
+    <div class="card-body p-0">
         @if (_list == null)
         {
             <div class="empty-state small">Загрузка...</div>
@@ -81,29 +82,67 @@
         }
         else
         {
-            <table class="table">
-                <thead>
-                    <tr><th></th><th>Название</th><th>Тип</th><th>Контакт</th><th></th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var c in _list)
-                    {
+            <div class="table-responsive">
+                <table class="table cp-table mb-0">
+                    <thead>
                         <tr>
-                            <td style="width:52px">
-                                <img src="@CounterpartySvc.GetDisplayLogoUrl(c)" alt="" class="cp-avatar" width="36" height="36" loading="lazy" referrerpolicy="no-referrer" />
-                            </td>
-                            <td class="fw-bold"><a href="#" @onclick="() => OpenDetail(c.Id)" @onclick:preventDefault>@c.Name</a></td>
-                            <td>@TypeLabel(c.Type)</td>
-                            <td class="text-muted small">@(c.ContactPerson ?? c.Email ?? "—")</td>
-                            <td class="text-end" style="white-space:nowrap">
-                                <button class="btn btn-sm btn-outline" @onclick="() => OpenDetail(c.Id)">Подробнее</button>
-                                <button class="btn btn-sm btn-outline" @onclick="() => Edit(c)">Изменить</button>
-                                <button class="btn btn-sm btn-outline text-danger" @onclick="() => Delete(c.Id)">Удалить</button>
-                            </td>
+                            <th></th>
+                            <th>Название</th>
+                            <th>Тип</th>
+                            <th>Контакт</th>
+                            <th class="text-end">Доход</th>
+                            <th class="text-end">Расход</th>
+                            <th class="text-end">Сальдо</th>
+                            <th class="text-end">Операций</th>
+                            <th>Последняя</th>
+                            <th></th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _list)
+                        {
+                            var c = item.Record;
+                            <tr class="cp-table-row" @onclick="() => OpenDetail(c.Id)">
+                                <td style="width:52px" @onclick:stopPropagation="true">
+                                    <img src="@CounterpartySvc.GetDisplayLogoUrl(c)" alt="" class="cp-avatar" width="36" height="36" loading="lazy" referrerpolicy="no-referrer" />
+                                </td>
+                                <td class="fw-bold">
+                                    <a href="#" @onclick="() => OpenDetail(c.Id)" @onclick:preventDefault>@c.Name</a>
+                                </td>
+                                <td><span class="badge badge-outline">@TypeLabel(c.Type)</span></td>
+                                <td class="text-muted small cp-contact-cell">
+                                    @if (!string.IsNullOrWhiteSpace(c.ContactPerson))
+                                    {
+                                        <span>@c.ContactPerson</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.Email))
+                                    {
+                                        <span class="d-block">@c.Email</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(c.Phone))
+                                    {
+                                        <span class="d-block">@c.Phone</span>
+                                    }
+                                    @if (string.IsNullOrWhiteSpace(c.ContactPerson) && string.IsNullOrWhiteSpace(c.Email) && string.IsNullOrWhiteSpace(c.Phone))
+                                    {
+                                        <span>—</span>
+                                    }
+                                </td>
+                                <td class="text-end text-success">@(item.TotalIncome > 0 ? $"{item.TotalIncome:N0} Br" : "—")</td>
+                                <td class="text-end text-danger">@(item.TotalExpense > 0 ? $"{item.TotalExpense:N0} Br" : "—")</td>
+                                <td class="text-end @(item.NetBalance >= 0 ? "text-success" : "text-danger")">@item.NetBalance.ToString("N0") Br</td>
+                                <td class="text-end">@item.TransactionCount</td>
+                                <td class="text-muted small">@(item.LastTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</td>
+                                <td class="text-end" style="white-space:nowrap" @onclick:stopPropagation="true">
+                                    <button class="btn btn-sm btn-outline" @onclick="() => OpenDetail(c.Id)">Подробнее</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="() => Edit(c)">Изменить</button>
+                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => Delete(c.Id)">Удалить</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
     </div>
 </div>
@@ -113,7 +152,7 @@
 
 @code {
     private string _userId = "";
-    private List<CounterpartyRecord>? _list;
+    private List<CounterpartyListItemDto>? _list;
     private int _detailId;
     private bool _detailOpen;
     private bool _showForm;
@@ -131,7 +170,7 @@
         await LoadAsync();
     }
 
-    private async Task LoadAsync() => _list = await CounterpartyService.ListAsync(_userId);
+    private async Task LoadAsync() => _list = await CounterpartyService.ListWithStatsAsync(_userId);
 
     private void OpenCreate()
     {
@@ -154,6 +193,12 @@
 
     private async Task Save()
     {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _message = "Укажите название контрагента.";
+            _isError = true;
+            return;
+        }
         try
         {
             if (_editId.HasValue)
@@ -183,7 +228,7 @@
     private void EditFromDetail(int id)
     {
         CloseDetail();
-        var c = _list?.FirstOrDefault(x => x.Id == id);
+        var c = _list?.FirstOrDefault(x => x.Record.Id == id)?.Record;
         if (c != null) Edit(c);
     }
 

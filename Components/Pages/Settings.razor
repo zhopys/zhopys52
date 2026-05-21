@@ -13,7 +13,7 @@
 @inject IUserContextService UserContext
 @inject ITaxAutoRuleService TaxAutoRuleService
 @inject IJSRuntime JS
-@attribute [Authorize]
+@attribute [Authorize(Policy = "CanManageSettings")]
 
 <PageTitle>Настройки — MiniFinance</PageTitle>
 
@@ -202,7 +202,7 @@
     {
         isDark = dark;
         var theme = dark ? "dark" : "light";
-        await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{theme}'); try {{ localStorage.setItem('theme', '{theme}'); }} catch(e) {{}}");
+        await JS.InvokeVoidAsync("eval", $"window.themeUtils && window.themeUtils.set('{theme}');");
     }
 
     private async Task ToggleTheme() => await SetTheme(!isDark);

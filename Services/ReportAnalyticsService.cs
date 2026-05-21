@@ -19,6 +19,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
     private readonly IAccountingIntegrationService _accountingService;
     private readonly ICategorizationService _categorizationService;
     private readonly IDataScopeService _dataScope;
+    private readonly IUserContextService _userContext;
 
     public ReportAnalyticsService(
         ApplicationDbContext db,
@@ -27,7 +28,8 @@ public class ReportAnalyticsService : IReportAnalyticsService
         ITransactionDataStatusService dataStatusService,
         IAccountingIntegrationService accountingService,
         ICategorizationService categorizationService,
-        IDataScopeService dataScope)
+        IDataScopeService dataScope,
+        IUserContextService userContext)
     {
         _db = db;
         _reportService = reportService;
@@ -36,6 +38,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
         _accountingService = accountingService;
         _categorizationService = categorizationService;
         _dataScope = dataScope;
+        _userContext = userContext;
     }
 
     public async Task<ReportAnalyticsSnapshot> BuildSnapshotAsync(string userId, ReportFilters filters)
@@ -43,9 +46,11 @@ public class ReportAnalyticsService : IReportAnalyticsService
         userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         filters.ForecastDays = filters.ForecastDays switch { 30 => 30, 60 => 60, _ => 90 };
 
-        var allTransactions = await _db.Transactions
-            .Include(t => t.Project)
-            .Where(t => t.UserId == userId)
+        var ctx = await _userContext.GetContextAsync(userId);
+        var allTransactions = await _userContext
+            .FilterTransactionsForRole(
+                _db.Transactions.Include(t => t.Project).Where(t => t.UserId == userId),
+                ctx)
             .OrderByDescending(t => t.Date)
             .ToListAsync();
 

@@ -32,7 +32,7 @@
                         }
                         @if (_project.IsDefault)
                         {
-                            <span class="badge badge-secondary">По умолчанию</span>
+                            <span class="badge badge-accent">По умолчанию</span>
                         }
                         @if (_metrics != null)
                         {
@@ -393,7 +393,7 @@
         ProjectStatus.Completed => "badge-info",
         ProjectStatus.OnHold => "badge-warning",
         ProjectStatus.Cancelled => "badge-danger",
-        _ => "badge-secondary"
+        _ => "badge-info"
     };
 
     private static string PriorityLabel(ProjectPriority p) => p switch

@@ -21,6 +21,58 @@ public class CounterpartyService : ICounterpartyService
         return await _db.Counterparties.Where(c => c.UserId == userId).OrderBy(c => c.Name).ToListAsync();
     }
 
+    public async Task<List<CounterpartyListItemDto>> ListWithStatsAsync(string userId)
+    {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
+        var records = await _db.Counterparties.Where(c => c.UserId == userId).OrderBy(c => c.Name).ToListAsync();
+        if (records.Count == 0) return [];
+
+        var ids = records.Select(c => c.Id).ToList();
+        var nameToId = records.ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
+
+        var txs = await _db.Transactions
+            .Where(t => t.UserId == userId &&
+                (t.CounterpartyId != null && ids.Contains(t.CounterpartyId.Value) ||
+                 (t.Counterparty != null && nameToId.ContainsKey(t.Counterparty))))
+            .Select(t => new { t.CounterpartyId, t.Counterparty, t.Amount, t.Date })
+            .ToListAsync();
+
+        var statsById = records.ToDictionary(c => c.Id, _ => new TxAgg());
+
+        foreach (var t in txs)
+        {
+            int? key = t.CounterpartyId;
+            if (key == null && t.Counterparty != null && nameToId.TryGetValue(t.Counterparty, out var byName))
+                key = byName;
+            if (key == null || !statsById.TryGetValue(key.Value, out var agg)) continue;
+            agg.Count++;
+            if (t.Amount > 0) agg.Income += t.Amount;
+            else agg.Expense += Math.Abs(t.Amount);
+            if (agg.Last == null || t.Date > agg.Last) agg.Last = t.Date;
+        }
+
+        return records.Select(c =>
+        {
+            var s = statsById[c.Id];
+            return new CounterpartyListItemDto
+            {
+                Record = c,
+                TotalIncome = s.Income,
+                TotalExpense = s.Expense,
+                TransactionCount = s.Count,
+                LastTransactionDate = s.Last
+            };
+        }).ToList();
+    }
+
+    private sealed class TxAgg
+    {
+        public decimal Income;
+        public decimal Expense;
+        public int Count;
+        public DateTime? Last;
+    }
+
     public async Task<CounterpartyRecord> CreateAsync(CounterpartyRecord record, string userId)
     {
         userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
@@ -86,12 +138,28 @@ public class CounterpartyService : ICounterpartyService
             .OrderBy(d => d.DueDate)
             .ToListAsync();
 
+        var categoryStats = txs
+            .GroupBy(t => t.Category, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new CounterpartyCategoryStatDto
+            {
+                Category = g.Key,
+                Income = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
+                Expense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount)),
+                Count = g.Count()
+            })
+            .OrderByDescending(c => c.Income + c.Expense)
+            .ToList();
+
         return new CounterpartyDetailDto
         {
             Record = record,
             TotalIncome = txs.Where(t => t.Amount > 0).Sum(t => t.Amount),
             TotalExpense = Math.Abs(txs.Where(t => t.Amount < 0).Sum(t => t.Amount)),
             TransactionCount = txs.Count,
+            FirstTransactionDate = txs.Count > 0 ? txs.Min(t => t.Date) : null,
+            LastTransactionDate = txs.Count > 0 ? txs.Max(t => t.Date) : null,
+            AvgTransactionAmount = txs.Count > 0 ? txs.Average(t => Math.Abs(t.Amount)) : 0,
+            CategoryStats = categoryStats,
             Transactions = txs,
             OpenDebts = debts,
             OpenReceivable = debts.Where(d => d.Type == DebtType.Receivable).Sum(d => d.Amount - d.PaidAmount),

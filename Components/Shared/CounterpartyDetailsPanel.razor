@@ -23,7 +23,11 @@
         @if (_detail != null)
         {
             <button type="button" class="btn btn-sm btn-outline" @onclick="EditClicked">Изменить</button>
-            <a href="/transactions?counterparty=@Uri.EscapeDataString(_detail.Record.Name)" class="btn btn-sm btn-outline">Все операции</a>
+            <a href="/transactions" class="btn btn-sm btn-outline">Все операции</a>
+            @if (_detail.OpenDebts.Any())
+            {
+                <a href="/debts" class="btn btn-sm btn-outline">Долги</a>
+            }
         }
     </Actions>
     <ChildContent>
@@ -52,12 +56,43 @@
                 </div>
             </div>
 
+            @if (_detail.OpenReceivable > 0 || _detail.OpenPayable > 0)
+            {
+                <div class="detail-kpi-row mb-3">
+                    <div class="detail-kpi">
+                        <span class="detail-kpi-label">Нам должны</span>
+                        <span class="detail-kpi-value text-success">@_detail.OpenReceivable.ToString("N2") Br</span>
+                    </div>
+                    <div class="detail-kpi">
+                        <span class="detail-kpi-label">Мы должны</span>
+                        <span class="detail-kpi-value text-danger">@_detail.OpenPayable.ToString("N2") Br</span>
+                    </div>
+                </div>
+            }
+
             <DetailFields Columns="2">
                 <DetailField Label="Контакт">@(_detail.Record.ContactPerson ?? "—")</DetailField>
-                <DetailField Label="Email">@(_detail.Record.Email ?? "—")</DetailField>
-                <DetailField Label="Телефон">@(_detail.Record.Phone ?? "—")</DetailField>
+                <DetailField Label="Email">
+                    @if (!string.IsNullOrWhiteSpace(_detail.Record.Email))
+                    {
+                        <a href="mailto:@_detail.Record.Email">@_detail.Record.Email</a>
+                    }
+                    else { <span>—</span> }
+                </DetailField>
+                <DetailField Label="Телефон">
+                    @if (!string.IsNullOrWhiteSpace(_detail.Record.Phone))
+                    {
+                        <a href="tel:@_detail.Record.Phone">@_detail.Record.Phone</a>
+                    }
+                    else { <span>—</span> }
+                </DetailField>
                 <DetailField Label="УНП">@(_detail.Record.TaxId ?? "—")</DetailField>
+                <DetailField Label="Первая операция">@(_detail.FirstTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
+                <DetailField Label="Последняя операция">@(_detail.LastTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
+                <DetailField Label="Средний чек">@(_detail.TransactionCount > 0 ? $"{_detail.AvgTransactionAmount:N2} Br" : "—")</DetailField>
+                <DetailField Label="В справочнике с">@_detail.Record.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</DetailField>
             </DetailFields>
+
             @if (!string.IsNullOrWhiteSpace(_detail.Record.Notes))
             {
                 <DetailField Label="Заметки" ValueClass="mt-2">
@@ -65,16 +100,36 @@
                 </DetailField>
             }
 
+            @if (_detail.CategoryStats.Any())
+            {
+                <h4 class="detail-section-title">По категориям</h4>
+                <table class="table table-sm">
+                    <thead><tr><th>Категория</th><th class="text-end">Доход</th><th class="text-end">Расход</th><th class="text-end">Оп.</th></tr></thead>
+                    <tbody>
+                        @foreach (var cat in _detail.CategoryStats.Take(12))
+                        {
+                            <tr>
+                                <td>@cat.Category</td>
+                                <td class="text-end text-success">@(cat.Income > 0 ? cat.Income.ToString("N0") : "—")</td>
+                                <td class="text-end text-danger">@(cat.Expense > 0 ? cat.Expense.ToString("N0") : "—")</td>
+                                <td class="text-end text-muted">@cat.Count</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
             @if (_detail.OpenDebts.Any())
             {
                 <h4 class="detail-section-title">Открытые долги</h4>
                 <table class="table table-sm">
-                    <thead><tr><th>Тип</th><th class="text-end">Остаток</th><th>Срок</th></tr></thead>
+                    <thead><tr><th>Тип</th><th>Описание</th><th class="text-end">Остаток</th><th>Срок</th></tr></thead>
                     <tbody>
                         @foreach (var d in _detail.OpenDebts)
                         {
                             <tr>
                                 <td>@(d.Type == DebtType.Receivable ? "Нам должны" : "Мы должны")</td>
+                                <td class="small">@(d.Description ?? "—")</td>
                                 <td class="text-end">@((d.Amount - d.PaidAmount).ToString("N2")) Br</td>
                                 <td>@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</td>
                             </tr>
@@ -97,8 +152,8 @@
                         {
                             <tr>
                                 <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
-                                <td>@t.Description</td>
-                                <td><span class="badge">@t.Category</span></td>
+                                <td>@(string.IsNullOrWhiteSpace(t.Description) ? "—" : t.Description)</td>
+                                <td><span class="badge badge-outline">@t.Category</span></td>
                                 <td class="text-end @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("N2")</td>
                             </tr>
                         }

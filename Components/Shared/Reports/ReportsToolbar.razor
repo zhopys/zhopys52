@@ -104,15 +104,21 @@
         }
 
         <div class="reports-toolbar-export-row mt-2">
-            <span class="text-muted small">Экспорт с учётом фильтров:</span>
-            <div class="reports-toolbar-export">
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf")' disabled="@Disabled" title="Полный отчёт PDF">
-                    PDF
+            <span class="text-muted small">Экспорт (период и фильтры):</span>
+            <div class="reports-toolbar-export reports-toolbar-export--wide">
+                <button type="button" class="btn btn-primary btn-sm" @onclick='() => Export("pdf", "full")' disabled="@Disabled" title="PDF: KPI, P&L, Cash Flow, ОСВ, книга, транзакции">
+                    PDF — всё
                 </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("xlsx")' disabled="@Disabled" title="P&L, Cash Flow, KPI">
-                    Excel
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf", "transactions")' disabled="@Disabled">
+                    PDF — транзакции
                 </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("csv")' disabled="@Disabled" title="Сырые транзакции">
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf")' disabled="@Disabled" title="PDF по активной вкладке">
+                    PDF — вкладка
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("xlsx", "full")' disabled="@Disabled">
+                    Excel — всё
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("csv", "transactions")' disabled="@Disabled">
                     CSV
                 </button>
             </div>
@@ -141,7 +147,7 @@
     [Parameter] public IReadOnlyList<Project> Projects { get; set; } = Array.Empty<Project>();
     [Parameter] public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
     [Parameter] public EventCallback OnFiltersChanged { get; set; }
-    [Parameter] public EventCallback<string> OnExport { get; set; }
+    [Parameter] public EventCallback<(string Format, string? Report)> OnExport { get; set; }
     [Parameter] public EventCallback OnReset { get; set; }
     [Parameter] public bool Disabled { get; set; }
 
@@ -203,7 +209,7 @@
             : Task.CompletedTask;
 
     private Task ApplyFilters() => OnFiltersChanged.InvokeAsync();
-    private Task Export(string format) => OnExport.InvokeAsync(format);
+    private Task Export(string format, string? report = null) => OnExport.InvokeAsync((format, report));
     private Task ResetFilters() => OnReset.InvokeAsync();
 
     private Task ClearProject() => ProjectIdChanged.InvokeAsync(null);

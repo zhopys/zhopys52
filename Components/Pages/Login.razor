@@ -23,12 +23,18 @@
 
         @if (!string.IsNullOrEmpty(_successMessage))
         {
-            <div class="alert alert-success">@_successMessage</div>
+            <div class="alert alert-success" role="alert">@_successMessage</div>
         }
 
-        @if (!string.IsNullOrEmpty(_errorMessage))
+        @if (_unconfirmedError)
         {
-            <div class="alert alert-danger">@_errorMessage</div>
+            <div class="alert alert-danger" role="alert">
+                Подтвердите email. <a href="@_resendLink">Отправить ссылку</a>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger" role="alert">@_errorMessage</div>
         }
 
         <form method="post" action="/Account/Login">
@@ -69,13 +75,9 @@
             <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
         </form>
 
-        <ExternalLoginPicker />
-
         <div class="login-footer">
             <a href="Account/ForgotPassword">Забыли пароль?</a>
-            <span style="margin:0 .5rem;color:var(--border)">|</span>
             <a href="@_registerLink">Регистрация</a>
-            <span style="margin:0 .5rem;color:var(--border)">|</span>
             <a href="@_resendLink">Подтвердить email</a>
         </div>
     </div>
@@ -85,6 +87,7 @@
     private string _email = "";
     private string? _errorMessage;
     private string? _successMessage;
+    private bool _unconfirmedError;
     private string _registerLink = "/Account/Register";
     private string _resendLink = "/Account/ResendEmailConfirmation";
     private AntiforgeryTokenSet? _afTokens;
@@ -139,19 +142,19 @@
     private void ApplyQueryMessages()
     {
         if (Confirmed == "1")
-        {
-            _successMessage = "Email подтверждён. Введите пароль, который вы указали при регистрации.";
-        }
+            _successMessage = "Email подтверждён. Войдите с паролем.";
 
+        _unconfirmedError = ErrorFromQuery == "unconfirmed";
         _errorMessage = ErrorFromQuery switch
         {
             "empty" => "Введите email и пароль.",
             "invalid" => "Неверный email или пароль.",
-            "unconfirmed" => "Email не подтверждён. Проверьте почту или запросите ссылку повторно.",
-            "invalid_link" => "Некорректная ссылка подтверждения.",
-            "user_not_found" => "Пользователь не найден. Зарегистрируйтесь снова.",
-            "confirm_failed" => "Не удалось подтвердить email. Запросите новое письмо.",
-            "invalid_code" => "Ссылка устарела или уже использована.",
+            "unconfirmed" => null,
+            "invalid_link" => "Некорректная ссылка.",
+            "session_expired" => "Сессия истекла — обновите страницу (F5).",
+            "user_not_found" => "Пользователь не найден.",
+            "confirm_failed" => "Не удалось подтвердить email.",
+            "invalid_code" => "Ссылка устарела.",
             _ => _errorMessage
         };
     }

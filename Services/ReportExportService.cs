@@ -19,12 +19,15 @@ public class ReportExportService : IReportExportService
     public (string ContentType, string FileName, byte[] Data) Export(ReportAnalyticsSnapshot snapshot, string format, string userId)
     {
         var f = snapshot.Filters;
-        var stem = $"MiniFinance_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}";
+        var report = f.ExportReport.ToLowerInvariant();
+        var stem = report is "full" or ""
+            ? $"MiniFinance_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}"
+            : $"MiniFinance_{report}_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}";
         return format.ToLowerInvariant() switch
         {
             "csv" => ("text/csv; charset=utf-8", $"{stem}_transactions.csv", ExportCsv(snapshot, userId)),
             "xlsx" or "excel" => ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"{stem}.xlsx", ExportXlsx(snapshot, userId)),
-            "pdf" => ("application/pdf", $"{stem}.pdf", ExportPdf(snapshot)),
+            "pdf" => ("application/pdf", $"{stem}.pdf", ExportPdf(snapshot, userId)),
             _ => throw new ArgumentException($"Unknown format: {format}")
         };
     }
@@ -75,6 +78,8 @@ public class ReportExportService : IReportExportService
             BuildSummarySheet(wb, snapshot);
             BuildPlSheet(wb, snapshot);
             BuildCashFlowSheet(wb, snapshot);
+            BuildTrialBalanceSheet(wb, snapshot);
+            BuildIncomeBookSheet(wb, snapshot);
             BuildProfitabilitySheet(wb, snapshot);
             BuildForecastSheet(wb, snapshot);
             BuildTransactionsSheet(wb, snapshot, userId);
@@ -85,8 +90,14 @@ public class ReportExportService : IReportExportService
             BuildCashFlowSheet(wb, snapshot);
         else if (report == "transactions")
             BuildTransactionsSheet(wb, snapshot, userId);
-        else if (report == "profitability")
+        else if (report is "profitability")
             BuildProfitabilitySheet(wb, snapshot);
+        else if (report is "trial" or "categories")
+            BuildTrialBalanceSheet(wb, snapshot);
+        else if (report is "book")
+            BuildIncomeBookSheet(wb, snapshot);
+        else if (report is "forecast")
+            BuildForecastSheet(wb, snapshot);
         else
             BuildSummarySheet(wb, snapshot);
 
@@ -98,8 +109,40 @@ public class ReportExportService : IReportExportService
         return ms.ToArray();
     }
 
-    public byte[] ExportPdf(ReportAnalyticsSnapshot snapshot) =>
-        _pdfService.GenerateFullReportPdf(snapshot);
+    public byte[] ExportPdf(ReportAnalyticsSnapshot snapshot, string userId)
+    {
+        var report = snapshot.Filters.ExportReport.ToLowerInvariant();
+        var f = snapshot.Filters;
+        var tx = MapTransactions(LoadTransactions(userId, f));
+
+        return report switch
+        {
+            "pl" when snapshot.ProfitLoss != null =>
+                _pdfService.GenerateProfitLossPdf(snapshot.ProfitLoss, f.Start, f.End),
+            "cashflow" when snapshot.CashFlow != null =>
+                _pdfService.GenerateCashFlowPdf(snapshot.CashFlow, f.Start, f.End),
+            "trial" or "categories" when snapshot.TrialBalance != null =>
+                _pdfService.GenerateTrialBalancePdf(snapshot.TrialBalance, f.Start, f.End),
+            "book" =>
+                _pdfService.GenerateIncomeBookPdf(snapshot.IncomeExpenseBook, f.Start, f.End),
+            "transactions" =>
+                _pdfService.GenerateTransactionsPdf(tx, f.Start, f.End),
+            "profitability" =>
+                _pdfService.GenerateProfitabilityPdf(snapshot.ProfitabilityMatrix, f.Start, f.End),
+            "forecast" =>
+                _pdfService.GenerateForecastPdf(snapshot.Forecast, f.Start, f.End),
+            _ => _pdfService.GenerateFullReportPdf(snapshot, tx)
+        };
+    }
+
+    private static List<TransactionPdfRow> MapTransactions(List<Data.Models.Transaction> tx) =>
+        tx.Select(t => new TransactionPdfRow(
+            t.Date,
+            string.IsNullOrWhiteSpace(t.Description) ? t.Category : t.Description.Trim(),
+            string.IsNullOrWhiteSpace(t.Category) ? "Без категории" : t.Category,
+            t.Amount,
+            t.Project?.Name,
+            string.IsNullOrWhiteSpace(t.Counterparty) ? null : t.Counterparty.Trim())).ToList();
 
     private List<Data.Models.Transaction> LoadTransactions(string userId, ReportFilters f)
     {
@@ -337,6 +380,80 @@ public class ReportExportService : IReportExportService
             ws.Cell(r, 3).Value = p.IsGap ? "Да" : "";
             if (p.IsGap) ws.Row(r).Style.Fill.BackgroundColor = XLColor.LightPink;
             r++;
+        }
+        ws.Columns().AdjustToContents();
+    }
+
+    private static void BuildTrialBalanceSheet(XLWorkbook wb, ReportAnalyticsSnapshot s)
+    {
+        var tb = s.TrialBalance;
+        if (tb == null) return;
+
+        var ws = wb.Worksheets.Add("ОСВ");
+        ws.Cell(1, 1).Value = "Оборотно-сальдовая ведомость";
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(2, 1).Value = $"{s.Filters.Start:dd.MM.yyyy} — {s.Filters.End:dd.MM.yyyy}";
+
+        ws.Cell(4, 1).Value = "Категория";
+        ws.Cell(4, 2).Value = "Сальдо нач.";
+        ws.Cell(4, 3).Value = "Дебет";
+        ws.Cell(4, 4).Value = "Кредит";
+        ws.Cell(4, 5).Value = "Сальдо кон.";
+        ws.Range(4, 1, 4, 5).Style.Font.Bold = true;
+
+        int r = 5;
+        foreach (var e in tb.Entries)
+        {
+            ws.Cell(r, 1).Value = e.Category;
+            ws.Cell(r, 2).Value = (double)e.OpeningBalance;
+            ws.Cell(r, 3).Value = (double)e.Debit;
+            ws.Cell(r, 4).Value = (double)e.Credit;
+            ws.Cell(r, 5).Value = (double)e.ClosingBalance;
+            r++;
+        }
+        ws.Cell(r, 1).Value = "Итого";
+        ws.Cell(r, 2).Value = (double)tb.TotalOpeningBalance;
+        ws.Cell(r, 3).Value = (double)tb.TotalDebit;
+        ws.Cell(r, 4).Value = (double)tb.TotalCredit;
+        ws.Cell(r, 5).Value = (double)tb.TotalClosingBalance;
+        ws.Row(r).Style.Font.Bold = true;
+        ws.Columns().AdjustToContents();
+    }
+
+    private static void BuildIncomeBookSheet(XLWorkbook wb, ReportAnalyticsSnapshot s)
+    {
+        var ws = wb.Worksheets.Add("Книга учёта");
+        ws.Cell(1, 1).Value = "Книга учёта доходов и расходов";
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(2, 1).Value = $"{s.Filters.Start:dd.MM.yyyy} — {s.Filters.End:dd.MM.yyyy}";
+
+        ws.Cell(4, 1).Value = "№";
+        ws.Cell(4, 2).Value = "Дата";
+        ws.Cell(4, 3).Value = "Документ";
+        ws.Cell(4, 4).Value = "Контрагент";
+        ws.Cell(4, 5).Value = "Содержание";
+        ws.Cell(4, 6).Value = "Доход";
+        ws.Cell(4, 7).Value = "Расход";
+        ws.Range(4, 1, 4, 7).Style.Font.Bold = true;
+
+        int r = 5;
+        foreach (var e in s.IncomeExpenseBook)
+        {
+            ws.Cell(r, 1).Value = e.EntryNumber;
+            ws.Cell(r, 2).Value = e.Date;
+            ws.Cell(r, 3).Value = e.DocumentNumber;
+            ws.Cell(r, 4).Value = e.Counterparty;
+            ws.Cell(r, 5).Value = e.Description;
+            ws.Cell(r, 6).Value = (double)e.Income;
+            ws.Cell(r, 7).Value = (double)e.Expense;
+            r++;
+        }
+        if (r > 5)
+        {
+            ws.Cell(r, 5).Value = "Итого";
+            ws.Cell(r, 6).FormulaA1 = $"=SUM(F5:F{r - 1})";
+            ws.Cell(r, 7).FormulaA1 = $"=SUM(G5:G{r - 1})";
+            ws.Row(r).Style.Font.Bold = true;
         }
         ws.Columns().AdjustToContents();
     }
