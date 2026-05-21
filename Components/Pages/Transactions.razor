@@ -248,7 +248,19 @@
                                 <tr class="@(t.Amount < 0 ? "negative-balance" : null)" data-balance="@t.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                                     <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
                                     <td><span class="badge @(t.Amount >= 0 ? "badge-success" : "badge-danger")">@(t.Amount >= 0 ? "Доход" : "Расход")</span></td>
-                                    <td><span class="badge">@t.Category</span></td>
+                                    <td>
+                                        @{
+                                            _categoryByName.TryGetValue(t.Category, out var catRow);
+                                        }
+                                        @if (catRow != null)
+                                        {
+                                            <CategoryBadge Category="@catRow" Name="@catRow.Name" />
+                                        }
+                                        else
+                                        {
+                                            <CategoryBadge Name="@t.Category" />
+                                        }
+                                    </td>
                                     <td>@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</td>
                                     <td class="text-end fw-bold amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                         @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") Br
@@ -292,6 +304,7 @@
 
     private List<Transaction> transactions = new();
     private List<string> categoryNames = new();
+    private Dictionary<string, Category> _categoryByName = new(StringComparer.OrdinalIgnoreCase);
     private List<Project> userProjects = new();
     private List<CounterpartyRecord> counterparties = new();
 
@@ -329,17 +342,25 @@
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(filteredCount / (double)PageSize));
     private decimal totalBalance => transactions.Sum(t => t.Amount);
 
+    [SupplyParameterFromQuery(Name = "category")]
+    public string? QueryCategory { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = await UserManager.GetUserAsync(authState.User);
         if (user == null) return;
 
+        if (!string.IsNullOrWhiteSpace(QueryCategory))
+            _filterCategory = QueryCategory.Trim();
+
         _userId = user.Id;
         _authorName = user.Email;
         var dataOwnerId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
         await CategorizationService.EnsureDefaultCategoriesAsync();
         categoryNames = await CategorizationService.GetCategoryNamesAsync();
+        var cats = await DbContext.Categories.AsNoTracking().ToListAsync();
+        _categoryByName = cats.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
 
         userProjects = await DbContext.Projects
             .Where(p => p.UserId == dataOwnerId || p.IsDefault)

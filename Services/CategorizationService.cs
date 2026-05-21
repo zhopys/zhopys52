@@ -55,7 +55,16 @@ namespace MiniFinance.Services
             foreach (var (name, type, keywords, icon, color) in CategoryDefaults.All)
             {
                 var existing = await _db.Categories.FirstOrDefaultAsync(c => c.Name == name);
-                if (existing != null) continue;
+                if (existing != null)
+                {
+                    if (string.IsNullOrWhiteSpace(existing.Icon))
+                        existing.Icon = icon;
+                    if (string.IsNullOrWhiteSpace(existing.Color))
+                        existing.Color = color;
+                    if (string.IsNullOrWhiteSpace(existing.Keywords) && !string.IsNullOrWhiteSpace(keywords))
+                        existing.Keywords = keywords;
+                    continue;
+                }
 
                 _db.Categories.Add(new Category
                 {
@@ -94,16 +103,42 @@ namespace MiniFinance.Services
         public async Task<List<string>> GetCategoryNamesAsync() =>
             await _db.Categories.Where(c => !c.IsHidden).OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
 
-        public async Task<Category> UpdateCategoryAsync(int id, string name, CategoryType type, string? keywords)
+        public async Task<Category?> GetCategoryAsync(int id) =>
+            await _db.Categories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+
+        public async Task<CategoryStatsDto> GetCategoryStatsAsync(int categoryId, string userId)
         {
-            var cat = await _db.Categories.FindAsync(id)
+            var cat = await _db.Categories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == categoryId)
                 ?? throw new KeyNotFoundException("Категория не найдена");
 
-            var trimmed = name.Trim();
+            var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            var txs = await _db.Transactions.AsNoTracking()
+                .Where(t => t.UserId == userId && t.Category == cat.Name)
+                .Select(t => new { t.Amount, t.Date })
+                .ToListAsync();
+
+            var monthTxs = txs.Where(t => t.Date >= monthStart).ToList();
+
+            return new CategoryStatsDto
+            {
+                Id = categoryId,
+                TransactionCount = txs.Count,
+                TotalAmount = txs.Sum(t => t.Amount),
+                MonthTransactionCount = monthTxs.Count,
+                MonthAmount = monthTxs.Sum(t => t.Amount)
+            };
+        }
+
+        public async Task<Category> UpdateCategoryAsync(CategoryUpdateRequest request)
+        {
+            var cat = await _db.Categories.FindAsync(request.Id)
+                ?? throw new KeyNotFoundException("Категория не найдена");
+
+            var trimmed = request.Name.Trim();
             if (string.IsNullOrEmpty(trimmed))
                 throw new InvalidOperationException("Название категории обязательно");
 
-            if (await _db.Categories.AnyAsync(c => c.Id != id && c.Name.ToLower() == trimmed.ToLower()))
+            if (await _db.Categories.AnyAsync(c => c.Id != request.Id && c.Name.ToLower() == trimmed.ToLower()))
                 throw new InvalidOperationException("Категория с таким названием уже существует");
 
             var oldName = cat.Name;
@@ -115,10 +150,23 @@ namespace MiniFinance.Services
             }
 
             cat.Name = trimmed;
-            cat.Type = type;
-            cat.Keywords = string.IsNullOrWhiteSpace(keywords) ? null : keywords.Trim();
+            cat.Type = request.Type;
+            cat.Keywords = string.IsNullOrWhiteSpace(request.Keywords) ? null : request.Keywords.Trim();
+            cat.Icon = string.IsNullOrWhiteSpace(request.Icon) ? null : request.Icon.Trim();
+            cat.Color = string.IsNullOrWhiteSpace(request.Color) ? null : request.Color.Trim();
+            cat.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+            cat.MonthlyBudget = request.MonthlyBudget is > 0 ? request.MonthlyBudget : null;
+
             await _db.SaveChangesAsync();
             return cat;
+        }
+
+        public async Task SetCategoryHiddenAsync(int id, bool hidden)
+        {
+            var cat = await _db.Categories.FindAsync(id)
+                ?? throw new KeyNotFoundException("Категория не найдена");
+            cat.IsHidden = hidden;
+            await _db.SaveChangesAsync();
         }
     }
 }

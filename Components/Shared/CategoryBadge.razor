@@ -1,0 +1,14 @@
+@using MiniFinance.Data.Models
+
+<span class="category-badge">
+    <CategoryIcon Name="@Name" Icon="@Icon" Color="@Color" Type="@Type" Category="@Category" Size="sm" />
+    <span>@Name</span>
+</span>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public CategoryType Type { get; set; } = CategoryType.Expense;
+    [Parameter] public Category? Category { get; set; }
+}

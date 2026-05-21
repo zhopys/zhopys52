@@ -1,0 +1,31 @@
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+
+<span class="category-icon @SizeClass" style="--cat-color:@ResolvedColor" title="@Name" aria-hidden="true">
+    <i class="bi @BiClass"></i>
+</span>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public CategoryType Type { get; set; } = CategoryType.Expense;
+    [Parameter] public Category? Category { get; set; }
+    [Parameter] public string Size { get; set; } = "md";
+
+    private string BiClass => CategoryIconHelper.ResolveBiClass(
+        Category?.Icon ?? Icon,
+        Category?.Name ?? Name);
+
+    private string ResolvedColor => CategoryIconHelper.ResolveColor(
+        Category?.Color ?? Color,
+        Category?.Name ?? Name,
+        Category?.Type ?? Type);
+
+    private string SizeClass => Size switch
+    {
+        "sm" => "category-icon-sm",
+        "lg" => "category-icon-lg",
+        _ => ""
+    };
+}

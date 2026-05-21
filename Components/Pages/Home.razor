@@ -139,7 +139,14 @@
                                     {
                                         <div class="home-cat-row">
                                             <div class="home-cat-head">
-                                                <span>@cat.Name</span>
+                                                @if (_categoryByName.TryGetValue(cat.Name, out var catMeta))
+                                                {
+                                                    <CategoryBadge Category="@catMeta" Name="@catMeta.Name" />
+                                                }
+                                                else
+                                                {
+                                                    <CategoryBadge Name="@cat.Name" />
+                                                }
                                                 <span class="fw-bold text-danger">@cat.Amount.ToString("N0") Br</span>
                                             </div>
                                             <div class="home-cat-bar">
@@ -231,6 +238,7 @@
     private List<Reminder> upcomingReminders = new();
     private List<UpcomingItem> upcomingItems = new();
     private List<CategoryRow> topExpenseCategories = new();
+    private Dictionary<string, Category> _categoryByName = new(StringComparer.OrdinalIgnoreCase);
 
     private decimal balance;
     private decimal monthIncome;
@@ -267,6 +275,9 @@
         if (user != null)
         {
             var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+            var cats = await DbContext.Categories.AsNoTracking().ToListAsync();
+            _categoryByName = cats.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+
             transactions = await DbContext.Transactions
                 .Where(t => t.UserId == dataId && t.IsConfirmed)
                 .OrderByDescending(t => t.Date)

@@ -1,0 +1,326 @@
+@using MiniFinance.Data.Models
+@using MiniFinance.Services
+@inject ICategorizationService CategorizationService
+@inject IDataScopeService DataScope
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<DetailsDrawer IsOpen="@IsOpen" OnClose="OnClose">
+    <HeaderContent>
+        @if (_cat != null)
+        {
+            <div class="category-detail-header">
+                <CategoryIcon Category="@_cat" Size="lg" />
+                <div>
+                    <h3 class="mb-0">@_cat.Name</h3>
+                    <div class="category-detail-meta">
+                        <span class="badge @(_cat.Type == CategoryType.Income ? "badge-success" : "badge-danger")">
+                            @(_cat.Type == CategoryType.Income ? "Доход" : "Расход")
+                        </span>
+                        @if (_cat.IsDefault)
+                        {
+                            <span class="badge badge-info">Системная</span>
+                        }
+                        @if (_cat.IsHidden)
+                        {
+                            <span class="badge">Скрыта</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <span>Категория</span>
+        }
+    </HeaderContent>
+    <Actions>
+        @if (_cat != null && !_editing)
+        {
+            <button type="button" class="btn btn-sm btn-outline" @onclick="StartEdit">Изменить</button>
+            <button type="button" class="btn btn-sm btn-outline" @onclick="ToggleHidden">
+                @(_cat.IsHidden ? "Показать" : "Скрыть")
+            </button>
+            <a class="btn btn-sm btn-outline" href="@TransactionsLink">Операции</a>
+        }
+        @if (_editing)
+        {
+            <button type="button" class="btn btn-sm btn-primary" @onclick="SaveEdit">Сохранить</button>
+            <button type="button" class="btn btn-sm btn-outline" @onclick="CancelEdit">Отмена</button>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_cat == null && CategoryId > 0)
+        {
+            <div class="text-muted small">Загрузка…</div>
+        }
+        else if (_cat != null)
+        {
+            @if (!string.IsNullOrEmpty(_panelMessage))
+            {
+                <div class="alert @(_panelError ? "alert-danger" : "alert-success") small mb-3">@_panelMessage</div>
+            }
+
+            @if (_stats != null && !_editing)
+            {
+                <div class="category-detail-kpis">
+                    <div class="category-detail-kpi">
+                        <span class="category-detail-kpi-label">Операций</span>
+                        <span class="category-detail-kpi-value">@_stats.TransactionCount</span>
+                    </div>
+                    <div class="category-detail-kpi">
+                        <span class="category-detail-kpi-label">За месяц</span>
+                        <span class="category-detail-kpi-value">@_stats.MonthTransactionCount</span>
+                    </div>
+                    <div class="category-detail-kpi">
+                        <span class="category-detail-kpi-label">Оборот (мес.)</span>
+                        <span class="category-detail-kpi-value @(_stats.MonthAmount >= 0 ? "text-success" : "text-danger")">
+                            @_stats.MonthAmount.ToString("N0") Br
+                        </span>
+                    </div>
+                </div>
+
+                @if (_cat.MonthlyBudget is > 0)
+                {
+                    var spent = Math.Abs(_stats.MonthAmount);
+                    var budget = _cat.MonthlyBudget.Value;
+                    var pct = budget > 0 ? Math.Min(100, (int)(spent / budget * 100)) : 0;
+                    <div class="category-budget-bar mb-3">
+                        <div class="small text-muted mb-1">Бюджет месяца: @spent.ToString("N0") / @budget.ToString("N0") Br</div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill @(pct >= 100 ? "over" : "")" style="width:@pct%"></div>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (_editing)
+            {
+                <div class="category-edit-form">
+                    <div class="form-group mb-2">
+                        <label class="form-label">Название</label>
+                        <input class="form-input" @bind="_editName" />
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Тип</label>
+                        <select class="form-input" @bind="_editType">
+                            <option value="@CategoryType.Expense">Расход</option>
+                            <option value="@CategoryType.Income">Доход</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Иконка</label>
+                        <div class="category-icon-picker">
+                            @foreach (var ic in CategoryIconHelper.PickerIcons)
+                            {
+                                <button type="button"
+                                        class="category-icon-pick @(_editIcon == ic.Key ? "active" : "")"
+                                        title="@ic.Label"
+                                        @onclick="() => _editIcon = ic.Key">
+                                    <i class="bi @ic.BiClass"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Цвет</label>
+                        <input type="color" class="form-input" @bind="_editColor" style="height:40px;padding:4px" />
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Ключевые слова</label>
+                        <input class="form-input" @bind="_editKeywords" placeholder="аренда, rent, офис" />
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-input" rows="2" @bind="_editDescription"></textarea>
+                    </div>
+                    <div class="form-group mb-2">
+                        <label class="form-label">Бюджет на месяц (Br)</label>
+                        <input type="number" class="form-input" @bind="_editBudget" step="100" min="0" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                @if (!string.IsNullOrWhiteSpace(_cat.Description))
+                {
+                    <p class="category-detail-desc">@_cat.Description</p>
+                }
+
+                <DetailFields Columns="2">
+                    <DetailField Label="Иконка">
+                        <CategoryIcon Category="@_cat" Size="sm" />
+                        <span class="small text-muted ms-1">@(_cat.Icon ?? "по умолчанию")</span>
+                    </DetailField>
+                    <DetailField Label="Цвет">
+                        <span class="category-color-swatch" style="background:@CategoryIconHelper.ResolveColor(_cat.Color, _cat.Name, _cat.Type)"></span>
+                    </DetailField>
+                </DetailFields>
+
+                <h4 class="detail-section-title">Ключевые слова</h4>
+                @if (CategoryIconHelper.SplitKeywords(_cat.Keywords).Any())
+                {
+                    <div class="category-keyword-chips">
+                        @foreach (var kw in CategoryIconHelper.SplitKeywords(_cat.Keywords))
+                        {
+                            <span class="filter-chip">@kw</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="small text-muted">Не заданы — авто-категоризация по названию не сработает.</p>
+                }
+
+                <h4 class="detail-section-title">Проверка авто-категоризации</h4>
+                <div class="category-test-box">
+                    <input class="form-input" @bind="_testDescription" placeholder="Текст из выписки, например: оплата аренды офиса" />
+                    <button type="button" class="btn btn-sm btn-outline mt-2" @onclick="RunTest">Проверить</button>
+                    @if (_testResult != null)
+                    {
+                        <div class="category-test-result mt-2">
+                            Результат: <strong>@_testResult</strong>
+                            @if (string.Equals(_testResult, _cat.Name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="text-success ms-1">✓ совпадает</span>
+                            }
+                            else
+                            {
+                                <span class="text-warning ms-1">другая категория</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </ChildContent>
+</DetailsDrawer>
+
+@code {
+    [Parameter] public int CategoryId { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Category? _cat;
+    private CategoryStatsDto? _stats;
+    private string _dataUserId = "";
+    private bool _editing;
+    private string _editName = "";
+    private CategoryType _editType;
+    private string _editKeywords = "";
+    private string _editIcon = "tag";
+    private string _editColor = "#64748b";
+    private string _editDescription = "";
+    private decimal? _editBudget;
+    private string _testDescription = "";
+    private string? _testResult;
+    private string? _panelMessage;
+    private bool _panelError;
+
+    private string TransactionsLink => _cat == null
+        ? "/transactions"
+        : $"/transactions?category={Uri.EscapeDataString(_cat.Name)}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen || CategoryId <= 0)
+        {
+            _cat = null;
+            return;
+        }
+
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+        _dataUserId = await DataScope.GetDataOwnerUserIdAsync(userId);
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _panelMessage = null;
+        _cat = await CategorizationService.GetCategoryAsync(CategoryId);
+        if (_cat == null) return;
+
+        if (!string.IsNullOrEmpty(_dataUserId))
+            _stats = await CategorizationService.GetCategoryStatsAsync(CategoryId, _dataUserId);
+
+        if (!_editing)
+            ResetEditFields();
+    }
+
+    private void ResetEditFields()
+    {
+        if (_cat == null) return;
+        var (icon, color) = CategoryIconHelper.Resolve(_cat);
+        _editName = _cat.Name;
+        _editType = _cat.Type;
+        _editKeywords = _cat.Keywords ?? "";
+        _editIcon = icon;
+        _editColor = color;
+        _editDescription = _cat.Description ?? "";
+        _editBudget = _cat.MonthlyBudget;
+    }
+
+    private void StartEdit()
+    {
+        ResetEditFields();
+        _editing = true;
+        _testResult = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _panelMessage = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_cat == null) return;
+        try
+        {
+            await CategorizationService.UpdateCategoryAsync(new CategoryUpdateRequest
+            {
+                Id = _cat.Id,
+                Name = _editName,
+                Type = _editType,
+                Keywords = _editKeywords,
+                Icon = _editIcon,
+                Color = _editColor,
+                Description = _editDescription,
+                MonthlyBudget = _editBudget
+            });
+            _editing = false;
+            _panelMessage = "Изменения сохранены";
+            _panelError = false;
+            await LoadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _panelMessage = ex.Message;
+            _panelError = true;
+        }
+    }
+
+    private async Task ToggleHidden()
+    {
+        if (_cat == null) return;
+        await CategorizationService.SetCategoryHiddenAsync(_cat.Id, !_cat.IsHidden);
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private void RunTest()
+    {
+        if (string.IsNullOrWhiteSpace(_testDescription))
+        {
+            _testResult = null;
+            return;
+        }
+        var amount = _cat?.Type == CategoryType.Income ? 100m : -100m;
+        _testResult = CategorizationService.CategorizeTransaction(_testDescription, amount);
+    }
+}

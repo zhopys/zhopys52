@@ -1,5 +1,8 @@
 @using MiniFinance.Data.Models
 @using MiniFinance.Services
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
+@inject ApplicationDbContext DbContext
 @inject ITagService TagService
 @inject IAttachmentService AttachmentService
 @inject ICommentService CommentService
@@ -42,7 +45,16 @@
                 <DetailField Label="Тип">
                     <span class="badge @(_tx.Amount >= 0 ? "badge-success" : "badge-danger")">@(_tx.Amount >= 0 ? "Доход" : "Расход")</span>
                 </DetailField>
-                <DetailField Label="Категория"><span class="badge">@_tx.Category</span></DetailField>
+                <DetailField Label="Категория">
+                    @if (_category != null)
+                    {
+                        <CategoryBadge Category="@_category" Name="@_category.Name" />
+                    }
+                    else
+                    {
+                        <CategoryBadge Name="@_tx.Category" />
+                    }
+                </DetailField>
                 <DetailField Label="Контрагент">@(_tx.Counterparty ?? _tx.CounterpartyEntity?.Name ?? "—")</DetailField>
                 <DetailField Label="Проект">@(_tx.Project?.Name ?? "—")</DetailField>
                 <DetailField Label="Способ оплаты">@(PaymentLabel(_tx.PaymentMethod))</DetailField>
@@ -110,6 +122,7 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private Transaction? _tx;
+    private Category? _category;
     private List<string> _tagNames = new();
     private string _tagsInput = "";
     private List<TransactionAttachment> _attachments = new();
@@ -134,6 +147,10 @@
         _canApprove = UserContext.CanApproveTransactions(ctx);
         _tx = await TransactionService.GetAsync(TransactionId, UserId);
         _status = _tx?.ApprovalStatus ?? TransactionApprovalStatus.Approved;
+        _category = _tx == null || string.IsNullOrWhiteSpace(_tx.Category)
+            ? null
+            : await DbContext.Categories.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Name == _tx.Category);
         _tagNames = (await TagService.GetTransactionTagNamesAsync(TransactionId, UserId)).ToList();
         _tagsInput = string.Join(", ", _tagNames);
         _attachments = await AttachmentService.ListAsync(TransactionId, UserId);
