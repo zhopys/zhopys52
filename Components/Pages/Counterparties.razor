@@ -17,7 +17,7 @@
 <div class="page-header">
     <div class="title">
         <h1>Контрагенты</h1>
-        <div class="meta text-muted">Справочник клиентов и поставщиков · обороты и долги</div>
+        <div class="meta text-muted">Справочник клиентов и поставщиков</div>
     </div>
     <div class="page-actions">
         <button class="btn btn-primary" @onclick="OpenCreate">Добавить</button>
@@ -90,18 +90,12 @@
                             <th>Название</th>
                             <th>Тип</th>
                             <th>Контакт</th>
-                            <th class="text-end">Доход</th>
-                            <th class="text-end">Расход</th>
-                            <th class="text-end">Сальдо</th>
-                            <th class="text-end">Операций</th>
-                            <th>Последняя</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var item in _list)
+                        @foreach (var c in _list)
                         {
-                            var c = item.Record;
                             <tr class="cp-table-row" @onclick="() => OpenDetail(c.Id)">
                                 <td style="width:52px" @onclick:stopPropagation="true">
                                     <img src="@CounterpartySvc.GetDisplayLogoUrl(c)" alt="" class="cp-avatar" width="36" height="36" loading="lazy" referrerpolicy="no-referrer" />
@@ -109,7 +103,7 @@
                                 <td class="fw-bold">
                                     <a href="#" @onclick="() => OpenDetail(c.Id)" @onclick:preventDefault>@c.Name</a>
                                 </td>
-                                <td><span class="badge badge-outline">@TypeLabel(c.Type)</span></td>
+                                <td><span class="badge badge-info">@TypeLabel(c.Type)</span></td>
                                 <td class="text-muted small cp-contact-cell">
                                     @if (!string.IsNullOrWhiteSpace(c.ContactPerson))
                                     {
@@ -128,11 +122,6 @@
                                         <span>—</span>
                                     }
                                 </td>
-                                <td class="text-end text-success">@(item.TotalIncome > 0 ? $"{item.TotalIncome:N0} Br" : "—")</td>
-                                <td class="text-end text-danger">@(item.TotalExpense > 0 ? $"{item.TotalExpense:N0} Br" : "—")</td>
-                                <td class="text-end @(item.NetBalance >= 0 ? "text-success" : "text-danger")">@item.NetBalance.ToString("N0") Br</td>
-                                <td class="text-end">@item.TransactionCount</td>
-                                <td class="text-muted small">@(item.LastTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</td>
                                 <td class="text-end" style="white-space:nowrap" @onclick:stopPropagation="true">
                                     <button class="btn btn-sm btn-outline" @onclick="() => OpenDetail(c.Id)">Подробнее</button>
                                     <button class="btn btn-sm btn-outline" @onclick="() => Edit(c)">Изменить</button>
@@ -152,7 +141,7 @@
 
 @code {
     private string _userId = "";
-    private List<CounterpartyListItemDto>? _list;
+    private List<CounterpartyRecord>? _list;
     private int _detailId;
     private bool _detailOpen;
     private bool _showForm;
@@ -170,7 +159,7 @@
         await LoadAsync();
     }
 
-    private async Task LoadAsync() => _list = await CounterpartyService.ListWithStatsAsync(_userId);
+    private async Task LoadAsync() => _list = await CounterpartyService.ListAsync(_userId);
 
     private void OpenCreate()
     {
@@ -199,6 +188,7 @@
             _isError = true;
             return;
         }
+
         try
         {
             if (_editId.HasValue)
@@ -228,7 +218,7 @@
     private void EditFromDetail(int id)
     {
         CloseDetail();
-        var c = _list?.FirstOrDefault(x => x.Record.Id == id)?.Record;
+        var c = _list?.FirstOrDefault(x => x.Id == id);
         if (c != null) Edit(c);
     }
 

@@ -5,21 +5,10 @@ namespace MiniFinance.Services;
 public interface ICounterpartyService
 {
     Task<List<CounterpartyRecord>> ListAsync(string userId);
-    Task<List<CounterpartyListItemDto>> ListWithStatsAsync(string userId);
     Task<CounterpartyRecord> CreateAsync(CounterpartyRecord record, string userId);
     Task<CounterpartyRecord> UpdateAsync(CounterpartyRecord record, string userId);
     Task DeleteAsync(int id, string userId);
     Task<CounterpartyDetailDto> GetDetailAsync(int id, string userId);
-}
-
-public sealed class CounterpartyListItemDto
-{
-    public CounterpartyRecord Record { get; init; } = new();
-    public decimal TotalIncome { get; init; }
-    public decimal TotalExpense { get; init; }
-    public decimal NetBalance => TotalIncome - TotalExpense;
-    public int TransactionCount { get; init; }
-    public DateTime? LastTransactionDate { get; init; }
 }
 
 public sealed class CounterpartyCategoryStatDto
