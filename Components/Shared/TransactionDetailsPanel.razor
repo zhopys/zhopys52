@@ -9,107 +9,170 @@
 @inject ITransactionService TransactionService
 @inject IUserContextService UserContext
 
-<DetailsDrawer IsOpen="@IsOpen" Wide="true" OnClose="OnClose">
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-entity" OnClose="OnClose">
     <HeaderContent>
         @if (_tx != null)
         {
-            <div>
-                <h3 class="mb-0">@_tx.Description</h3>
-                <div class="small @(_tx.Amount >= 0 ? "text-success" : "text-danger") fw-bold">
-                    @(_tx.Amount >= 0 ? "+" : "")@_tx.Amount.ToString("N2") Br · @_tx.Date.ToString("dd.MM.yyyy")
+            <div class="entity-drawer-head">
+                <div class="entity-drawer-amount @(_tx.Amount >= 0 ? "is-income" : "is-expense")">
+                    @(_tx.Amount >= 0 ? "+" : "")@_tx.Amount.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                </div>
+                <div class="entity-drawer-head-text">
+                    <h3 class="entity-drawer-title">@_tx.Description</h3>
+                    <div class="entity-drawer-sub">@_tx.Date.ToString("dd MMMM yyyy")</div>
                 </div>
             </div>
         }
         else
         {
-            <span>Операция #@TransactionId</span>
+            <span class="text-muted">Операция</span>
         }
     </HeaderContent>
+    <Actions>
+        @if (_tx != null && _canApprove && _status == TransactionApprovalStatus.Pending)
+        {
+            <button type="button" class="btn btn-sm btn-primary" @onclick="Approve">Утвердить</button>
+            <button type="button" class="btn btn-sm btn-outline" @onclick="Reject">Отклонить</button>
+        }
+    </Actions>
     <ChildContent>
         @if (_tx == null && TransactionId > 0)
         {
-            <div class="text-muted small">Загрузка…</div>
+            <div class="entity-drawer-loading">
+                <div class="spinner"></div>
+                <span>Загрузка…</span>
+            </div>
         }
         else if (_tx != null)
         {
-            @if (_canApprove && _status == TransactionApprovalStatus.Pending)
+            @if (_status == TransactionApprovalStatus.Pending)
             {
-                <div class="alert alert-warning small mb-3">
-                    Ожидает утверждения
-                    <button class="btn btn-sm btn-primary ms-2" @onclick="Approve">Утвердить</button>
-                    <button class="btn btn-sm btn-outline ms-1" @onclick="Reject">Отклонить</button>
-                </div>
+                <div class="alert alert-warning small entity-drawer-alert">Ожидает утверждения</div>
+            }
+            else if (_status == TransactionApprovalStatus.Rejected)
+            {
+                <div class="alert alert-error small entity-drawer-alert">Отклонена</div>
             }
 
-            <DetailFields Columns="2">
-                <DetailField Label="Тип">
-                    <span class="badge @(_tx.Amount >= 0 ? "badge-success" : "badge-danger")">@(_tx.Amount >= 0 ? "Доход" : "Расход")</span>
-                </DetailField>
-                <DetailField Label="Категория">
-                    @if (_category != null)
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Основное</div>
+                <div class="entity-drawer-fields">
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Тип</span>
+                        <span class="badge @(_tx.Amount >= 0 ? "badge-success" : "badge-danger")">
+                            @(_tx.Amount >= 0 ? "Доход" : "Расход")
+                        </span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Категория</span>
+                        @if (_category != null)
+                        {
+                            <CategoryBadge Category="@_category" Name="@_category.Name" />
+                        }
+                        else
+                        {
+                            <CategoryBadge Name="@_tx.Category" />
+                        }
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Контрагент</span>
+                        <span>@(_tx.Counterparty ?? _tx.CounterpartyEntity?.Name ?? "—")</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Проект</span>
+                        <span>@(_tx.Project?.Name ?? "—")</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Оплата</span>
+                        <span>@PaymentLabel(_tx.PaymentMethod)</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Статус</span>
+                        <span class="badge @ApprovalBadgeClass(_tx.ApprovalStatus)">@ApprovalLabel(_tx.ApprovalStatus)</span>
+                    </div>
+                    @if (_tx.IsMandatory)
                     {
-                        <CategoryBadge Category="@_category" Name="@_category.Name" />
+                        <div class="entity-drawer-field">
+                            <span class="entity-drawer-label">Обязательный</span>
+                            <span>Да</span>
+                        </div>
                     }
-                    else
-                    {
-                        <CategoryBadge Name="@_tx.Category" />
-                    }
-                </DetailField>
-                <DetailField Label="Контрагент">@(_tx.Counterparty ?? _tx.CounterpartyEntity?.Name ?? "—")</DetailField>
-                <DetailField Label="Проект">@(_tx.Project?.Name ?? "—")</DetailField>
-                <DetailField Label="Способ оплаты">@(PaymentLabel(_tx.PaymentMethod))</DetailField>
-                <DetailField Label="Статус">@ApprovalLabel(_tx.ApprovalStatus)</DetailField>
-                @if (_tx.IsMandatory)
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_tx.Notes))
                 {
-                    <DetailField Label="Обязательный">Да</DetailField>
+                    <div class="entity-drawer-note">@_tx.Notes</div>
                 }
-            </DetailFields>
-            @if (!string.IsNullOrWhiteSpace(_tx.Notes))
-            {
-                <DetailField Label="Заметки" ValueClass="mt-2">
-                    <div class="small">@_tx.Notes</div>
-                </DetailField>
-            }
+            </div>
 
-            <h4 class="detail-section-title">Теги</h4>
-            <input class="input" @bind="_tagsInput" placeholder="через запятую" />
-            <button class="btn btn-sm btn-outline mt-1" @onclick="SaveTags">Сохранить теги</button>
-            @if (_tagNames.Any())
-            {
-                <div class="reports-active-filters mt-2">
-                    @foreach (var t in _tagNames)
-                    {
-                        <span class="filter-chip">@t</span>
-                    }
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Теги</div>
+                <div class="entity-drawer-inline-form">
+                    <input class="form-input" @bind="_tagsInput" placeholder="через запятую" />
+                    <button type="button" class="btn btn-sm btn-outline" @onclick="SaveTags">Сохранить</button>
                 </div>
-            }
+                @if (_tagNames.Any())
+                {
+                    <div class="entity-drawer-chips">
+                        @foreach (var t in _tagNames)
+                        {
+                            <span class="filter-chip">@t</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="entity-drawer-muted">Теги не заданы</p>
+                }
+            </div>
 
-            <h4 class="detail-section-title">Чеки и документы</h4>
-            <InputFile OnChange="OnFileSelected" accept=".pdf,.jpg,.jpeg,.png,.webp" />
-            @if (_attachments.Any())
-            {
-                <ul class="small mt-2" style="list-style:none;padding:0">
-                    @foreach (var a in _attachments)
-                    {
-                        <li class="mb-1">
-                            <a href="@AttachmentService.GetPublicUrl(a)" target="_blank" rel="noopener">@a.FileName</a>
-                            <button type="button" class="btn btn-sm btn-outline text-danger ms-1" @onclick="() => DeleteAttachment(a.Id)">×</button>
-                        </li>
-                    }
-                </ul>
-            }
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Чеки и документы</div>
+                <label class="entity-drawer-file-label">
+                    <span class="btn btn-sm btn-outline">Прикрепить файл</span>
+                    <InputFile OnChange="OnFileSelected" accept=".pdf,.jpg,.jpeg,.png,.webp" class="entity-drawer-file-input" />
+                </label>
+                @if (_attachments.Any())
+                {
+                    <ul class="entity-drawer-list">
+                        @foreach (var a in _attachments)
+                        {
+                            <li class="entity-drawer-list-item">
+                                <a href="@AttachmentService.GetPublicUrl(a)" target="_blank" rel="noopener" class="entity-drawer-link">
+                                    <i class="bi bi-paperclip"></i> @a.FileName
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Удалить" @onclick="() => DeleteAttachment(a.Id)">×</button>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="entity-drawer-muted">Нет вложений</p>
+                }
+            </div>
 
-            <h4 class="detail-section-title">Комментарии</h4>
-            @foreach (var c in _comments)
-            {
-                <div class="small mb-1 p-2" style="background:var(--surface-hover);border-radius:6px">
-                    <strong>@(c.AuthorName ?? "Сотрудник")</strong>
-                    <span class="text-muted"> · @c.CreatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
-                    <div>@c.Text</div>
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Комментарии</div>
+                @if (_comments.Any())
+                {
+                    <div class="entity-drawer-comments">
+                        @foreach (var c in _comments)
+                        {
+                            <div class="entity-drawer-comment">
+                                <div class="entity-drawer-comment-meta">
+                                    <strong>@(c.AuthorName ?? "Сотрудник")</strong>
+                                    <span>@c.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                                </div>
+                                <div class="entity-drawer-comment-text">@c.Text</div>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="entity-drawer-inline-form entity-drawer-inline-form-stack">
+                    <textarea class="form-input" rows="2" @bind="_newComment" placeholder="Новый комментарий…"></textarea>
+                    <button type="button" class="btn btn-sm btn-primary" @onclick="AddComment">Добавить</button>
                 </div>
-            }
-            <textarea class="input mt-1" rows="2" @bind="_newComment" placeholder="Комментарий..."></textarea>
-            <button class="btn btn-sm btn-primary mt-1" @onclick="AddComment">Добавить</button>
+            </div>
         }
     </ChildContent>
 </DetailsDrawer>
@@ -207,5 +270,12 @@
         TransactionApprovalStatus.Pending => "На утверждении",
         TransactionApprovalStatus.Rejected => "Отклонена",
         _ => "Утверждена"
+    };
+
+    private static string ApprovalBadgeClass(TransactionApprovalStatus s) => s switch
+    {
+        TransactionApprovalStatus.Pending => "badge-warning",
+        TransactionApprovalStatus.Rejected => "badge-danger",
+        _ => "badge-success"
     };
 }

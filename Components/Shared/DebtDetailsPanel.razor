@@ -1,8 +1,47 @@
+@using MiniFinance.Data.Models
 @using MiniFinance.Services
 @inject IDebtService DebtService
 
-<DetailsDrawer IsOpen="@IsOpen" Title="@(_detail?.Debt.CounterpartyName ?? "Долг")"
-               Subtitle="@(_detail != null ? TypeLabel(_detail.Debt.Type) : null)" OnClose="OnClose">
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-entity" OnClose="OnClose">
+    <HeaderContent>
+        @if (_detail != null)
+        {
+            var d = _detail.Debt;
+            <div class="entity-drawer-head">
+                <div class="entity-drawer-amount @(d.Type == DebtType.Receivable ? "is-income" : "is-expense")">
+                    @_detail.Remaining.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                </div>
+                <div class="entity-drawer-head-text">
+                    <h3 class="entity-drawer-title">@d.CounterpartyName</h3>
+                    <div class="entity-drawer-sub">
+                        @TypeLabel(d.Type)
+                        @if (d.DueDate.HasValue)
+                        {
+                            <span> · срок @d.DueDate.Value.ToString("dd.MM.yyyy")</span>
+                        }
+                    </div>
+                    <div class="entity-drawer-badges">
+                        @if (d.IsSettled)
+                        {
+                            <span class="badge badge-success">Погашен</span>
+                        }
+                        else if (d.DueDate.HasValue && d.DueDate.Value.Date < DateTime.Today)
+                        {
+                            <span class="badge badge-danger">Просрочен</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-info">Открыт</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <span class="text-muted">Долг</span>
+        }
+    </HeaderContent>
     <Actions>
         @if (_detail != null && !_detail.Debt.IsSettled && _detail.Remaining > 0)
         {
@@ -12,64 +51,89 @@
     <ChildContent>
         @if (_error != null)
         {
-            <div class="alert alert-danger">@_error</div>
+            <div class="alert alert-error small entity-drawer-alert">@_error</div>
+        }
+        else if (_loading)
+        {
+            <div class="entity-drawer-loading">
+                <div class="spinner"></div>
+                <span>Загрузка…</span>
+            </div>
         }
         else if (_detail != null)
         {
             var d = _detail.Debt;
-            <div class="detail-progress mb-3">
-                <div class="d-flex justify-content-between small mb-1">
-                    <span>Погашено @_detail.ProgressPercent%</span>
-                    <span class="text-muted">Остаток: @_detail.Remaining.ToString("N2") Br</span>
+
+            <div class="entity-drawer-block entity-drawer-block-highlight">
+                <div class="entity-drawer-progress-head">
+                    <span>Погашено</span>
+                    <strong>@_detail.ProgressPercent%</strong>
                 </div>
-                <div class="detail-progress-bar">
-                    <div class="detail-progress-fill" style="width:@(_detail.ProgressPercent)%"></div>
+                <div class="entity-drawer-progress-track">
+                    <div class="entity-drawer-progress-fill" style="width:@(_detail.ProgressPercent)%"></div>
+                </div>
+                <div class="entity-drawer-progress-foot">
+                    <span>Оплачено <strong>@d.PaidAmount.ToString("N2") Br</strong></span>
+                    <span>из @d.Amount.ToString("N2") Br</span>
                 </div>
             </div>
 
-            <DetailFields Columns="2">
-                <DetailField Label="Сумма долга">@d.Amount.ToString("N2") Br</DetailField>
-                <DetailField Label="Оплачено">@d.PaidAmount.ToString("N2") Br</DetailField>
-                <DetailField Label="Срок">@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
-                <DetailField Label="Статус">
-                    @if (d.IsSettled) { <span class="badge badge-success">Погашен</span> }
-                    else if (d.DueDate < DateTime.Today) { <span class="badge badge-danger">Просрочен</span> }
-                    else { <span class="badge badge-info">Открыт</span> }
-                </DetailField>
-            </DetailFields>
+            <div class="reports-tax-summary entity-drawer-kpis">
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Сумма долга</span>
+                    <span class="reports-tax-kpi-value">@d.Amount.ToString("N0") Br</span>
+                </div>
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Оплачено</span>
+                    <span class="reports-tax-kpi-value text-success">@d.PaidAmount.ToString("N0") Br</span>
+                </div>
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Остаток</span>
+                    <span class="reports-tax-kpi-value @(_detail.Remaining > 0 ? "text-danger" : "text-success")">@_detail.Remaining.ToString("N0") Br</span>
+                </div>
+            </div>
 
             @if (!string.IsNullOrWhiteSpace(d.Description))
             {
-                <DetailField Label="Описание" ValueClass="mt-2">
-                    <div class="small">@d.Description</div>
-                </DetailField>
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">Описание</div>
+                    <p class="entity-drawer-note-plain">@d.Description</p>
+                </div>
             }
 
-            <h4 class="detail-section-title">Связанные платежи</h4>
-            @if (!_detail.RelatedTransactions.Any())
-            {
-                <p class="text-muted small">Платежи по долгу появятся после погашения</p>
-            }
-            else
-            {
-                <table class="table table-sm">
-                    <thead><tr><th>Дата</th><th>Описание</th><th class="text-end">Сумма</th></tr></thead>
-                    <tbody>
-                        @foreach (var t in _detail.RelatedTransactions)
-                        {
-                            <tr>
-                                <td>@t.Date.ToString("dd.MM.yyyy")</td>
-                                <td>@t.Description</td>
-                                <td class="text-end @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("N2")</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        }
-        else if (_loading)
-        {
-            <div class="text-muted small">Загрузка…</div>
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Связанные платежи</div>
+                @if (!_detail.RelatedTransactions.Any())
+                {
+                    <p class="entity-drawer-muted">Платежи появятся после погашения или привязки операций</p>
+                }
+                else
+                {
+                    <div class="entity-drawer-table-wrap">
+                        <table class="table table-sm entity-drawer-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Описание</th>
+                                    <th class="text-end">Сумма</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in _detail.RelatedTransactions)
+                                {
+                                    <tr>
+                                        <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
+                                        <td>@t.Description</td>
+                                        <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                            @t.Amount.ToString("N2") Br
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
         }
     </ChildContent>
 </DetailsDrawer>
@@ -117,5 +181,5 @@
     }
 
     private static string TypeLabel(DebtType t) =>
-        t == DebtType.Receivable ? "Дебиторка — нам должны" : "Кредиторка — мы должны";
+        t == DebtType.Receivable ? "Нам должны" : "Мы должны";
 }
