@@ -363,3 +363,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# SQLite WAL (не коммитить)
+*.db-shm
+*.db-wal
+
+# Локальные артефакты
+_buildcheck/
+export.csv
+login.html
+test-cookies.txt
+account.json
