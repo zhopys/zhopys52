@@ -3,27 +3,30 @@
 @inject ICategorizationService CategorizationService
 @inject IDataScopeService DataScope
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject NavigationManager Navigation
 
-<DetailsDrawer IsOpen="@IsOpen" OnClose="OnClose">
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-category" OnClose="OnClose">
     <HeaderContent>
         @if (_cat != null)
         {
-            <div class="category-detail-header">
-                <CategoryIcon Category="@_cat" Size="lg" />
-                <div>
-                    <h3 class="mb-0">@_cat.Name</h3>
-                    <div class="category-detail-meta">
-                        <span class="badge @(_cat.Type == CategoryType.Income ? "badge-success" : "badge-danger")">
+            var accent = CategoryIconHelper.ResolveColor(_cat.Color, _cat.Name, _cat.Type);
+            <div class="detail-panel-hero" style="--detail-accent:@accent">
+                <div class="detail-panel-hero-icon">
+                    <CategoryIcon Category="@_cat" Size="lg" />
+                </div>
+                <div class="detail-panel-hero-text">
+                    <span class="detail-panel-eyebrow">Категория</span>
+                    <h3 class="detail-panel-title">@_cat.Name</h3>
+                    <div class="detail-panel-badges">
+                        <span class="detail-badge @(_cat.Type == CategoryType.Income ? "detail-badge-income" : "detail-badge-expense")">
                             @(_cat.Type == CategoryType.Income ? "Доход" : "Расход")
                         </span>
                         @if (_cat.IsDefault)
                         {
-                            <span class="badge badge-info">Системная</span>
+                            <span class="detail-badge detail-badge-muted">Системная</span>
                         }
                         @if (_cat.IsHidden)
                         {
-                            <span class="badge">Скрыта</span>
+                            <span class="detail-badge detail-badge-muted">Скрыта</span>
                         }
                     </div>
                 </div>
@@ -31,162 +34,203 @@
         }
         else
         {
-            <span>Категория</span>
+            <span class="detail-panel-eyebrow">Категория</span>
         }
     </HeaderContent>
     <Actions>
-        @if (_cat != null && !_editing)
+        @if (_cat != null)
         {
-            <button type="button" class="btn btn-sm btn-outline" @onclick="StartEdit">Изменить</button>
-            <button type="button" class="btn btn-sm btn-outline" @onclick="ToggleHidden">
-                @(_cat.IsHidden ? "Показать" : "Скрыть")
-            </button>
-            <a class="btn btn-sm btn-outline" href="@TransactionsLink">Операции</a>
-        }
-        @if (_editing)
-        {
-            <button type="button" class="btn btn-sm btn-primary" @onclick="SaveEdit">Сохранить</button>
-            <button type="button" class="btn btn-sm btn-outline" @onclick="CancelEdit">Отмена</button>
+            <div class="detail-panel-toolbar">
+                @if (!_editing)
+                {
+                    <button type="button" class="detail-toolbar-btn" @onclick="StartEdit">
+                        <i class="bi bi-pencil"></i> Изменить
+                    </button>
+                    <button type="button" class="detail-toolbar-btn" @onclick="ToggleHidden">
+                        <i class="bi @(_cat.IsHidden ? "bi-eye" : "bi-eye-slash")"></i>
+                        @(_cat.IsHidden ? "Показать" : "Скрыть")
+                    </button>
+                    <a class="detail-toolbar-btn" href="@TransactionsLink">
+                        <i class="bi bi-list-ul"></i> Операции
+                    </a>
+                }
+                else
+                {
+                    <button type="button" class="detail-toolbar-btn detail-toolbar-btn-primary" @onclick="SaveEdit">
+                        <i class="bi bi-check-lg"></i> Сохранить
+                    </button>
+                    <button type="button" class="detail-toolbar-btn" @onclick="CancelEdit">
+                        Отмена
+                    </button>
+                }
+            </div>
         }
     </Actions>
     <ChildContent>
         @if (_cat == null && CategoryId > 0)
         {
-            <div class="text-muted small">Загрузка…</div>
+            <div class="detail-panel-loading">
+                <div class="detail-panel-spinner"></div>
+                <span>Загрузка…</span>
+            </div>
         }
         else if (_cat != null)
         {
             @if (!string.IsNullOrEmpty(_panelMessage))
             {
-                <div class="alert @(_panelError ? "alert-danger" : "alert-success") small mb-3">@_panelMessage</div>
-            }
-
-            @if (_stats != null && !_editing)
-            {
-                <div class="category-detail-kpis">
-                    <div class="category-detail-kpi">
-                        <span class="category-detail-kpi-label">Операций</span>
-                        <span class="category-detail-kpi-value">@_stats.TransactionCount</span>
-                    </div>
-                    <div class="category-detail-kpi">
-                        <span class="category-detail-kpi-label">За месяц</span>
-                        <span class="category-detail-kpi-value">@_stats.MonthTransactionCount</span>
-                    </div>
-                    <div class="category-detail-kpi">
-                        <span class="category-detail-kpi-label">Оборот (мес.)</span>
-                        <span class="category-detail-kpi-value @(_stats.MonthAmount >= 0 ? "text-success" : "text-danger")">
-                            @_stats.MonthAmount.ToString("N0") Br
-                        </span>
-                    </div>
-                </div>
-
-                @if (_cat.MonthlyBudget is > 0)
-                {
-                    var spent = Math.Abs(_stats.MonthAmount);
-                    var budget = _cat.MonthlyBudget.Value;
-                    var pct = budget > 0 ? Math.Min(100, (int)(spent / budget * 100)) : 0;
-                    <div class="category-budget-bar mb-3">
-                        <div class="small text-muted mb-1">Бюджет месяца: @spent.ToString("N0") / @budget.ToString("N0") Br</div>
-                        <div class="progress-bar-track">
-                            <div class="progress-bar-fill @(pct >= 100 ? "over" : "")" style="width:@pct%"></div>
-                        </div>
-                    </div>
-                }
+                <div class="detail-panel-toast @(_panelError ? "is-error" : "is-success")">@_panelMessage</div>
             }
 
             @if (_editing)
             {
-                <div class="category-edit-form">
-                    <div class="form-group mb-2">
-                        <label class="form-label">Название</label>
-                        <input class="form-input" @bind="_editName" />
+                <div class="detail-panel-section">
+                    <div class="detail-panel-section-head">
+                        <i class="bi bi-sliders"></i>
+                        <span>Редактирование</span>
                     </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Тип</label>
-                        <select class="form-input" @bind="_editType">
-                            <option value="@CategoryType.Expense">Расход</option>
-                            <option value="@CategoryType.Income">Доход</option>
-                        </select>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Иконка</label>
-                        <div class="category-icon-picker">
-                            @foreach (var ic in CategoryIconHelper.PickerIcons)
-                            {
-                                <button type="button"
-                                        class="category-icon-pick @(_editIcon == ic.Key ? "active" : "")"
-                                        title="@ic.Label"
-                                        @onclick="() => _editIcon = ic.Key">
-                                    <i class="bi @ic.BiClass"></i>
-                                </button>
-                            }
+                    <div class="detail-panel-section-body detail-edit-grid">
+                        <div class="form-group">
+                            <label class="form-label">Название</label>
+                            <input class="form-input" @bind="_editName" />
                         </div>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Цвет</label>
-                        <input type="color" class="form-input" @bind="_editColor" style="height:40px;padding:4px" />
-                    </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Ключевые слова</label>
-                        <input class="form-input" @bind="_editKeywords" placeholder="аренда, rent, офис" />
-                    </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Описание</label>
-                        <textarea class="form-input" rows="2" @bind="_editDescription"></textarea>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label class="form-label">Бюджет на месяц (Br)</label>
-                        <input type="number" class="form-input" @bind="_editBudget" step="100" min="0" />
+                        <div class="form-group">
+                            <label class="form-label">Тип</label>
+                            <select class="form-input" @bind="_editType">
+                                <option value="@CategoryType.Expense">Расход</option>
+                                <option value="@CategoryType.Income">Доход</option>
+                            </select>
+                        </div>
+                        <div class="form-group detail-edit-full">
+                            <label class="form-label">Иконка</label>
+                            <div class="category-icon-picker">
+                                @foreach (var ic in CategoryIconHelper.PickerIcons)
+                                {
+                                    <button type="button"
+                                            class="category-icon-pick @(_editIcon == ic.Key ? "active" : "")"
+                                            title="@ic.Label"
+                                            @onclick="() => _editIcon = ic.Key">
+                                        <i class="bi @ic.BiClass"></i>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Цвет</label>
+                            <input type="color" class="form-input detail-color-input" @bind="_editColor" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Бюджет / мес. (Br)</label>
+                            <input type="number" class="form-input" @bind="_editBudget" step="100" min="0" />
+                        </div>
+                        <div class="form-group detail-edit-full">
+                            <label class="form-label">Ключевые слова</label>
+                            <input class="form-input" @bind="_editKeywords" placeholder="аренда, rent, офис" />
+                        </div>
+                        <div class="form-group detail-edit-full">
+                            <label class="form-label">Описание</label>
+                            <textarea class="form-input" rows="2" @bind="_editDescription"></textarea>
+                        </div>
                     </div>
                 </div>
             }
             else
             {
+                @if (_stats != null)
+                {
+                    <div class="detail-panel-stats">
+                        <div class="detail-stat-card">
+                            <i class="bi bi-receipt detail-stat-icon"></i>
+                            <span class="detail-stat-label">Всего операций</span>
+                            <span class="detail-stat-value">@_stats.TransactionCount</span>
+                        </div>
+                        <div class="detail-stat-card">
+                            <i class="bi bi-calendar3 detail-stat-icon"></i>
+                            <span class="detail-stat-label">За месяц</span>
+                            <span class="detail-stat-value">@_stats.MonthTransactionCount</span>
+                        </div>
+                        <div class="detail-stat-card detail-stat-card-accent">
+                            <i class="bi bi-cash-stack detail-stat-icon"></i>
+                            <span class="detail-stat-label">Оборот (мес.)</span>
+                            <span class="detail-stat-value @(_stats.MonthAmount >= 0 ? "is-positive" : "is-negative")">
+                                @_stats.MonthAmount.ToString("N0") Br
+                            </span>
+                        </div>
+                    </div>
+
+                    @if (_cat.MonthlyBudget is > 0)
+                    {
+                        var spent = Math.Abs(_stats.MonthAmount);
+                        var budget = _cat.MonthlyBudget.Value;
+                        var pct = budget > 0 ? Math.Min(100, (int)(spent / budget * 100)) : 0;
+                        <div class="detail-panel-section detail-budget-card">
+                            <div class="detail-budget-head">
+                                <span>Бюджет месяца</span>
+                                <strong>@pct%</strong>
+                            </div>
+                            <div class="detail-budget-amounts">
+                                <span>@spent.ToString("N0") Br</span>
+                                <span class="text-muted">из @budget.ToString("N0") Br</span>
+                            </div>
+                            <div class="detail-budget-track">
+                                <div class="detail-budget-fill @(pct >= 100 ? "is-over" : "")" style="width:@(pct)%"></div>
+                            </div>
+                        </div>
+                    }
+                }
+
                 @if (!string.IsNullOrWhiteSpace(_cat.Description))
                 {
-                    <p class="category-detail-desc">@_cat.Description</p>
-                }
-
-                <DetailFields Columns="2">
-                    <DetailField Label="Иконка">
-                        <CategoryIcon Category="@_cat" Size="sm" />
-                        <span class="small text-muted ms-1">@(_cat.Icon ?? "по умолчанию")</span>
-                    </DetailField>
-                    <DetailField Label="Цвет">
-                        <span class="category-color-swatch" style="background:@CategoryIconHelper.ResolveColor(_cat.Color, _cat.Name, _cat.Type)"></span>
-                    </DetailField>
-                </DetailFields>
-
-                <h4 class="detail-section-title">Ключевые слова</h4>
-                @if (CategoryIconHelper.SplitKeywords(_cat.Keywords).Any())
-                {
-                    <div class="category-keyword-chips">
-                        @foreach (var kw in CategoryIconHelper.SplitKeywords(_cat.Keywords))
-                        {
-                            <span class="filter-chip">@kw</span>
-                        }
+                    <div class="detail-panel-section">
+                        <div class="detail-panel-section-head">
+                            <i class="bi bi-card-text"></i>
+                            <span>Описание</span>
+                        </div>
+                        <p class="detail-panel-desc">@_cat.Description</p>
                     </div>
                 }
-                else
-                {
-                    <p class="small text-muted">Не заданы — авто-категоризация по названию не сработает.</p>
-                }
 
-                <h4 class="detail-section-title">Проверка авто-категоризации</h4>
-                <div class="category-test-box">
-                    <input class="form-input" @bind="_testDescription" placeholder="Текст из выписки, например: оплата аренды офиса" />
-                    <button type="button" class="btn btn-sm btn-outline mt-2" @onclick="RunTest">Проверить</button>
+                <div class="detail-panel-section">
+                    <div class="detail-panel-section-head">
+                        <i class="bi bi-tags"></i>
+                        <span>Ключевые слова</span>
+                    </div>
+                    @if (CategoryIconHelper.SplitKeywords(_cat.Keywords).Any())
+                    {
+                        <div class="detail-keyword-chips">
+                            @foreach (var kw in CategoryIconHelper.SplitKeywords(_cat.Keywords))
+                            {
+                                <span class="detail-keyword-chip">@kw</span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="detail-panel-empty-hint">Не заданы — добавьте слова из выписок для авто-категоризации.</p>
+                    }
+                </div>
+
+                <div class="detail-panel-section detail-test-section">
+                    <div class="detail-panel-section-head">
+                        <i class="bi bi-magic"></i>
+                        <span>Проверка авто-категоризации</span>
+                    </div>
+                    <p class="detail-panel-empty-hint">Введите фрагмент описания операции — увидите, в какую категорию попадёт платёж.</p>
+                    <input class="form-input" @bind="_testDescription" placeholder="Например: оплата аренды офиса" />
+                    <button type="button" class="btn btn-sm btn-primary mt-2" @onclick="RunTest">
+                        <i class="bi bi-play-fill"></i> Проверить
+                    </button>
                     @if (_testResult != null)
                     {
-                        <div class="category-test-result mt-2">
-                            Результат: <strong>@_testResult</strong>
-                            @if (string.Equals(_testResult, _cat.Name, StringComparison.OrdinalIgnoreCase))
+                        <div class="detail-test-outcome @(_testMatches ? "is-match" : "is-mismatch")">
+                            <span class="detail-test-outcome-label">Результат</span>
+                            <span class="detail-test-outcome-value">@_testResult</span>
+                            @if (_testMatches)
                             {
-                                <span class="text-success ms-1">✓ совпадает</span>
+                                <span class="detail-test-outcome-badge"><i class="bi bi-check-circle-fill"></i> Совпадает</span>
                             }
                             else
                             {
-                                <span class="text-warning ms-1">другая категория</span>
+                                <span class="detail-test-outcome-badge"><i class="bi bi-arrow-right-circle"></i> Другая категория</span>
                             }
                         </div>
                     }
@@ -215,6 +259,7 @@
     private decimal? _editBudget;
     private string _testDescription = "";
     private string? _testResult;
+    private bool _testMatches;
     private string? _panelMessage;
     private bool _panelError;
 
@@ -322,5 +367,6 @@
         }
         var amount = _cat?.Type == CategoryType.Income ? 100m : -100m;
         _testResult = CategorizationService.CategorizeTransaction(_testDescription, amount);
+        _testMatches = string.Equals(_testResult, _cat?.Name, StringComparison.OrdinalIgnoreCase);
     }
 }
