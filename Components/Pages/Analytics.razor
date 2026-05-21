@@ -14,7 +14,8 @@
 @inject IExtendedReportService ExtendedReportService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
-@attribute [Authorize(Policy = "CanViewReports")]
+@* Роли временно отключены: @attribute [Authorize(Policy = "CanViewReports")] *@
+@attribute [Authorize]
 
 <PageTitle>Финансовая аналитика — MiniFinance</PageTitle>
 

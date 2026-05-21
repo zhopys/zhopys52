@@ -37,18 +37,21 @@ namespace MiniFinance.Services
             transaction.CreatedAt = DateTime.UtcNow;
             transaction.UpdatedAt = null;
 
-            var ctx = await _userContext.GetContextAsync(userId);
-            if (ctx.IsManager && !ctx.IsOwner)
-            {
-                transaction.ApprovalStatus = TransactionApprovalStatus.Pending;
-                transaction.IsConfirmed = false;
-                transaction.SubmittedByUserId = userId;
-            }
-            else
-            {
-                transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
-                transaction.IsConfirmed = true;
-            }
+            // Роли временно отключены — все операции сразу подтверждаются
+            transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
+            transaction.IsConfirmed = true;
+            // var ctx = await _userContext.GetContextAsync(userId);
+            // if (ctx.IsManager && !ctx.IsOwner)
+            // {
+            //     transaction.ApprovalStatus = TransactionApprovalStatus.Pending;
+            //     transaction.IsConfirmed = false;
+            //     transaction.SubmittedByUserId = userId;
+            // }
+            // else
+            // {
+            //     transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
+            //     transaction.IsConfirmed = true;
+            // }
 
             if (string.IsNullOrWhiteSpace(transaction.Category))
                 transaction.Category = _categorizationService.CategorizeTransaction(transaction.Description, transaction.Amount);

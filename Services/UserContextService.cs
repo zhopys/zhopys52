@@ -23,8 +23,11 @@ public class UserContextService : IUserContextService
             ? (await _userManager.GetRolesAsync(user)).ToList()
             : new List<string>();
 
-        if (roles.Count == 0 && string.IsNullOrWhiteSpace(user?.WorkspaceOwnerUserId))
+        // Роли временно отключены — полный доступ для любого авторизованного пользователя
+        if (!roles.Contains(AppRoles.Owner))
             roles.Add(AppRoles.Owner);
+        // if (roles.Count == 0 && string.IsNullOrWhiteSpace(user?.WorkspaceOwnerUserId))
+        //     roles.Add(AppRoles.Owner);
 
         var dataUserId = await _dataScope.GetDataOwnerUserIdAsync(userId);
 
@@ -38,25 +41,28 @@ public class UserContextService : IUserContextService
         };
     }
 
-    public bool CanAccessSettings(UserContext ctx) => ctx.IsOwner;
-    public bool CanManageTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
-    public bool CanApproveTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant;
-    public bool CanViewReports(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
+    // Роли временно отключены
+    public bool CanAccessSettings(UserContext ctx) => true;
+    public bool CanManageTransactions(UserContext ctx) => true;
+    public bool CanApproveTransactions(UserContext ctx) => true;
+    public bool CanViewReports(UserContext ctx) => true;
+    // public bool CanAccessSettings(UserContext ctx) => ctx.IsOwner;
+    // public bool CanManageTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
+    // public bool CanApproveTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant;
+    // public bool CanViewReports(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
 
-    public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx)
-    {
-        if (ctx.IsOwner || ctx.IsAccountant)
-            return q;
-
-        if (ctx.IsManager)
-        {
-            if (ctx.ActiveProjectId.HasValue)
-                return q.Where(t => t.ProjectId == ctx.ActiveProjectId);
-
-            if (!string.IsNullOrWhiteSpace(ctx.Department))
-                return q.Where(t => t.Project != null && t.Project.Department == ctx.Department);
-        }
-
-        return q;
-    }
+    public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx) => q;
+    // public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx)
+    // {
+    //     if (ctx.IsOwner || ctx.IsAccountant)
+    //         return q;
+    //     if (ctx.IsManager)
+    //     {
+    //         if (ctx.ActiveProjectId.HasValue)
+    //             return q.Where(t => t.ProjectId == ctx.ActiveProjectId);
+    //         if (!string.IsNullOrWhiteSpace(ctx.Department))
+    //             return q.Where(t => t.Project != null && t.Project.Department == ctx.Department);
+    //     }
+    //     return q;
+    // }
 }

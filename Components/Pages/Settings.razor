@@ -13,7 +13,8 @@
 @inject IUserContextService UserContext
 @inject ITaxAutoRuleService TaxAutoRuleService
 @inject IJSRuntime JS
-@attribute [Authorize(Policy = "CanManageSettings")]
+@* Роли временно отключены: @attribute [Authorize(Policy = "CanManageSettings")] *@
+@attribute [Authorize]
 
 <PageTitle>Настройки — MiniFinance</PageTitle>
 
@@ -149,13 +150,14 @@
         var user = await UserManager.GetUserAsync(auth.User);
         if (user != null)
         {
-            var ctx = await UserContext.GetContextAsync(user.Id);
-            if (!UserContext.CanAccessSettings(ctx))
-            {
-                _errorMessage = "Изменять настройки организации может только владелец";
-                showError = true;
-                return;
-            }
+            // Роли временно отключены
+            // var ctx = await UserContext.GetContextAsync(user.Id);
+            // if (!UserContext.CanAccessSettings(ctx))
+            // {
+            //     _errorMessage = "Изменять настройки организации может только владелец";
+            //     showError = true;
+            //     return;
+            // }
         }
 
         _saving = true;

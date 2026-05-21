@@ -7,12 +7,13 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
+@using MiniFinance.Services
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 @inject ApplicationDbContext DbContext
-@inject IJSRuntime JSRuntime
+@inject IAccountProfileService AccountProfile
 @attribute [Authorize]
 
 <PageTitle>Профиль — MiniFinance</PageTitle>
@@ -37,10 +38,10 @@
 
             <div class="hub-layout">
                 <nav class="hub-nav card">
-                    <button type="button" class="hub-nav-item @(_tab == "personal" ? "active" : "")" @onclick='() => _tab = "personal"'>Личные данные</button>
-                    <button type="button" class="hub-nav-item @(_tab == "security" ? "active" : "")" @onclick='() => _tab = "security"'>Безопасность</button>
-                    <button type="button" class="hub-nav-item @(_tab == "notifications" ? "active" : "")" @onclick='() => _tab = "notifications"'>Уведомления</button>
-                    <button type="button" class="hub-nav-item @(_tab == "data" ? "active" : "")" @onclick='() => _tab = "data"'>Данные</button>
+                    <button type="button" class="hub-nav-item @(_tab == "personal" ? "active" : "")" @onclick='() => SelectTab("personal")'>Личные данные</button>
+                    <button type="button" class="hub-nav-item @(_tab == "security" ? "active" : "")" @onclick='() => SelectTab("security")'>Безопасность</button>
+                    <button type="button" class="hub-nav-item @(_tab == "notifications" ? "active" : "")" @onclick='() => SelectTab("notifications")'>Уведомления</button>
+                    <button type="button" class="hub-nav-item @(_tab == "data" ? "active" : "")" @onclick='() => SelectTab("data")'>Данные</button>
                 </nav>
 
                 <div class="hub-content">
@@ -122,6 +123,7 @@
                                             <div class="form-group">
                                                 <label class="form-label">Новый пароль</label>
                                                 <InputText type="password" class="form-input" @bind-Value="passwordModel.NewPassword" />
+                                                <div class="small text-muted">Минимум 8 символов, хотя бы одна цифра</div>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Подтверждение</label>
@@ -196,13 +198,46 @@
                             </div>
                         </div>
                     }
-                    else
+                    else if (_tab == "data")
                     {
                         <div class="card mb-3">
-                            <div class="card-header">Экспорт данных (GDPR)</div>
+                            <div class="card-header">Ваши данные в системе</div>
                             <div class="card-body">
-                                <p class="text-muted small mb-3">Скачайте все свои транзакции, напоминания, налоги и проекты в формате JSON.</p>
-                                <a href="/api/account/export" class="btn btn-outline" target="_blank" rel="noopener">Скачать JSON</a>
+                                @if (_dataSummary == null)
+                                {
+                                    <div class="loading-state"><div class="spinner"></div></div>
+                                }
+                                else
+                                {
+                                    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+                                        <div><div class="small text-muted">Операций</div><div class="fw-bold">@_dataSummary.Transactions</div></div>
+                                        <div><div class="small text-muted">Проектов</div><div class="fw-bold">@_dataSummary.Projects</div></div>
+                                        <div><div class="small text-muted">Напоминаний</div><div class="fw-bold">@_dataSummary.Reminders</div></div>
+                                        <div><div class="small text-muted">Налогов</div><div class="fw-bold">@_dataSummary.TaxPayments</div></div>
+                                        <div><div class="small text-muted">Контрагентов</div><div class="fw-bold">@_dataSummary.Counterparties</div></div>
+                                        <div><div class="small text-muted">Долгов</div><div class="fw-bold">@_dataSummary.Debts</div></div>
+                                        <div><div class="small text-muted">Тегов</div><div class="fw-bold">@_dataSummary.Tags</div></div>
+                                        <div><div class="small text-muted">Вложений</div><div class="fw-bold">@_dataSummary.Attachments</div></div>
+                                    </div>
+                                    <p class="small text-muted mt-3 mb-0">
+                                        Баланс: <span class="@(_dataSummary.Balance >= 0 ? "text-success" : "text-danger") fw-bold">@_dataSummary.Balance.ToString("N0") Br</span>
+                                    </p>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="card mb-3">
+                            <div class="card-header">Экспорт данных</div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3">
+                                    JSON — полная копия (профиль, операции, проекты, напоминания, налоги, контрагенты, долги, теги).
+                                    CSV — только операции для Excel или повторного импорта.
+                                </p>
+                                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                                    <button type="button" class="btn btn-outline" @onclick="DownloadJson">Скачать JSON</button>
+                                    <button type="button" class="btn btn-outline" @onclick="DownloadCsv">Скачать CSV (операции)</button>
+                                    <a href="/import" class="btn btn-outline">Импорт из CSV</a>
+                                </div>
                             </div>
                         </div>
 
@@ -274,6 +309,7 @@
     private decimal _balance;
     private int totalTransactions;
     private DateTime? userCreatedDate;
+    private AccountDataSummaryDto? _dataSummary;
 
     private ProfileModel profileModel = new();
     private ChangePasswordModel passwordModel = new();
@@ -306,16 +342,52 @@
         _balance = txs.Sum(t => t.Amount);
     }
 
+    private async Task SelectTab(string tab)
+    {
+        _tab = tab;
+        showMessage = false;
+        showError = false;
+        if (tab == "data" && currentUser != null)
+            await LoadDataSummaryAsync();
+    }
+
+    private async Task LoadDataSummaryAsync()
+    {
+        if (currentUser == null) return;
+        _dataSummary = await AccountProfile.GetDataSummaryAsync(currentUser.Id);
+    }
+
+    private void DownloadJson() =>
+        NavigationManager.NavigateTo("/api/account/export", forceLoad: true);
+
+    private void DownloadCsv() =>
+        NavigationManager.NavigateTo("/api/account/export/csv", forceLoad: true);
+
     private async Task SaveProfile()
     {
         if (currentUser == null) return;
         showError = false;
+        showMessage = false;
         currentUser.FirstName = profileModel.FirstName?.Trim();
         currentUser.LastName = profileModel.LastName?.Trim();
-        currentUser.Email = profileModel.Email?.Trim();
         currentUser.PhoneNumber = profileModel.Phone?.Trim();
 
-        var result = await UserManager.UpdateAsync(currentUser);
+        var email = profileModel.Email?.Trim().ToLowerInvariant() ?? "";
+        IdentityResult result;
+        if (!string.Equals(currentUser.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            result = await UserManager.SetEmailAsync(currentUser, email);
+            if (result.Succeeded)
+                result = await UserManager.SetUserNameAsync(currentUser, email);
+        }
+        else
+        {
+            result = IdentityResult.Success;
+        }
+
+        if (result.Succeeded)
+            result = await UserManager.UpdateAsync(currentUser);
+
         if (result.Succeeded)
         {
             message = "Профиль сохранён";
@@ -324,7 +396,7 @@
         }
         else
         {
-            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            errorMessage = IdentityErrorTranslator.Join(result.Errors);
             showError = true;
         }
     }
@@ -345,7 +417,7 @@
         }
         else
         {
-            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            errorMessage = IdentityErrorTranslator.Join(result.Errors);
             showError = true;
         }
     }
@@ -369,7 +441,7 @@
         }
         else
         {
-            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            errorMessage = IdentityErrorTranslator.Join(result.Errors);
             showError = true;
         }
     }
@@ -381,22 +453,15 @@
         showError = false;
         try
         {
-            if (!await UserManager.CheckPasswordAsync(currentUser, _deletePassword))
-            {
-                errorMessage = "Неверный пароль";
-                showError = true;
-                return;
-            }
-
-            var result = await UserManager.DeleteAsync(currentUser);
-            if (result.Succeeded)
+            var (success, error) = await AccountProfile.DeleteAccountAsync(currentUser.Id, _deletePassword);
+            if (success)
             {
                 await SignInManager.SignOutAsync();
                 NavigationManager.NavigateTo("/login", forceLoad: true);
             }
             else
             {
-                errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+                errorMessage = error ?? "Не удалось удалить аккаунт";
                 showError = true;
             }
         }
@@ -425,7 +490,7 @@
     {
         [Required]
         public string OldPassword { get; set; } = "";
-        [Required, StringLength(100, MinimumLength = 3)]
+        [Required, StringLength(100, MinimumLength = 8)]
         public string NewPassword { get; set; } = "";
         [Required, Compare(nameof(NewPassword))]
         public string ConfirmPassword { get; set; } = "";

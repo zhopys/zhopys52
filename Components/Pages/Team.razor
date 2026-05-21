@@ -31,7 +31,8 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
 @inject IJSRuntime JS
-@attribute [Authorize(Policy = "OwnerOnly")]
+@* Роли временно отключены: @attribute [Authorize(Policy = "OwnerOnly")] *@
+@attribute [Authorize]
 
 <PageTitle>Команда и роли — MiniFinance</PageTitle>
 

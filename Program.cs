@@ -36,9 +36,13 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("OwnerOnly", p => p.RequireRole(AppRoles.Owner));
-    options.AddPolicy("CanViewReports", p => p.RequireRole(AppRoles.Owner, AppRoles.Accountant, AppRoles.Manager));
-    options.AddPolicy("CanManageSettings", p => p.RequireRole(AppRoles.Owner));
+    // Роли временно отключены — достаточно входа в систему
+    // options.AddPolicy("OwnerOnly", p => p.RequireRole(AppRoles.Owner));
+    // options.AddPolicy("CanViewReports", p => p.RequireRole(AppRoles.Owner, AppRoles.Accountant, AppRoles.Manager));
+    // options.AddPolicy("CanManageSettings", p => p.RequireRole(AppRoles.Owner));
+    options.AddPolicy("OwnerOnly", p => p.RequireAuthenticatedUser());
+    options.AddPolicy("CanViewReports", p => p.RequireAuthenticatedUser());
+    options.AddPolicy("CanManageSettings", p => p.RequireAuthenticatedUser());
 });
 
 var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
@@ -78,6 +82,7 @@ builder.Services.AddScoped<IBalanceReportService, BalanceReportService>();
 builder.Services.AddScoped<IPaymentCalendarService, PaymentCalendarService>();
 builder.Services.AddScoped<IDataScopeService, DataScopeService>();
 builder.Services.AddScoped<IUserContextService, UserContextService>();
+builder.Services.AddScoped<IAccountProfileService, AccountProfileService>();
 builder.Services.AddScoped<ITeamService, TeamService>(); // UI РѕС‚РєР»СЋС‡РµРЅРѕ; СЃРµСЂРІРёСЃ РѕСЃС‚Р°РІР»РµРЅ РґР»СЏ Р±СѓРґСѓС‰РµРіРѕ РІРєР»СЋС‡РµРЅРёСЏ
 builder.Services.AddScoped<MiniFinance.Components.Account.IdentityRedirectManager>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, IdentitySmtpEmailSender>();
@@ -917,29 +922,27 @@ app.MapPost("/api/transactions/{id:int}/attachments", async (
     catch (Exception ex) { return Results.BadRequest(ex.Message); }
 }).RequireAuthorization();
 
-try { await RoleSeedService.SeedAsync(app.Services); } catch { }
+// Роли временно отключены
+// try { await RoleSeedService.SeedAsync(app.Services); } catch { }
 
-app.MapGet("/api/account/export", async (
-    HttpContext http,
-    UserManager<ApplicationUser> userManager,
-    ApplicationDbContext db) =>
+app.MapGet("/api/account/export", async (HttpContext http, UserManager<ApplicationUser> userManager, IAccountProfileService accountProfile) =>
 {
     var user = await userManager.GetUserAsync(http.User);
     if (user == null) return Results.Unauthorized();
 
-    var payload = new
-    {
-        exportedAt = DateTime.UtcNow,
-        user = new { user.Email, user.FirstName, user.LastName, user.BaseCurrency },
-        transactions = await db.Transactions.Where(t => t.UserId == user.Id).ToListAsync(),
-        categories = await db.Categories.ToListAsync(),
-        reminders = await db.Reminders.Where(r => r.UserId == user.Id).ToListAsync(),
-        taxes = await db.TaxPayments.Where(t => t.UserId == user.Id).ToListAsync(),
-        projects = await db.Projects.Where(p => p.UserId == user.Id).ToListAsync(),
-        debts = await db.Debts.Where(d => d.UserId == user.Id).ToListAsync()
-    };
+    var bytes = await accountProfile.BuildExportJsonAsync(user.Id);
+    var fileName = $"minifinance-export-{DateTime.UtcNow:yyyyMMdd}.json";
+    return Results.File(bytes, "application/json; charset=utf-8", fileName);
+}).RequireAuthorization();
 
-    return Results.Json(payload);
+app.MapGet("/api/account/export/csv", async (HttpContext http, UserManager<ApplicationUser> userManager, IAccountProfileService accountProfile) =>
+{
+    var user = await userManager.GetUserAsync(http.User);
+    if (user == null) return Results.Unauthorized();
+
+    var bytes = await accountProfile.BuildExportCsvAsync(user.Id);
+    var fileName = $"minifinance-transactions-{DateTime.UtcNow:yyyyMMdd}.csv";
+    return Results.File(bytes, "text/csv; charset=utf-8", fileName);
 }).RequireAuthorization();
 
 if (seedDiplomaDemo)

@@ -120,7 +120,8 @@
                 return;
             }
 
-            await UserManager.AddToRoleAsync(user, AppRoles.Owner);
+            // Роли временно отключены
+            // await UserManager.AddToRoleAsync(user, AppRoles.Owner);
             Logger.LogInformation("User {Email} registered.", email);
 
             var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
