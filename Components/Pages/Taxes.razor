@@ -1,4 +1,4 @@
-@page "/taxes"
+﻿@page "/taxes"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -163,7 +163,7 @@
                         </ul>
                     }
                     <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:.5rem">
-                        <button class="btn btn-sm btn-primary" @onclick="CreatePaymentsFromCalculator">Создать платёж@(_calcResult.Lines.Count > 1 ? "и" : "")</button>
+                        <button class="btn btn-sm btn-primary" @onclick="CreatePaymentsFromCalculator">Создать платёж @(_calcResult.Lines.Count > 1 ? "и" : "")</button>
                         <button class="btn btn-sm btn-outline" @onclick="ApplyCalcToTaxForm">Открыть форму для правки</button>
                     </div>
                 </div>
@@ -755,13 +755,13 @@ else
         };
     }
 
-    private static string FormatDaysUntil(int days) => days switch
+    private static string FormatDaysUntil(int days)
     {
-        < 0 => $"Просрочено на {Math.Abs(days)} дн.",
-        0 => "Сегодня",
-        1 => "Завтра",
-        _ => $"Через {days} дн."
-    };
+        if (days < 0) return $"Просрочено на {Math.Abs(days)} дн.";
+        if (days == 0) return "Сегодня";
+        if (days == 1) return "Завтра";
+        return $"Через {days} дн.";
+    }
 
     private static string GetTaxSystemLabel(TaxSystem? system) => system switch
     {
@@ -782,9 +782,7 @@ else
         ? "Добавьте плановый платёж или используйте шаблоны сроков выше"
         : "Измените фильтр или добавьте новую запись";
 
-    private sealed record TaxHint(string Label, string Name, int DuePresetDays);
-
-    private static IEnumerable<TaxHint> GetTaxHints(TaxSystem system)
+    private static IEnumerable<TaxHintDto> GetTaxHints(TaxSystem system)
     {
         if (system == TaxSystem.USN)
         {
@@ -799,7 +797,7 @@ else
         }
     }
 
-    private void ApplyTaxHint(TaxHint hint)
+    private void ApplyTaxHint(TaxHintDto hint)
     {
         _editTaxId = 0;
         _taxAmount = 0;
@@ -1025,7 +1023,9 @@ else
         try
         {
             var due = GetCalcDueDate();
-            var lines = _calcResult.Lines.Count > 0 ? _calcResult.Lines : [new TaxCalcLine { Name = _calcResult.SuggestedPaymentName, Amount = _calcResult.TaxAmount }];
+            var lines = _calcResult.Lines.Count > 0
+                ? _calcResult.Lines
+                : new List<TaxCalcLine> { new() { Name = _calcResult.SuggestedPaymentName, Amount = _calcResult.TaxAmount } };
             foreach (var line in lines)
             {
                 if (line.Amount <= 0) continue;
@@ -1128,7 +1128,7 @@ else
 
     private async Task DeleteAutoRule(int id)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Удалить правило?")) return;
+        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить правило?")) return;
         await TaxAutoRuleService.DeleteAsync(id, _userId);
         await ReloadAsync();
     }
@@ -1187,7 +1187,7 @@ else
 
     private async Task DeleteTax(int id)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Удалить налоговый платёж?")) return;
+        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить налоговый платёж?")) return;
         await TaxService.DeleteTaxAsync(id, _userId);
         await ReloadAsync();
     }
@@ -1259,7 +1259,7 @@ else
 
     private async Task DeleteBill(int id)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Удалить счёт?")) return;
+        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить счёт?")) return;
         var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == _userId);
         if (bill == null) return;
         DbContext.Reminders.Remove(bill);

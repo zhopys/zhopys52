@@ -297,7 +297,7 @@
     private async Task RunBulkRecategorize()
     {
         if (string.IsNullOrEmpty(_dataUserId)) return;
-        var ok = await JS.InvokeAsync<bool>("confirm",
+        var ok = await JsDialogHelper.ConfirmAsync(JS,
             "Пересчитать категории у операций без категории или с «Прочее»/«Доход от услуг» по ключевым словам?");
         if (!ok) return;
 
@@ -345,7 +345,7 @@
 
     private async Task ConfirmDelete(int id)
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить категорию? Операции будут перенесены в «Прочее».");
+        var ok = await JsDialogHelper.ConfirmAsync(JS, "Удалить категорию? Операции будут перенесены в «Прочее».");
         if (!ok) return;
 
         var cat = await DbContext.Categories.FindAsync(id);

@@ -21,3 +21,5 @@ public sealed class TaxPageContextDto
     public string CompanyName { get; init; } = string.Empty;
     public string CompanyUnp { get; init; } = string.Empty;
 }
+
+public sealed record TaxHintDto(string Label, string Name, int DuePresetDays);
