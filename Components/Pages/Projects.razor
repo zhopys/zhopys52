@@ -412,7 +412,7 @@
                     ? (proj.EndDate.Value - DateTime.Today).Days 
                     : (int?)null;
 
-                <div class="project-card @(expandedProjectId == proj.Id ? "expanded" : "")" data-animate>
+                <div class="project-card" data-animate>
                     <!-- Заголовок карточки со статусом -->
                     <div class="project-header">
                         <div class="project-title-section">
@@ -435,19 +435,7 @@
                         </div>
                         
                         <div class="project-actions">
-                            <button class="project-action" @onclick="() => ExpandProject(proj.Id)" 
-                                    title="@(expandedProjectId == proj.Id ? "Скрыть детали" : "Показать детали")">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    @if (expandedProjectId == proj.Id)
-                                    {
-                                        <polyline points="18 15 12 9 6 15"/>
-                                    }
-                                    else
-                                    {
-                                        <polyline points="6 9 12 15 18 9"/>
-                                    }
-                                </svg>
-                            </button>
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => OpenDetail(proj.Id)">Подробнее</button>
                             <button class="project-action" @onclick="() => StartEdit(proj)" title="Редактировать" disabled="@(proj.UserId != null && proj.UserId != userId && !proj.IsDefault)">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
@@ -547,94 +535,17 @@
                         }
                     }
 
-                    <!-- Детальная информация (разворачивается) -->
-                    @if (expandedProjectId == proj.Id && stats != null)
-                    {
-                        <div class="project-details">
-                            <div class="details-grid">
-                                <!-- Финансовые метрики -->
-                                <div class="metrics-grid">
-                                    <div class="metric-card">
-                                        <div class="metric-label">Средняя операция</div>
-                                        <div class="metric-value">
-                                            @(stats.TransactionCount > 0 
-                                                ? ((stats.TotalIncome + Math.Abs(stats.TotalExpense)) / stats.TransactionCount).ToString("N0") 
-                                                : "0") Br
-                                        </div>
-                                    </div>
-                                    <div class="metric-card">
-                                        <div class="metric-label">ROI (Возврат)</div>
-                                        <div class="metric-value @(stats.TotalExpense > 0 && (stats.TotalIncome / stats.TotalExpense) >= 1 ? "positive" : "negative")">
-                                            @(stats.TotalExpense > 0 ? (stats.TotalIncome / stats.TotalExpense).ToString("F2") : "N/A")x
-                                        </div>
-                                    </div>
-                                    <div class="metric-card">
-                                        <div class="metric-label">Маржа</div>
-                                        <div class="metric-value @(stats.TotalIncome > 0 && stats.Profit >= 0 ? "positive" : "negative")">
-                                            @(stats.TotalIncome > 0 ? (stats.Profit / stats.TotalIncome * 100).ToString("F1") : "0")%
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- KPI и риски -->
-                                @if (!string.IsNullOrWhiteSpace(proj.KPI) || !string.IsNullOrWhiteSpace(proj.Risks))
-                                {
-                                    <div class="info-grid">
-                                        @if (!string.IsNullOrWhiteSpace(proj.KPI))
-                                        {
-                                            <div class="info-card">
-                                                <div class="info-title">Ключевые показатели</div>
-                                                <div class="info-content">@proj.KPI</div>
-                                            </div>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(proj.Risks))
-                                        {
-                                            <div class="info-card">
-                                                <div class="info-title">Риски проекта</div>
-                                                <div class="info-content">@proj.Risks</div>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-
-                                <!-- Заметки -->
-                                @if (!string.IsNullOrWhiteSpace(proj.Notes))
-                                {
-                                    <div class="notes-section">
-                                        <div class="notes-title">Заметки</div>
-                                        <div class="notes-content">@proj.Notes</div>
-                                    </div>
-                                }
-
-                                <!-- Категории операций -->
-                                @if (transactionsByCategory.ContainsKey(proj.Id) && transactionsByCategory[proj.Id].Any())
-                                {
-                                    <div class="categories-section">
-                                        <h4 class="section-title">Операции по категориям</h4>
-                                        <div class="categories-list">
-                                            @foreach (var cat in transactionsByCategory[proj.Id].Take(5))
-                                            {
-                                                <div class="category-item">
-                                                    <div class="category-info">
-                                                        <span class="category-name">@cat.Category</span>
-                                                        <span class="category-count">@cat.Count оп.</span>
-                                                    </div>
-                                                    <div class="category-amount @(cat.Amount >= 0 ? "positive" : "negative")">
-                                                        @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") Br
-                                                    </div>
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
                 </div>
             }
         </div>
     }
 </div>
+
+<ProjectDetailsPanel ProjectId="@_detailProjectId"
+                     UserId="@(userId ?? "")"
+                     IsOpen="@_detailOpen"
+                     OnClose="CloseDetail"
+                     OnEdit="EditFromDetail" />
 
 @code {
     private List<Project>? projects;
@@ -648,7 +559,8 @@
 
     private ProjectEditModel newProject = new();
     private int editId = 0;
-    private int? expandedProjectId = null;
+    private int _detailProjectId;
+    private bool _detailOpen;
 
     private List<ProjectStats> projectStats = new();
     private Dictionary<int, List<CategoryTransaction>> transactionsByCategory = new();
@@ -938,9 +850,25 @@
         }
     }
 
-    private void ExpandProject(int projectId)
+    private void OpenDetail(int projectId)
     {
-        expandedProjectId = expandedProjectId == projectId ? null : projectId;
+        _detailProjectId = projectId;
+        _detailOpen = true;
+    }
+
+    private void CloseDetail()
+    {
+        _detailOpen = false;
+        _detailProjectId = 0;
+    }
+
+    private async Task EditFromDetail(int projectId)
+    {
+        CloseDetail();
+        var proj = projects?.FirstOrDefault(p => p.Id == projectId);
+        if (proj != null)
+            StartEdit(proj);
+        await Task.CompletedTask;
     }
 
     private string GetStatusText(ProjectStatus status)

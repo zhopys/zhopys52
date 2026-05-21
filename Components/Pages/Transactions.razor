@@ -345,6 +345,9 @@
     [SupplyParameterFromQuery(Name = "category")]
     public string? QueryCategory { get; set; }
 
+    [SupplyParameterFromQuery(Name = "project")]
+    public int? QueryProjectId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -353,6 +356,9 @@
 
         if (!string.IsNullOrWhiteSpace(QueryCategory))
             _filterCategory = QueryCategory.Trim();
+
+        if (QueryProjectId.HasValue)
+            _filterProjectId = QueryProjectId.Value.ToString();
 
         _userId = user.Id;
         _authorName = user.Email;

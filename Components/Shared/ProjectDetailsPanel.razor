@@ -1,0 +1,424 @@
+@using MiniFinance.Data.Models
+@using MiniFinance.Data
+@using MiniFinance.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-entity" OnClose="OnClose">
+    <HeaderContent>
+        @if (_project != null && _stats != null)
+        {
+            <div class="entity-drawer-head">
+                <div class="entity-drawer-amount @(_stats.Profit >= 0 ? "is-income" : "is-expense")">
+                    @(_stats.Profit >= 0 ? "+" : "")@_stats.Profit.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                </div>
+                <div class="entity-drawer-head-text">
+                    <h3 class="entity-drawer-title">@_project.Name</h3>
+                    <div class="entity-drawer-sub">
+                        @if (!string.IsNullOrWhiteSpace(_project.Department))
+                        {
+                            <span>@_project.Department</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_project.ProjectManager))
+                        {
+                            <span>@(string.IsNullOrWhiteSpace(_project.Department) ? "" : " · ")@_project.ProjectManager</span>
+                        }
+                    </div>
+                    <div class="entity-drawer-badges">
+                        <span class="badge @StatusBadgeClass(_project.Status)">@StatusLabel(_project.Status)</span>
+                        @if (_project.Priority.HasValue)
+                        {
+                            <span class="badge badge-info">@PriorityLabel(_project.Priority.Value)</span>
+                        }
+                        @if (_project.IsDefault)
+                        {
+                            <span class="badge badge-secondary">По умолчанию</span>
+                        }
+                        @if (_metrics != null)
+                        {
+                            @if (_metrics.IsOnTrack)
+                            {
+                                <span class="badge badge-success">В плане</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-warning">Отставание</span>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <span class="text-muted">Проект</span>
+        }
+    </HeaderContent>
+    <Actions>
+        @if (_project != null && CanEdit)
+        {
+            <button type="button" class="btn btn-sm btn-outline" @onclick="RequestEdit">Изменить</button>
+        }
+        @if (_project != null)
+        {
+            <a class="btn btn-sm btn-outline" href="@($"/transactions?project={_project.Id}")">Все операции</a>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_loading)
+        {
+            <div class="entity-drawer-loading">
+                <div class="spinner"></div>
+                <span>Загрузка…</span>
+            </div>
+        }
+        else if (_error != null)
+        {
+            <div class="alert alert-error small entity-drawer-alert">@_error</div>
+        }
+        else if (_project != null && _stats != null)
+        {
+            <div class="reports-tax-summary entity-drawer-kpis">
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Доходы</span>
+                    <span class="reports-tax-kpi-value text-success">@_stats.TotalIncome.ToString("N0") Br</span>
+                </div>
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Расходы</span>
+                    <span class="reports-tax-kpi-value text-danger">@_stats.TotalExpense.ToString("N0") Br</span>
+                </div>
+                <div class="reports-tax-kpi">
+                    <span class="reports-tax-kpi-label">Операций</span>
+                    <span class="reports-tax-kpi-value">@_stats.TransactionCount</span>
+                </div>
+                @if (_metrics != null)
+                {
+                    <div class="reports-tax-kpi">
+                        <span class="reports-tax-kpi-label">ROI</span>
+                        <span class="reports-tax-kpi-value @(_metrics.ROI >= 1 ? "text-success" : "text-danger")">@_metrics.ROI.ToString("F2")x</span>
+                    </div>
+                }
+            </div>
+
+            @if (_project.Budget.HasValue && _project.Budget > 0)
+            {
+                var budgetPct = Math.Min(_stats.BudgetUsedPercent, 100);
+                <div class="entity-drawer-block entity-drawer-block-highlight">
+                    <div class="entity-drawer-progress-head">
+                        <span>Использовано бюджета</span>
+                        <strong>@_stats.BudgetUsedPercent.ToString("F0")%</strong>
+                    </div>
+                    <div class="entity-drawer-progress-track">
+                        <div class="entity-drawer-progress-fill @(_stats.BudgetUsedPercent > 100 ? "is-over" : "")" style="width:@(budgetPct)%"></div>
+                    </div>
+                    <div class="entity-drawer-progress-foot">
+                        <span>Расход <strong>@_stats.TotalExpense.ToString("N0") Br</strong></span>
+                        <span>из @_project.Budget.Value.ToString("N0") Br</span>
+                    </div>
+                </div>
+            }
+
+            @if (_project.TargetROI.HasValue && _project.TargetROI > 0 && _stats.MarginPercent != 0)
+            {
+                var roiPct = Math.Min((_stats.MarginPercent / _project.TargetROI.Value) * 100, 100);
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-progress-head">
+                        <span>Целевой ROI (@_project.TargetROI.Value%)</span>
+                        <strong>@roiPct.ToString("F0")%</strong>
+                    </div>
+                    <div class="entity-drawer-progress-track">
+                        <div class="entity-drawer-progress-fill" style="width:@(roiPct)%"></div>
+                    </div>
+                    <div class="entity-drawer-progress-foot">
+                        <span>Факт. маржа</span>
+                        <span><strong>@_stats.MarginPercent.ToString("F1")%</strong></span>
+                    </div>
+                </div>
+            }
+
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Параметры</div>
+                <div class="entity-drawer-fields">
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Статус</span>
+                        <span>@StatusLabel(_project.Status)</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Бюджет</span>
+                        <span>@(_project.Budget.HasValue ? $"{_project.Budget.Value:N0} Br" : "—")</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Начало</span>
+                        <span>@(_project.StartDate?.ToString("dd.MM.yyyy") ?? "—")</span>
+                    </div>
+                    <div class="entity-drawer-field">
+                        <span class="entity-drawer-label">Завершение</span>
+                        <span>@(_project.EndDate?.ToString("dd.MM.yyyy") ?? "—")</span>
+                    </div>
+                    @if (_daysRemaining.HasValue)
+                    {
+                        <div class="entity-drawer-field">
+                            <span class="entity-drawer-label">До дедлайна</span>
+                            <span>@_daysRemaining дн.</span>
+                        </div>
+                    }
+                    @if (_metrics != null)
+                    {
+                        <div class="entity-drawer-field">
+                            <span class="entity-drawer-label">Ср. прибыль / мес</span>
+                            <span>@_metrics.AvgMonthlyProfit.ToString("N0") Br</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_project.Description))
+            {
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">Описание</div>
+                    <p class="entity-drawer-note-plain">@_project.Description</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_project.KPI))
+            {
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">KPI</div>
+                    <p class="entity-drawer-note-plain">@_project.KPI</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_project.Risks))
+            {
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">Риски</div>
+                    <p class="entity-drawer-note-plain">@_project.Risks</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_project.Notes))
+            {
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">Заметки</div>
+                    <p class="entity-drawer-note-plain">@_project.Notes</p>
+                </div>
+            }
+
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">По категориям</div>
+                @if (!_categories.Any())
+                {
+                    <p class="entity-drawer-muted">Нет операций по проекту</p>
+                }
+                else
+                {
+                    <ul class="entity-drawer-list">
+                        @foreach (var cat in _categories.Take(8))
+                        {
+                            <li class="entity-drawer-list-item">
+                                <span>
+                                    <strong>@cat.Category</strong>
+                                    <span class="entity-drawer-muted"> · @cat.Count оп.</span>
+                                </span>
+                                <span class="fw-bold @(cat.Amount >= 0 ? "text-success" : "text-danger")">
+                                    @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") Br
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <div class="entity-drawer-block">
+                <div class="entity-drawer-block-title">Последние операции</div>
+                @if (!_recentTransactions.Any())
+                {
+                    <p class="entity-drawer-muted">Операции не привязаны к проекту</p>
+                }
+                else
+                {
+                    <div class="entity-drawer-table-wrap">
+                        <table class="table table-sm entity-drawer-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Описание</th>
+                                    <th class="text-end">Сумма</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in _recentTransactions)
+                                {
+                                    <tr>
+                                        <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
+                                        <td>@t.Description</td>
+                                        <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                            @t.Amount.ToString("N2") Br
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </ChildContent>
+</DetailsDrawer>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+    [Parameter] public string UserId { get; set; } = "";
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
+
+    private Project? _project;
+    private ProjectPanelStats? _stats;
+    private ProjectProfitabilityService.ProjectProfitabilityMetrics? _metrics;
+    private List<CategoryRow> _categories = new();
+    private List<Transaction> _recentTransactions = new();
+    private int? _daysRemaining;
+    private bool _loading;
+    private bool _canEdit;
+    private string? _error;
+
+    private bool CanEdit => _project != null && (_project.IsDefault || _canEdit);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen || ProjectId <= 0 || string.IsNullOrEmpty(UserId))
+        {
+            _project = null;
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _project = await DbContext.Projects.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == ProjectId && (p.UserId == UserId || p.IsDefault));
+            if (_project == null)
+            {
+                _error = "Проект не найден";
+                return;
+            }
+
+            _canEdit = _project.UserId == null || _project.UserId == UserId;
+            if (_project.EndDate.HasValue && _project.Status == ProjectStatus.Active)
+            {
+                var days = (_project.EndDate.Value.Date - DateTime.Today).Days;
+                if (days > 0) _daysRemaining = days;
+            }
+            else
+            {
+                _daysRemaining = null;
+            }
+
+            var tx = await DbContext.Transactions.AsNoTracking()
+                .Where(t => t.ProjectId == ProjectId && t.UserId == UserId)
+                .OrderByDescending(t => t.Date)
+                .ThenByDescending(t => t.Id)
+                .ToListAsync();
+
+            var income = tx.Where(t => t.Amount > 0).Sum(t => t.Amount);
+            var expense = Math.Abs(tx.Where(t => t.Amount < 0).Sum(t => t.Amount));
+            var profit = income - expense;
+            var margin = income > 0 ? (profit / income) * 100 : 0;
+            var budgetUsed = _project.Budget.HasValue && _project.Budget > 0
+                ? (expense / _project.Budget.Value) * 100
+                : 0;
+
+            _stats = new ProjectPanelStats
+            {
+                TotalIncome = income,
+                TotalExpense = expense,
+                TransactionCount = tx.Count,
+                MarginPercent = margin,
+                BudgetUsedPercent = budgetUsed
+            };
+
+            var allProjects = new List<Project> { _project };
+            _metrics = ProjectProfitabilityService.ComputeMetrics(allProjects, tx)
+                .FirstOrDefault(m => m.ProjectId == ProjectId);
+
+            _categories = tx
+                .GroupBy(t => t.Category)
+                .Select(g => new CategoryRow
+                {
+                    Category = g.Key,
+                    Amount = g.Sum(t => t.Amount),
+                    Count = g.Count()
+                })
+                .OrderByDescending(c => Math.Abs(c.Amount))
+                .ToList();
+
+            _recentTransactions = tx.Take(12).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _project = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RequestEdit()
+    {
+        if (_project == null) return;
+        await OnEdit.InvokeAsync(_project.Id);
+    }
+
+    private static string StatusLabel(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Active => "Активный",
+        ProjectStatus.Planning => "Планирование",
+        ProjectStatus.OnHold => "Приостановлен",
+        ProjectStatus.Completed => "Завершён",
+        ProjectStatus.Cancelled => "Отменён",
+        _ => s.ToString()
+    };
+
+    private static string StatusBadgeClass(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Active => "badge-success",
+        ProjectStatus.Completed => "badge-info",
+        ProjectStatus.OnHold => "badge-warning",
+        ProjectStatus.Cancelled => "badge-danger",
+        _ => "badge-secondary"
+    };
+
+    private static string PriorityLabel(ProjectPriority p) => p switch
+    {
+        ProjectPriority.Low => "Низкий приоритет",
+        ProjectPriority.Medium => "Средний приоритет",
+        ProjectPriority.High => "Высокий приоритет",
+        ProjectPriority.Critical => "Критический",
+        _ => p.ToString()
+    };
+
+    private sealed class ProjectPanelStats
+    {
+        public decimal TotalIncome { get; init; }
+        public decimal TotalExpense { get; init; }
+        public int TransactionCount { get; init; }
+        public decimal MarginPercent { get; init; }
+        public decimal BudgetUsedPercent { get; init; }
+        public decimal Profit => TotalIncome - TotalExpense;
+    }
+
+    private sealed class CategoryRow
+    {
+        public string Category { get; init; } = "";
+        public decimal Amount { get; init; }
+        public int Count { get; init; }
+    }
+}

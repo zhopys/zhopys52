@@ -2733,6 +2733,9 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
   border-radius: 999px;
   transition: width 0.35s ease;
 }
+.entity-drawer-progress-fill.is-over {
+  background: linear-gradient(90deg, var(--danger), #f97316);
+}
 .entity-drawer-progress-foot {
   display: flex;
   justify-content: space-between;
