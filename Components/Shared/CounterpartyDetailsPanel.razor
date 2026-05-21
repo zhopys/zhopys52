@@ -2,7 +2,7 @@
 @inject ICounterpartyService CounterpartyService
 @using CounterpartySvc = MiniFinance.Services.CounterpartyService
 
-<DetailsDrawer IsOpen="@IsOpen" Wide="true" OnClose="OnClose">
+<DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-entity" OnClose="OnClose">
     <HeaderContent>
         @if (_detail != null)
         {
