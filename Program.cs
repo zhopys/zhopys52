@@ -524,6 +524,15 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "ALTER TABLE OrganizationSettings ADD COLUMN TimeZoneId TEXT NOT NULL DEFAULT 'Europe/Minsk';";
                 cmd.ExecuteNonQuery();
             }
+            if (!orgColumns.Contains("OrganizationId"))
+            {
+                cmd.CommandText = "ALTER TABLE OrganizationSettings ADD COLUMN OrganizationId TEXT NOT NULL DEFAULT '';";
+                cmd.ExecuteNonQuery();
+            }
+            cmd.CommandText = @"UPDATE OrganizationSettings
+                SET OrganizationId = UserId
+                WHERE OrganizationId IS NULL OR OrganizationId = '';";
+            cmd.ExecuteNonQuery();
 
             // Add ProjectId to Transactions if missing
             cmd.CommandText = "PRAGMA table_info('Transactions');";

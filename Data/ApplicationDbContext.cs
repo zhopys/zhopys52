@@ -103,6 +103,34 @@ namespace MiniFinance.Data
                 b.HasIndex(d => d.UserId);
                 b.HasOne(d => d.Counterparty).WithMany().HasForeignKey(d => d.CounterpartyId).OnDelete(DeleteBehavior.SetNull);
             });
+
+            builder.Entity<OrganizationSettings>(b =>
+            {
+                b.HasIndex(s => s.UserId).IsUnique();
+            });
+        }
+
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            NormalizeOrganizationSettings();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            NormalizeOrganizationSettings();
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        private void NormalizeOrganizationSettings()
+        {
+            foreach (var entry in ChangeTracker.Entries<OrganizationSettings>())
+            {
+                if (entry.State is not (EntityState.Added or EntityState.Modified))
+                    continue;
+                if (string.IsNullOrWhiteSpace(entry.Entity.OrganizationId))
+                    entry.Entity.OrganizationId = entry.Entity.UserId;
+            }
         }
     }
 }

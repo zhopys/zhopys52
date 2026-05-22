@@ -28,7 +28,7 @@
         <div class="page-header">
             <div class="title">
                 <h1>Финансовые отчёты</h1>
-                <div class="meta text-muted">Сводка, прибыли и убытки, движение денег и прогноз остатка</div>
+                <div class="meta text-muted">Сводка, прибыли и убытки, движение денег и учётные формы</div>
             </div>
         </div>
 
@@ -53,8 +53,6 @@
                         ProjectIdChanged="OnProjectIdChanged"
                         SelectedCategory="@_selectedCategory"
                         SelectedCategoryChanged="OnCategoryChanged"
-                        ForecastDays="@_forecastDays"
-                        ForecastDaysChanged="OnForecastDaysChanged"
                         AvailableMonths="@_availableMonths"
                         Projects="@_projects"
                         Categories="@_categoryNames"
@@ -116,16 +114,10 @@
                                  OnRefreshRequested="ReloadAsync" />
             </div>
 
-            <TaxCalendarWidget Alerts="@_snapshot.CriticalReminders" />
-
             <div class="reports-charts-row mb-3">
                 <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
                                     SelectedCategory="@_selectedCategory"
                                     OnCategorySelected="FilterByCategory" />
-                <CashGapForecastChart Forecast="@_snapshot.Forecast"
-                                      HorizonDays="@_forecastDays"
-                                      MinCashThreshold="@_snapshot.Forecast.MinCashThreshold"
-                                      OnHorizonChanged="ChangeForecastHorizon" />
             </div>
 
             <ProfitabilityMatrix Rows="@_snapshot.ProfitabilityMatrix" />
@@ -147,7 +139,6 @@
             </div>
 
             <div class="tabs reports-extended-tabs mb-3">
-                <button type="button" class="tab @(_extendedTab == "forecast" ? "active" : "")" @onclick='() => SetExtendedTab("forecast")'>Прогноз</button>
                 <button type="button" class="tab @(_extendedTab == "tax" ? "active" : "")" @onclick='() => SetExtendedTab("tax")'>Налоги</button>
                 <button type="button" class="tab @(_extendedTab == "compare" ? "active" : "")" @onclick='() => SetExtendedTab("compare")'>Сравнение</button>
                 <button type="button" class="tab @(_extendedTab == "weekday" ? "active" : "")" @onclick='() => SetExtendedTab("weekday")'>По дням</button>
@@ -156,11 +147,7 @@
 
             @if (_extended != null)
             {
-                @if (_extendedTab == "forecast")
-                {
-                    <ForecastInsightsPanel Data="@_extended.Forecast" />
-                }
-                else if (_extendedTab == "tax")
+                @if (_extendedTab == "tax")
                 {
                     <TaxReportPanel Report="@_extended.Tax" />
                 }
@@ -270,7 +257,7 @@
     private ReportAnalyticsSnapshot? _snapshot;
     private ExtendedAnalyticsDto? _extended;
     private BalanceReportDto? _balance;
-    private string _extendedTab = "forecast";
+    private string _extendedTab = "tax";
     private string _userId = "";
     private bool _loading = true;
     private bool _refreshing;
@@ -285,7 +272,6 @@
     private List<DateTime> _availableMonths = new();
     private List<string> _categoryNames = new();
     private List<Project> _projects = new();
-    private int _forecastDays = 90;
     private int? _projectId;
     private string? _selectedCategory;
 
@@ -353,7 +339,7 @@
             End = end,
             PeriodType = _periodType,
             CompareMode = _compareMode,
-            ForecastDays = _forecastDays,
+            ForecastDays = 90,
             ProjectId = _projectId,
             Categories = string.IsNullOrEmpty(_selectedCategory) ? Array.Empty<string>() : new[] { _selectedCategory },
             ExportReport = exportReport ?? MapTabForExport(_activeTab)
@@ -398,7 +384,6 @@
         _compareMode = "mom";
         _projectId = null;
         _selectedCategory = null;
-        _forecastDays = 90;
         _selectedMonth = _availableMonths.Count > 0 ? _availableMonths[0] : DateTime.Today;
         _selectedMonthKey = ToMonthKey(_selectedMonth);
         var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -450,12 +435,6 @@
         await ReloadAsync();
     }
 
-    private async Task OnForecastDaysChanged(int days)
-    {
-        _forecastDays = days;
-        await ReloadAsync();
-    }
-
     private void SetTab(string tab) => _activeTab = tab;
 
     private void SetExtendedTab(string tab) => _extendedTab = tab;
@@ -463,12 +442,6 @@
     private async Task FilterByCategory(string category)
     {
         _selectedCategory = string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase) ? null : category;
-        await ReloadAsync();
-    }
-
-    private async Task ChangeForecastHorizon(int days)
-    {
-        _forecastDays = days;
         await ReloadAsync();
     }
 

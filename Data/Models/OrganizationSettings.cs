@@ -9,6 +9,10 @@ namespace MiniFinance.Data.Models
         [Required]
         public string UserId { get; set; } = string.Empty;
 
+        /// <summary>Legacy tenant key; kept in sync with <see cref="UserId"/> for older databases.</summary>
+        [Required]
+        public string OrganizationId { get; set; } = string.Empty;
+
         public string CompanyName { get; set; } = string.Empty;
 
         public string UNP { get; set; } = string.Empty;

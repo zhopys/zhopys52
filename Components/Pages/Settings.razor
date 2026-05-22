@@ -171,7 +171,7 @@
             var previousTaxSystem = settings?.TaxSystem;
             if (settings == null)
             {
-                settings = new OrganizationSettings { UserId = _userId };
+                settings = new OrganizationSettings { UserId = _userId, OrganizationId = _userId };
                 DbContext.OrganizationSettings.Add(settings);
             }
 

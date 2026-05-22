@@ -249,6 +249,7 @@
     private decimal debtPayable;
     private decimal upcomingTaxTotal;
     private decimal upcomingRemindersTotal;
+    private decimal minCashThreshold = 1000;
 
     private string HealthClass => balance < 0 || cashGaps.Any() ? "health-warn" : monthNet < 0 ? "health-caution" : "health-ok";
     private string HealthIcon => balance < 0 ? "!" : cashGaps.Any() ? "⚠" : monthNet < 0 ? "↓" : "✓";
@@ -321,8 +322,12 @@
                 });
             }
 
+            var orgSettings = await DbContext.OrganizationSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == dataId);
+            minCashThreshold = orgSettings?.MinCashBalance ?? 1000;
+
             var reminders = await DbContext.Reminders.Where(r => r.UserId == dataId && !r.IsArchived).ToListAsync();
-            cashGaps = ForecastingService.DetectCashGaps(transactions, reminders, 90, 0);
+            cashGaps = ForecastingService.DetectCashGaps(transactions, reminders, 90, minCashThreshold);
 
             upcomingTaxes = await DbContext.TaxPayments
                 .Where(t => t.UserId == dataId && !t.IsPaid && t.DueDate >= DateTime.Today && t.DueDate <= DateTime.Today.AddDays(30))

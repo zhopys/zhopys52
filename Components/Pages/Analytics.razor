@@ -100,12 +100,12 @@ else if (_snapshot != null)
             }
             else if (_tab == "charts")
             {
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
-                    <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
-                                        SelectedCategory="@_selectedCategory"
-                                        OnCategorySelected="OnCategoryFilter" />
-                    <CashGapForecastChart Forecast="@_snapshot.Forecast" MinCashThreshold="@_snapshot.Forecast.MinCashThreshold" />
-                </div>
+                <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
+                                    SelectedCategory="@_selectedCategory"
+                                    OnCategorySelected="OnCategoryFilter" />
+                <p class="small text-muted mt-2">
+                    Прогноз кассы и порог остатка — на странице <a href="/cash-forecast">Прогноз кассовых разрывов</a>.
+                </p>
                 @if (_extended?.Forecast.Anomalies.Any() == true)
                 {
                     <div class="card mt-3">
@@ -155,7 +155,6 @@ else if (_snapshot != null)
                             <button class="btn btn-outline" @onclick='() => Export("pdf", "trial")'>PDF — ОСВ</button>
                             <button class="btn btn-outline" @onclick='() => Export("pdf", "book")'>PDF — книга учёта</button>
                             <button class="btn btn-outline" @onclick='() => Export("pdf", "profitability")'>PDF — рентабельность</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "forecast")'>PDF — прогноз</button>
                             <button class="btn btn-outline" @onclick='() => Export("xlsx", "full")'>Excel — всё</button>
                             <button class="btn btn-outline" @onclick='() => Export("csv", "transactions")'>CSV — транзакции</button>
                         </div>

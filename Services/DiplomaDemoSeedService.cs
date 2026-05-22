@@ -228,6 +228,7 @@ public static class DiplomaDemoSeedService
         var settings = new OrganizationSettings
         {
             UserId = userId,
+            OrganizationId = userId,
             CompanyName = "ООО «ТехноСтарт»",
             UNP = "193456789",
             TaxSystem = TaxSystem.USN,

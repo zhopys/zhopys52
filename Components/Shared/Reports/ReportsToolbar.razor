@@ -69,15 +69,6 @@
                 </select>
             </div>
 
-            <div class="reports-filter-group">
-                <label class="label">Прогноз</label>
-                <select class="input" value="@ForecastDays.ToString()" @onchange="OnForecastChange">
-                    <option value="30">30 дней</option>
-                    <option value="60">60 дней</option>
-                    <option value="90">90 дней</option>
-                </select>
-            </div>
-
             <div class="reports-toolbar-actions">
                 <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyFilters" disabled="@Disabled">
                     Применить
@@ -141,8 +132,6 @@
     [Parameter] public EventCallback<int?> ProjectIdChanged { get; set; }
     [Parameter] public string? SelectedCategory { get; set; }
     [Parameter] public EventCallback<string?> SelectedCategoryChanged { get; set; }
-    [Parameter] public int ForecastDays { get; set; } = 90;
-    [Parameter] public EventCallback<int> ForecastDaysChanged { get; set; }
     [Parameter] public IReadOnlyList<DateTime> AvailableMonths { get; set; } = Array.Empty<DateTime>();
     [Parameter] public IReadOnlyList<Project> Projects { get; set; } = Array.Empty<Project>();
     [Parameter] public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
@@ -202,11 +191,6 @@
         var v = e.Value?.ToString();
         return SelectedCategoryChanged.InvokeAsync(string.IsNullOrWhiteSpace(v) ? null : v);
     }
-
-    private Task OnForecastChange(ChangeEventArgs e) =>
-        int.TryParse(e.Value?.ToString(), out var d) && d is 30 or 60 or 90
-            ? ForecastDaysChanged.InvokeAsync(d)
-            : Task.CompletedTask;
 
     private Task ApplyFilters() => OnFiltersChanged.InvokeAsync();
     private Task Export(string format, string? report = null) => OnExport.InvokeAsync((format, report));

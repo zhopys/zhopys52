@@ -45,7 +45,12 @@
             }
             else if (!hasData) {
                 <div class="empty-state">
-                    <div class="empty-state-icon">📉</div>
+                    <div class="empty-state-icon" aria-hidden="true">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-tertiary)">
+                            <path d="M3 3v18h18"/>
+                            <path d="M7 16l4-6 4 3 5-8"/>
+                        </svg>
+                    </div>
                     <div class="empty-state-title">Недостаточно данных</div>
                     <div class="empty-state-text">Добавьте транзакции и запланированные платежи, чтобы построить прогноз.</div>
                     <a href="/transactions" class="btn btn-outline mt-3">Перейти к транзакциям</a>

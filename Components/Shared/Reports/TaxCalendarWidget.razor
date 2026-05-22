@@ -5,7 +5,7 @@
     <div class="card tax-calendar-widget mb-3">
         <div class="card-header">
             <span>Календарь платежей</span>
-            <a href="/reminders" class="small text-muted">Все напоминания</a>
+            <a href="/payment-calendar" class="small text-muted">Открыть календарь</a>
         </div>
         <div class="card-body" style="padding:0">
             @foreach (var alert in Alerts)
@@ -20,7 +20,7 @@
                     </div>
                     @if (alert.Source == "reminder")
                     {
-                        <a href="/reminders" class="btn btn-sm btn-outline">Открыть</a>
+                        <a href="/payment-calendar" class="btn btn-sm btn-outline">Открыть</a>
                     }
                 </div>
             }
