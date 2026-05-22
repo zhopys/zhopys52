@@ -13,30 +13,24 @@
 @inject IJSRuntime JS
 @attribute [Authorize]
 
-<div class="main">
-    <AuthorizeView>
-        <Authorized>
-            <div class="page-header">
-                <div class="title">
-                    <ul class="breadcrumb">
-                        <li><a href="/">Главная</a></li>
-                        <li>Аналитика</li>
-                    </ul>
-                    <h1>Прогноз кассовых разрывов</h1>
-                    <div class="meta">Интеллектуальный анализ ликвидности на базе ваших транзакций</div>
-                </div>
-                <div class="page-actions">
-                    <select class="input" style="width: auto;" @bind="forecastDays">
-                        <option value="30">30 дней</option>
-                        <option value="60">60 дней</option>
-                        <option value="90">90 дней</option>
-                    </select>
-                    <button class="btn btn-primary" @onclick="LoadForecast" disabled="@isLoading">
-                        @if (isLoading) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                        Обновить
-                    </button>
-                </div>
+<PageTitle>Прогноз кассовых разрывов — MiniFinance</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="page-header">
+            <div class="title">
+                <h1>Прогноз кассовых разрывов</h1>
+                <div class="meta text-muted">Прогноз остатка, риски нехватки денег и сценарии на выбранный период</div>
             </div>
+            <div class="page-actions">
+                <select class="input" style="width:auto" @bind="forecastDays" @bind:after="LoadForecast">
+                    <option value="30">30 дней</option>
+                    <option value="60">60 дней</option>
+                    <option value="90">90 дней</option>
+                </select>
+                <button class="btn btn-outline" @onclick="LoadForecast" disabled="@isLoading">Обновить</button>
+            </div>
+        </div>
 
             @if (isLoading) {
                 <div class="loading-state">
@@ -200,9 +194,8 @@
                     </div>
                 </div>
             }
-        </Authorized>
-    </AuthorizeView>
-</div>
+    </Authorized>
+</AuthorizeView>
 
 @code {
     private bool isLoading = true;

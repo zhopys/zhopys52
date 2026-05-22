@@ -13,34 +13,21 @@
 @inject IDataScopeService DataScope
 @attribute [Authorize]
 
-<PageTitle>Проекты - MiniFinance</PageTitle>
+<PageTitle>Проекты — MiniFinance</PageTitle>
 
-<!-- Заголовок с навигацией -->
 <div class="page-header">
-    <div class="page-header-left">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/">Главная</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Проекты</li>
-            </ol>
-        </nav>
-        <h1 class="page-title">Проекты</h1>
-        <p class="page-subtitle">Управление проектами, отслеживание рентабельности и ключевых метрик</p>
+    <div class="title">
+        <h1>Проекты</h1>
+        <div class="meta text-muted">Управление проектами, рентабельность и ключевые метрики</div>
     </div>
-    <div class="page-header-right">
-        <button class="btn btn-outline" @onclick="LoadProjects" title="Обновить данные">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 4v6h-6M1 20v-6h6"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-            <span class="btn-text">Обновить</span>
-        </button>
+    <div class="page-actions">
+        <button class="btn btn-outline" @onclick="LoadProjects" title="Обновить данные">Обновить</button>
         <button class="btn btn-primary" @onclick="ToggleCreateForm">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span class="btn-text">Новый проект</span>
+            Новый проект
         </button>
     </div>
 </div>
