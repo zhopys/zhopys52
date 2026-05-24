@@ -14,10 +14,30 @@
 <PageTitle>Вход — MiniFinance</PageTitle>
 
 <div class="login-page">
-    <div class="login-container">
+    <div class="login-split">
+        <aside class="login-brand-panel" aria-hidden="true">
+            <div class="login-brand-inner">
+                <div class="login-brand-logo">
+                    <span class="brand-mark" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 18V8l5 4 5-6 6 8v4H4z" fill="currentColor" opacity="0.95"/>
+                            <path d="M4 20h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span>MiniFinance</span>
+                </div>
+                <p class="login-brand-tagline">Учёт расходов и кассы для малого бизнеса — в одном окне.</p>
+                <ul class="login-brand-features">
+                    <li><i class="bi bi-receipt" aria-hidden="true"></i> Транзакции и импорт CSV</li>
+                    <li><i class="bi bi-graph-up" aria-hidden="true"></i> Отчёты и прогноз кассы</li>
+                    <li><i class="bi bi-bell" aria-hidden="true"></i> Налоги и напоминания</li>
+                </ul>
+            </div>
+        </aside>
+        <div class="login-container">
         <div class="login-header">
-            <h1>MiniFinance</h1>
-            <p class="text-muted">Вход в учётную запись</p>
+            <h1>Вход</h1>
+            <p class="text-muted">Войдите в учётную запись</p>
         </div>
 
         <StatusMessage />
@@ -83,6 +103,7 @@
             <a href="Account/ForgotPassword">Забыли пароль?</a>
             <a href="@_registerLink">Регистрация</a>
             <a href="@_resendLink">Подтвердить email</a>
+        </div>
         </div>
     </div>
 </div>

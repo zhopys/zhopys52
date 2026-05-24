@@ -11,10 +11,11 @@
     <Authorized>
         @if (!string.IsNullOrEmpty(_role))
         {
-            <div class="header-user" title="@_email">
+            <a href="/profile" class="header-user" title="@_email">
+                <span class="header-user-avatar" aria-hidden="true">@_initials</span>
                 <span class="header-user-email">@_displayName</span>
                 <RoleBadge Role="@_role" Title="Ваша роль в системе" />
-            </div>
+            </a>
         }
     </Authorized>
 </AuthorizeView>
@@ -23,6 +24,7 @@
     private string _role = "";
     private string _email = "";
     private string _displayName = "";
+    private string _initials = "?";
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,6 +56,16 @@
         _email = user.Email ?? user.UserName ?? "";
         var name = $"{user.FirstName} {user.LastName}".Trim();
         _displayName = string.IsNullOrEmpty(name) ? _email : name;
+        _initials = GetInitials(_displayName);
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return char.ToUpperInvariant(name.Trim()[0]).ToString();
     }
 
     public void Dispose() => AuthState.AuthenticationStateChanged -= OnAuthenticationStateChanged;

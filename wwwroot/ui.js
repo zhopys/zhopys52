@@ -78,7 +78,7 @@
             var parent = table.parentElement;
             if (!parent) return;
             var wrap = document.createElement('div');
-            wrap.className = 'table-responsive';
+            wrap.className = 'table-responsive table-shell';
             parent.insertBefore(wrap, table);
             wrap.appendChild(table);
         });

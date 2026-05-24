@@ -14,18 +14,43 @@
                 @if (_snapshot.CanAccessFinances)
                 {
                     <li class="nav-item">
-                        <NavLink href="/" Match="NavLinkMatch.All"><span>Главная</span></NavLink>
+                        <NavLink href="/" Match="NavLinkMatch.All">
+                            <i class="bi bi-speedometer2 nav-icon" aria-hidden="true"></i>
+                            <span>Главная</span>
+                        </NavLink>
                     </li>
-                    <li class="nav-item"><NavLink href="/counterparties"><span>Контрагенты</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/debts"><span>Долги</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/import"><span>Импорт</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/transactions"><span>Транзакции</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/counterparties">
+                            <i class="bi bi-people nav-icon" aria-hidden="true"></i>
+                            <span>Контрагенты</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/debts">
+                            <i class="bi bi-arrow-left-right nav-icon" aria-hidden="true"></i>
+                            <span>Долги</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/import">
+                            <i class="bi bi-cloud-upload nav-icon" aria-hidden="true"></i>
+                            <span>Импорт</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/transactions">
+                            <i class="bi bi-receipt nav-icon" aria-hidden="true"></i>
+                            <span>Транзакции</span>
+                        </NavLink>
+                    </li>
                 }
-                @* Налоги — только для налогового специалиста без финансового раздела *@
                 @if (_snapshot.CanManageTaxes && !_snapshot.CanAccessFinances)
                 {
                     <li class="nav-item">
-                        <NavLink href="/taxes" Match="NavLinkMatch.All"><span>Налоги</span></NavLink>
+                        <NavLink href="/taxes" Match="NavLinkMatch.All">
+                            <i class="bi bi-percent nav-icon" aria-hidden="true"></i>
+                            <span>Налоги</span>
+                        </NavLink>
                     </li>
                 }
             </ul>
@@ -36,8 +61,18 @@
             <div class="nav-section">
                 <div class="nav-section-label">Отчёты</div>
                 <ul class="nav-list">
-                    <li class="nav-item"><NavLink href="/reports"><span>Отчёты</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/analytics"><span>Аналитика</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/reports">
+                            <i class="bi bi-file-earmark-bar-graph nav-icon" aria-hidden="true"></i>
+                            <span>Отчёты</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/analytics">
+                            <i class="bi bi-graph-up-arrow nav-icon" aria-hidden="true"></i>
+                            <span>Аналитика</span>
+                        </NavLink>
+                    </li>
                 </ul>
             </div>
         }
@@ -49,12 +84,37 @@
                 <ul class="nav-list">
                     @if (_snapshot.CanManageTaxes)
                     {
-                        <li class="nav-item"><NavLink href="/taxes"><span>Налоги и счета</span></NavLink></li>
+                        <li class="nav-item">
+                            <NavLink href="/taxes">
+                                <i class="bi bi-wallet2 nav-icon" aria-hidden="true"></i>
+                                <span>Налоги и счета</span>
+                            </NavLink>
+                        </li>
                     }
-                    <li class="nav-item"><NavLink href="/payment-calendar"><span>Платёжный календарь</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/cash-forecast"><span>Прогноз кассы</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/reminders"><span>Напоминания</span></NavLink></li>
-                    <li class="nav-item"><NavLink href="/categories"><span>Категории</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/payment-calendar">
+                            <i class="bi bi-calendar3 nav-icon" aria-hidden="true"></i>
+                            <span>Платёжный календарь</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/cash-forecast">
+                            <i class="bi bi-cash-stack nav-icon" aria-hidden="true"></i>
+                            <span>Прогноз кассы</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/reminders">
+                            <i class="bi bi-bell nav-icon" aria-hidden="true"></i>
+                            <span>Напоминания</span>
+                        </NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink href="/categories">
+                            <i class="bi bi-tags nav-icon" aria-hidden="true"></i>
+                            <span>Категории</span>
+                        </NavLink>
+                    </li>
                 </ul>
             </div>
         }
@@ -64,11 +124,21 @@
             <ul class="nav-list">
                 @if (_snapshot.IsAdministrator)
                 {
-                    <li class="nav-item"><NavLink href="/team"><span>Команда</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/team">
+                            <i class="bi bi-person-badge nav-icon" aria-hidden="true"></i>
+                            <span>Команда</span>
+                        </NavLink>
+                    </li>
                 }
                 @if (_snapshot.CanAccessFinances)
                 {
-                    <li class="nav-item"><NavLink href="/projects"><span>Проекты</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/projects">
+                            <i class="bi bi-kanban nav-icon" aria-hidden="true"></i>
+                            <span>Проекты</span>
+                        </NavLink>
+                    </li>
                 }
             </ul>
         </div>
@@ -82,13 +152,26 @@
                 </div>
             }
             <ul class="nav-list">
-                <li class="nav-item"><NavLink href="/profile"><span>Профиль</span></NavLink></li>
+                <li class="nav-item">
+                    <NavLink href="/profile">
+                        <i class="bi bi-person-circle nav-icon" aria-hidden="true"></i>
+                        <span>Профиль</span>
+                    </NavLink>
+                </li>
                 @if (_snapshot.IsAdministrator)
                 {
-                    <li class="nav-item"><NavLink href="/settings"><span>Настройки</span></NavLink></li>
+                    <li class="nav-item">
+                        <NavLink href="/settings">
+                            <i class="bi bi-gear nav-icon" aria-hidden="true"></i>
+                            <span>Настройки</span>
+                        </NavLink>
+                    </li>
                 }
             </ul>
-            <button class="nav-logout" @onclick="Logout">Выйти</button>
+            <button class="nav-logout" @onclick="Logout">
+                <i class="bi bi-box-arrow-right nav-icon" aria-hidden="true"></i>
+                <span>Выйти</span>
+            </button>
         </div>
     </nav>
 }
@@ -96,7 +179,12 @@ else
 {
     <nav class="sidebar-nav">
         <ul class="nav-list">
-            <li class="nav-item"><NavLink href="/login"><span>Вход</span></NavLink></li>
+            <li class="nav-item">
+                <NavLink href="/login">
+                    <i class="bi bi-box-arrow-in-right nav-icon" aria-hidden="true"></i>
+                    <span>Вход</span>
+                </NavLink>
+            </li>
         </ul>
     </nav>
 }
