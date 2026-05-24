@@ -8,12 +8,18 @@ public class TaxAutoRuleService : ITaxAutoRuleService
 {
     private readonly ApplicationDbContext _db;
     private readonly ITaxService _taxService;
+    private readonly ITaxFinanceSummaryService _financeSummary;
     private readonly IDataScopeService _dataScope;
 
-    public TaxAutoRuleService(ApplicationDbContext db, ITaxService taxService, IDataScopeService dataScope)
+    public TaxAutoRuleService(
+        ApplicationDbContext db,
+        ITaxService taxService,
+        ITaxFinanceSummaryService financeSummary,
+        IDataScopeService dataScope)
     {
         _db = db;
         _taxService = taxService;
+        _financeSummary = financeSummary;
         _dataScope = dataScope;
     }
 
@@ -78,15 +84,16 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         foreach (var rule in rules.Where(r => r.IsEnabled))
         {
             var (start, end) = GetPeriodBounds(rule.Period, refDate);
-            var (income, expenses) = await SumPeriodAsync(userId, start, end);
-            var eval = TaxFormulaEvaluator.TryEvaluate(rule.Formula, new TaxFormulaContext { Income = income, Expenses = expenses });
+            var totals = await _financeSummary.GetPeriodTotalsAsync(userId, start, end);
+            var eval = TaxFormulaEvaluator.TryEvaluate(rule.Formula, new TaxFormulaContext { Income = totals.Income, Expenses = totals.Expenses });
             var due = GetDueDate(end, rule);
 
             previews.Add(new TaxRulePreview
             {
                 Rule = rule,
-                Income = income,
-                Expenses = expenses,
+                Income = totals.Income,
+                Expenses = totals.Expenses,
+                OperationCount = totals.OperationCount,
                 CalculatedAmount = eval.Ok ? eval.Value : 0,
                 PeriodStart = start,
                 PeriodEnd = end,
@@ -100,6 +107,7 @@ public class TaxAutoRuleService : ITaxAutoRuleService
 
     public async Task<TaxRuleGenerateResult> GeneratePaymentsAsync(string userId, bool skipExisting = true, DateTime? referenceDate = null)
     {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
         var previews = await PreviewAsync(userId, referenceDate);
         var messages = new List<string>();
         var created = 0;
@@ -107,52 +115,63 @@ public class TaxAutoRuleService : ITaxAutoRuleService
 
         foreach (var p in previews)
         {
-            if (!string.IsNullOrEmpty(p.Error))
-            {
-                messages.Add($"{p.Rule.Name}: {p.Error}");
-                skipped++;
-                continue;
-            }
-
-            if (p.CalculatedAmount <= 0)
-            {
-                messages.Add($"{p.Rule.Name}: сумма 0 — платёж не создан");
-                skipped++;
-                continue;
-            }
-
-            var paymentName = BuildPaymentName(p.Rule, p.PeriodStart, p.PeriodEnd);
-
-            if (skipExisting)
-            {
-                var dueStart = p.DueDate.Date;
-                var dueEnd = dueStart.AddDays(1);
-                var amountMin = p.CalculatedAmount - 0.01m;
-                var amountMax = p.CalculatedAmount + 0.01m;
-                var exists = await _db.TaxPayments.AnyAsync(t =>
-                    t.UserId == userId && !t.IsPaid &&
-                    t.Name == paymentName &&
-                    t.DueDate >= dueStart && t.DueDate < dueEnd &&
-                    t.Amount >= amountMin && t.Amount <= amountMax);
-                if (exists)
-                {
-                    skipped++;
-                    continue;
-                }
-            }
-
-            await _taxService.AddTaxAsync(new TaxPayment
-            {
-                UserId = userId,
-                Name = paymentName,
-                Amount = p.CalculatedAmount,
-                DueDate = p.DueDate
-            });
-            created++;
-            messages.Add($"Создан: {paymentName} — {p.CalculatedAmount:N2} Br до {p.DueDate:dd.MM.yyyy}");
+            var one = await TryCreatePaymentCoreAsync(userId, p, skipExisting);
+            if (one.Created) created++;
+            else skipped++;
+            if (!string.IsNullOrEmpty(one.Message))
+                messages.Add(one.Message);
         }
 
         return new TaxRuleGenerateResult { CreatedCount = created, SkippedCount = skipped, Messages = messages };
+    }
+
+    public async Task<TaxRuleGenerateResult> CreatePaymentFromPreviewAsync(string userId, TaxRulePreview preview)
+    {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
+        var one = await TryCreatePaymentCoreAsync(userId, preview, skipExisting: true);
+        return new TaxRuleGenerateResult
+        {
+            CreatedCount = one.Created ? 1 : 0,
+            SkippedCount = one.Created ? 0 : 1,
+            Messages = string.IsNullOrEmpty(one.Message) ? new List<string>() : new List<string> { one.Message }
+        };
+    }
+
+    private async Task<(bool Created, string Message)> TryCreatePaymentCoreAsync(
+        string userId, TaxRulePreview p, bool skipExisting)
+    {
+        if (!string.IsNullOrEmpty(p.Error))
+            return (false, $"{p.Rule.Name}: {p.Error}");
+
+        if (p.CalculatedAmount <= 0)
+            return (false, $"{p.Rule.Name}: сумма 0 — укажите доход в сводке или измените формулу");
+
+        var paymentName = BuildPaymentName(p.Rule, p.PeriodStart, p.PeriodEnd);
+
+        if (skipExisting && await PaymentAlreadyExistsAsync(userId, paymentName, p.DueDate, p.CalculatedAmount))
+            return (false, $"{paymentName}: уже есть в плане на {p.DueDate:dd.MM.yyyy}");
+
+        await _taxService.AddTaxAsync(new TaxPayment
+        {
+            UserId = userId,
+            Name = paymentName,
+            Amount = p.CalculatedAmount,
+            DueDate = p.DueDate
+        });
+        return (true, $"Создан: {paymentName} — {p.CalculatedAmount:N2} Br до {p.DueDate:dd.MM.yyyy}");
+    }
+
+    private async Task<bool> PaymentAlreadyExistsAsync(string userId, string paymentName, DateTime dueDate, decimal amount)
+    {
+        var dueStart = dueDate.Date.AddDays(-3);
+        var dueEnd = dueDate.Date.AddDays(4);
+        var amountMin = amount - 0.02m;
+        var amountMax = amount + 0.02m;
+        return await _db.TaxPayments.AnyAsync(t =>
+            t.UserId == userId && !t.IsPaid &&
+            t.Name == paymentName &&
+            t.DueDate >= dueStart && t.DueDate < dueEnd &&
+            t.Amount >= amountMin && t.Amount <= amountMax);
     }
 
     public async Task SyncRulesForTaxSystemAsync(string userId, TaxSystem taxSystem, bool replaceExisting = false)
@@ -180,19 +199,30 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         if (await _db.TaxAutoRules.AnyAsync(r => r.UserId == userId))
             return;
 
-        var defaults = taxSystem == TaxSystem.OSN
-            ? new[]
-            {
-                ("НДС (оценка)", "НДС", "income * 20 / 120", TaxRulePeriod.Monthly),
-                ("Налог на прибыль (оценка)", "Подоходный", "(income - income * 20 / 120) * 0.20", TaxRulePeriod.Quarterly),
-                ("ФСЗН (35% от ФОТ)", "ФСЗН", "income * 0.35 * 0.34", TaxRulePeriod.Monthly)
-            }
-            : new[]
-            {
-                ("УСН 6% (доход)", "УСН", "income * 0.06", TaxRulePeriod.Quarterly),
-                ("УСН 15% (доход−расход)", "УСН", "max(0, income - expenses) * 0.15", TaxRulePeriod.Quarterly),
+        (string Name, string PayName, string Formula, TaxRulePeriod Period)[] defaults = taxSystem switch
+        {
+            TaxSystem.OSN =>
+            [
+                ("Подоходный / прибыль (оценка)", "Подоходный", "max(0, income - expenses) * 0.16", TaxRulePeriod.Quarterly),
+                ("НДС (оценка, ЮЛ)", "НДС", "income * 20 / 120", TaxRulePeriod.Monthly),
                 ("ФСЗН (оценка)", "ФСЗН", "income * 0.35", TaxRulePeriod.Monthly)
-            };
+            ],
+            TaxSystem.NPD =>
+            [
+                ("НПД 4% (физлица)", "НПД", "income * 0.04", TaxRulePeriod.Monthly),
+                ("НПД 8% (юрлица)", "НПД", "income * 0.08", TaxRulePeriod.Monthly)
+            ],
+            TaxSystem.UnifiedTax =>
+            [
+                ("Единый налог (укажите сумму)", "Единый", "0", TaxRulePeriod.Monthly)
+            ],
+            TaxSystem.USN =>
+            [
+                ("УСН 6% от выручки (РБ)", "УСН", "income * 0.06", TaxRulePeriod.Quarterly),
+                ("ФСЗН (оценка)", "ФСЗН", "income * 0.35", TaxRulePeriod.Monthly)
+            ],
+            _ => Array.Empty<(string, string, string, TaxRulePeriod)>()
+        };
 
         var order = 1;
         foreach (var (name, payName, formula, period) in defaults)
@@ -212,18 +242,6 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         }
 
         await _db.SaveChangesAsync();
-    }
-
-    private async Task<(decimal Income, decimal Expenses)> SumPeriodAsync(string userId, DateTime start, DateTime end)
-    {
-        var txs = await _db.Transactions
-            .Where(t => t.UserId == userId && t.IsConfirmed && t.Date >= start && t.Date <= end)
-            .Select(t => t.Amount)
-            .ToListAsync();
-
-        var income = txs.Where(a => a > 0).Sum();
-        var expenses = Math.Abs(txs.Where(a => a < 0).Sum());
-        return (income, expenses);
     }
 
     private static (DateTime Start, DateTime End) GetPeriodBounds(TaxRulePeriod period, DateTime refDate)

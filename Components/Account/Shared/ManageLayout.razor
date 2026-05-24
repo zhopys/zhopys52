@@ -1,17 +1,23 @@
 ﻿@inherits LayoutComponentBase
 @layout MiniFinance.Components.Layout.MainLayout
 
-<h1>Manage your account</h1>
+<div class="page-header">
+    <div class="title">
+        <h1>Управление аккаунтом</h1>
+        <div class="meta text-muted">Настройки учётной записи Identity</div>
+    </div>
+    <a href="/account" class="btn btn-outline">← Полный профиль</a>
+</div>
 
-<div>
-    <h2>Change your account settings</h2>
-    <hr />
-    <div class="row">
-        <div class="col-lg-3">
-            <ManageNavMenu />
-        </div>
-        <div class="col-lg-9">
-            @Body
+<div class="hub-layout">
+    <nav class="hub-nav card">
+        <ManageNavMenu />
+    </nav>
+    <div class="hub-content">
+        <div class="card">
+            <div class="card-body">
+                @Body
+            </div>
         </div>
     </div>
 </div>

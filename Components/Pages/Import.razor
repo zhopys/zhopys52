@@ -15,7 +15,7 @@
 @inject IJSRuntime JS
 @inject ITransactionService TransactionService
 @inject ICategorizationService CategorizationService
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanImport)]
 
 <PageTitle>Импорт транзакций - MiniFinance</PageTitle>
 
@@ -60,6 +60,10 @@ else
             <div class="alert alert-info">
                 <p>Поддерживается выписка в BYN с таблицей операций (AKBB и аналоги): дата, тип, место, валюта, приход/расход, MCC.</p>
                 <p>Комиссии «Плата за перевод…» связываются с предыдущим переводом. Операции в USD/EUR сохраняют сумму в BYN и курс в примечании.</p>
+                <p>
+                    <a href="/samples/bank-statement-sample.pdf" target="_blank" rel="noopener">Скачать пример PDF-выписки</a>
+                    (выписка AKBB за год, для проверки импорта).
+                </p>
             </div>
 
             <EditForm Model="@uploadModel" OnValidSubmit="@HandlePdfImport">

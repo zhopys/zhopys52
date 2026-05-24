@@ -71,9 +71,23 @@
         });
     }
 
+    function wrapTablesForMobile(root) {
+        var scope = root || document;
+        scope.querySelectorAll('table.table').forEach(function (table) {
+            if (table.closest('.table-responsive')) return;
+            var parent = table.parentElement;
+            if (!parent) return;
+            var wrap = document.createElement('div');
+            wrap.className = 'table-responsive';
+            parent.insertBefore(wrap, table);
+            wrap.appendChild(table);
+        });
+    }
+
     function enhance(root) {
         applyNegativeBalanceRows(root);
         animateCards(root);
+        wrapTablesForMobile(root);
     }
 
     function init() {
@@ -95,7 +109,11 @@
     window.uiEnhance = {
         refresh: init,
         applyNegativeBalanceRows: function () { applyNegativeBalanceRows(document); },
-        animateCards: function () { animateCards(document); }
+        animateCards: function () { animateCards(document); },
+        scrollToId: function (elementId) {
+            var el = document.getElementById(elementId);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     };
 
     var profitChartInstance = null;

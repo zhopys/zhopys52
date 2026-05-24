@@ -1,0 +1,60 @@
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using MiniFinance.Data
+@using MiniFinance.Services
+@implements IDisposable
+@inject AuthenticationStateProvider AuthState
+@inject UserManager<ApplicationUser> UserManager
+
+<AuthorizeView>
+    <Authorized>
+        @if (!string.IsNullOrEmpty(_role))
+        {
+            <div class="header-user" title="@_email">
+                <span class="header-user-email">@_displayName</span>
+                <RoleBadge Role="@_role" Title="Ваша роль в системе" />
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private string _role = "";
+    private string _email = "";
+    private string _displayName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthState.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await ApplyAuthStateAsync();
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> _)
+    {
+        await ApplyAuthStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyAuthStateAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            _role = "";
+            return;
+        }
+
+        var snapshot = RoleAccessSnapshot.FromPrincipal(state.User);
+        _role = snapshot.PrimaryRole;
+
+        var user = await UserManager.GetUserAsync(state.User);
+        if (user == null) return;
+
+        _email = user.Email ?? user.UserName ?? "";
+        var name = $"{user.FirstName} {user.LastName}".Trim();
+        _displayName = string.IsNullOrEmpty(name) ? _email : name;
+    }
+
+    public void Dispose() => AuthState.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+}

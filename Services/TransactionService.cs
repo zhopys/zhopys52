@@ -25,11 +25,19 @@ namespace MiniFinance.Services
 
         private Task<string> OwnerIdAsync(string userId) => _dataScope.GetDataOwnerUserIdAsync(userId);
 
+        private async Task EnsureFinanceAccessAsync(string userId)
+        {
+            var ctx = await _userContext.GetContextAsync(userId);
+            if (!_userContext.CanManageTransactions(ctx))
+                throw new UnauthorizedAccessException(AccessDeniedMessages.ForPolicy(AuthorizationPolicies.CanAccessFinances));
+        }
+
         public async Task<Transaction> CreateAsync(Transaction transaction, string userId)
         {
             if (string.IsNullOrWhiteSpace(userId))
                 throw new ArgumentException("Пользователь не определён.", nameof(userId));
 
+            await EnsureFinanceAccessAsync(userId);
             var ownerId = await OwnerIdAsync(userId);
             await ValidateTransactionAsync(transaction, ownerId, isNew: true);
 
@@ -37,21 +45,8 @@ namespace MiniFinance.Services
             transaction.CreatedAt = DateTime.UtcNow;
             transaction.UpdatedAt = null;
 
-            // Роли временно отключены — все операции сразу подтверждаются
             transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
             transaction.IsConfirmed = true;
-            // var ctx = await _userContext.GetContextAsync(userId);
-            // if (ctx.IsManager && !ctx.IsOwner)
-            // {
-            //     transaction.ApprovalStatus = TransactionApprovalStatus.Pending;
-            //     transaction.IsConfirmed = false;
-            //     transaction.SubmittedByUserId = userId;
-            // }
-            // else
-            // {
-            //     transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
-            //     transaction.IsConfirmed = true;
-            // }
 
             if (string.IsNullOrWhiteSpace(transaction.Category))
                 transaction.Category = _categorizationService.CategorizeTransaction(transaction.Description, transaction.Amount);
@@ -72,6 +67,7 @@ namespace MiniFinance.Services
 
         public async Task<Transaction> UpdateAsync(Transaction transaction, string userId)
         {
+            await EnsureFinanceAccessAsync(userId);
             var ownerId = await OwnerIdAsync(userId);
             var existing = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == transaction.Id && t.UserId == ownerId);
             if (existing == null)
@@ -107,6 +103,7 @@ namespace MiniFinance.Services
 
         public async Task<Transaction> UpdateCategoryAsync(int id, string category, string userId)
         {
+            await EnsureFinanceAccessAsync(userId);
             if (string.IsNullOrWhiteSpace(category))
                 throw new ArgumentException("Категория не может быть пустой.", nameof(category));
 
@@ -129,6 +126,7 @@ namespace MiniFinance.Services
 
         public async Task DeleteAsync(int id, string userId)
         {
+            await EnsureFinanceAccessAsync(userId);
             var ownerId = await OwnerIdAsync(userId);
             var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null)
@@ -193,6 +191,7 @@ namespace MiniFinance.Services
 
         public async Task<TransactionImportResult> ImportManyAsync(IEnumerable<Transaction> transactions, string userId)
         {
+            await EnsureFinanceAccessAsync(userId);
             var result = new TransactionImportResult();
             await _categorizationService.EnsureDefaultCategoriesAsync();
 

@@ -15,7 +15,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
 @inject IJSRuntime JsRuntime
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Транзакции - MiniFinance</PageTitle>
 

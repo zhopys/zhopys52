@@ -11,7 +11,7 @@
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Долги — MiniFinance</PageTitle>
 

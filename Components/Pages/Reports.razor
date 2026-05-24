@@ -13,13 +13,15 @@
 @inject IExtendedReportService ExtendedReportService
 @inject IBalanceReportService BalanceReportService
 @inject ITransactionService TransactionService
+@inject ITaxFinanceSummaryService FinanceSummary
+@inject IUserContextService UserContext
+@inject IDataScopeService DataScope
 @inject ICategorizationService CategorizationService
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
-@* Роли временно отключены: @attribute [Authorize(Policy = "CanViewReports")] *@
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanViewReports)]
 
 <PageTitle>Отчёты — MiniFinance</PageTitle>
 
@@ -27,10 +29,21 @@
     <Authorized>
         <div class="page-header">
             <div class="title">
-                <h1>Финансовые отчёты</h1>
-                <div class="meta text-muted">Сводка, прибыли и убытки, движение денег и учётные формы</div>
+                <h1>@(_taxOnlyMode ? "Налоговые отчёты" : "Финансовые отчёты")</h1>
+                <div class="meta text-muted">
+                    @(_taxOnlyMode
+                        ? "Сводка по налогам за период — без списка операций и финансовых разделов"
+                        : "Сводка, прибыли и убытки, движение денег и учётные формы")
+                </div>
             </div>
         </div>
+
+        @if (_taxOnlyMode)
+        {
+            <div class="alert alert-info small mb-3">
+                Доходы и расходы для расчёта налогов берутся из агрегатов учёта организации. Детализация по операциям доступна бухгалтеру и администратору.
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
@@ -54,14 +67,52 @@
                         SelectedCategory="@_selectedCategory"
                         SelectedCategoryChanged="OnCategoryChanged"
                         AvailableMonths="@_availableMonths"
-                        Projects="@_projects"
-                        Categories="@_categoryNames"
+                        Projects="@(_taxOnlyMode ? Array.Empty<Project>() : _projects)"
+                        Categories="@(_taxOnlyMode ? Array.Empty<string>() : _categoryNames)"
                         OnFiltersChanged="ReloadAsync"
                         OnReset="ResetFiltersAsync"
                         OnExport="ExportAsync"
-                        Disabled="@_loading" />
+                        Disabled="@_loading"
+                        HideProjectFilter="@_taxOnlyMode"
+                        HideCategoryFilter="@_taxOnlyMode"
+                        HideCompareMode="@_taxOnlyMode"
+                        HideExport="@_taxOnlyMode" />
 
-        @if (_snapshot != null && _snapshot.DataStatus.HasData)
+        @if (_taxOnlyMode && _extended?.Tax != null)
+        {
+            <div class="reports-period-banner mb-3">
+                <div class="reports-period-main">
+                    <span class="reports-period-label">Период отчёта</span>
+                    <span class="reports-period-dates">
+                        @GetPeriodRange().start.ToString("dd.MM.yyyy") — @GetPeriodRange().end.ToString("dd.MM.yyyy")
+                    </span>
+                </div>
+            </div>
+            @if (_taxPeriodTotals != null)
+            {
+                <div class="reports-tax-summary cols-4 mb-3">
+                    <div class="reports-tax-kpi">
+                        <span class="reports-tax-kpi-label">Доход (сводка)</span>
+                        <span class="reports-tax-kpi-value text-success">@_taxPeriodTotals.Income.ToString("N0") Br</span>
+                    </div>
+                    <div class="reports-tax-kpi">
+                        <span class="reports-tax-kpi-label">Расход (сводка)</span>
+                        <span class="reports-tax-kpi-value text-danger">@_taxPeriodTotals.Expenses.ToString("N0") Br</span>
+                    </div>
+                    <div class="reports-tax-kpi">
+                        <span class="reports-tax-kpi-label">Прибыль</span>
+                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.Profit.ToString("N0") Br</span>
+                    </div>
+                    <div class="reports-tax-kpi">
+                        <span class="reports-tax-kpi-label">Операций в учёте</span>
+                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.OperationCount</span>
+                        <span class="small text-muted d-block">список скрыт</span>
+                    </div>
+                </div>
+            }
+            <TaxReportPanel Report="@_extended.Tax" />
+        }
+        else if (_snapshot != null && _snapshot.DataStatus.HasData)
         {
             <div class="reports-period-banner mb-3">
                 <div class="reports-period-main">
@@ -82,11 +133,11 @@
 
         <ReportsKpiGrid Metrics="@(_snapshot?.Kpi ?? Array.Empty<KpiMetricDto>())" Loading="@(_loading && _snapshot == null)" />
 
-        @if (_loading && _snapshot == null)
+        @if (_loading && _snapshot == null && !(_taxOnlyMode && _extended != null))
         {
             <div class="loading-state"><div class="spinner"></div></div>
         }
-        else if (_snapshot != null && !_snapshot.DataStatus.HasData)
+        else if (!_taxOnlyMode && _snapshot != null && !_snapshot.DataStatus.HasData)
         {
             <div class="empty-state reports-empty-state">
                 <div class="empty-state-icon reports-empty-icon" aria-hidden="true"></div>
@@ -96,6 +147,13 @@
                     <a href="/import" class="btn btn-primary">Импорт CSV</a>
                     <a href="/transactions" class="btn btn-outline">Добавить операцию</a>
                 </div>
+            </div>
+        }
+        else if (_taxOnlyMode && _extended == null && !_loading)
+        {
+            <div class="empty-state reports-empty-state">
+                <div class="empty-state-title">Нет данных за период</div>
+                <p class="text-muted">За выбранный период нет подтверждённых операций в учёте организации.</p>
             </div>
         }
         else if (_snapshot != null)
@@ -256,9 +314,12 @@
 @code {
     private ReportAnalyticsSnapshot? _snapshot;
     private ExtendedAnalyticsDto? _extended;
+    private TaxPeriodTotalsDto? _taxPeriodTotals;
     private BalanceReportDto? _balance;
     private string _extendedTab = "tax";
     private string _userId = "";
+    private string _dataUserId = "";
+    private bool _taxOnlyMode;
     private bool _loading = true;
     private bool _refreshing;
     private string? _errorMessage;
@@ -282,12 +343,19 @@
         if (user == null) return;
 
         _userId = user.Id;
-        _categoryNames = await CategorizationService.GetCategoryNamesAsync();
-        _projects = await DbContext.Projects
-            .Where(p => p.UserId == user.Id || p.UserId == null)
-            .Where(p => !p.IsDefault)
-            .OrderBy(p => p.Name)
-            .ToListAsync();
+        _dataUserId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+        var ctx = await UserContext.GetContextAsync(user.Id);
+        _taxOnlyMode = UserContext.IsTaxSpecialistOnly(ctx);
+
+        if (!_taxOnlyMode)
+        {
+            _categoryNames = await CategorizationService.GetCategoryNamesAsync();
+            _projects = await DbContext.Projects
+                .Where(p => p.UserId == user.Id || p.UserId == null)
+                .Where(p => !p.IsDefault)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+        }
 
         var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         _customStart = monthStart;
@@ -299,26 +367,33 @@
 
     private async Task LoadAvailableAnchorsAsync()
     {
-        var transactions = await TransactionService.ListAsync(_userId);
-
-        _availableMonths = _periodType switch
+        if (_taxOnlyMode)
         {
-            "Year" => transactions
-                .GroupBy(t => t.Date.Year)
-                .Select(g => new DateTime(g.Key, 1, 1))
-                .OrderByDescending(d => d)
-                .ToList(),
-            "Quarter" => transactions
-                .GroupBy(t => new { t.Date.Year, Q = (t.Date.Month - 1) / 3 })
-                .Select(g => new DateTime(g.Key.Year, g.Key.Q * 3 + 1, 1))
-                .OrderByDescending(d => d)
-                .ToList(),
-            _ => transactions
-                .GroupBy(t => new { t.Date.Year, t.Date.Month })
-                .Select(g => new DateTime(g.Key.Year, g.Key.Month, 1))
-                .OrderByDescending(d => d)
-                .ToList()
-        };
+            _availableMonths = (await FinanceSummary.GetAvailablePeriodAnchorsAsync(_dataUserId, _periodType)).ToList();
+        }
+        else
+        {
+            var transactions = await TransactionService.ListAsync(_userId);
+
+            _availableMonths = _periodType switch
+            {
+                "Year" => transactions
+                    .GroupBy(t => t.Date.Year)
+                    .Select(g => new DateTime(g.Key, 1, 1))
+                    .OrderByDescending(d => d)
+                    .ToList(),
+                "Quarter" => transactions
+                    .GroupBy(t => new { t.Date.Year, Q = (t.Date.Month - 1) / 3 })
+                    .Select(g => new DateTime(g.Key.Year, g.Key.Q * 3 + 1, 1))
+                    .OrderByDescending(d => d)
+                    .ToList(),
+                _ => transactions
+                    .GroupBy(t => new { t.Date.Year, t.Date.Month })
+                    .Select(g => new DateTime(g.Key.Year, g.Key.Month, 1))
+                    .OrderByDescending(d => d)
+                    .ToList()
+            };
+        }
 
         if (!_availableMonths.Any())
             _availableMonths.Add(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
@@ -351,8 +426,8 @@
         if (string.IsNullOrEmpty(_userId)) return;
 
         _errorMessage = null;
-        _loading = _snapshot == null;
-        _refreshing = _snapshot != null;
+        _loading = _taxOnlyMode ? _extended == null : _snapshot == null;
+        _refreshing = _taxOnlyMode ? _extended != null : _snapshot != null;
         StateHasChanged();
 
         try
@@ -361,9 +436,20 @@
                 _selectedMonth = ParseMonthKey(_selectedMonthKey);
 
             var filters = BuildFilters();
-            _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
-            _extended = await ExtendedReportService.BuildAsync(_userId, filters, null);
-            _balance = await BalanceReportService.BuildAsync(_userId, filters);
+            if (_taxOnlyMode)
+            {
+                _snapshot = null;
+                _balance = null;
+                _taxPeriodTotals = await FinanceSummary.GetPeriodTotalsAsync(_dataUserId, filters.Start, filters.End);
+                _extended = await ExtendedReportService.BuildAsync(_dataUserId, filters, null);
+            }
+            else
+            {
+                _taxPeriodTotals = null;
+                _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
+                _extended = await ExtendedReportService.BuildAsync(_userId, filters, null);
+                _balance = await BalanceReportService.BuildAsync(_userId, filters);
+            }
         }
         catch (Exception ex)
         {

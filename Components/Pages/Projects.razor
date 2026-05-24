@@ -11,7 +11,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Проекты — MiniFinance</PageTitle>
 

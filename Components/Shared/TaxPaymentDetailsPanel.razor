@@ -5,6 +5,7 @@
     <Actions>
         @if (_tax != null && !_tax.IsPaid)
         {
+            <button type="button" class="btn btn-sm btn-outline" @onclick="RequestEdit">Изменить</button>
             <button type="button" class="btn btn-sm btn-primary" @onclick="MarkPaid">Отметить оплаченным</button>
         }
     </Actions>
@@ -41,6 +42,7 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
 
     private TaxPayment? _tax;
 
@@ -55,6 +57,12 @@
     {
         await TaxService.MarkAsPaidAsync(TaxId, UserId);
         await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task RequestEdit()
+    {
+        await OnEdit.InvokeAsync(TaxId);
         await OnClose.InvokeAsync();
     }
 

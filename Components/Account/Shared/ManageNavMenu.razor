@@ -3,29 +3,17 @@
 
 @inject SignInManager<ApplicationUser> SignInManager
 
-<ul class="nav nav-pills flex-column">
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage" Match="NavLinkMatch.All">Профиль</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/Email">Email</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/ChangePassword">Пароль</NavLink>
-    </li>
+<div style="display:flex;flex-direction:column;gap:4px">
+    <NavLink class="hub-nav-item" href="Account/Manage" Match="NavLinkMatch.All">Профиль</NavLink>
+    <NavLink class="hub-nav-item" href="Account/Manage/Email">Email</NavLink>
+    <NavLink class="hub-nav-item" href="Account/Manage/ChangePassword">Пароль</NavLink>
     @if (hasExternalLogins)
     {
-        <li class="nav-item">
-            <NavLink class="nav-link" href="Account/Manage/ExternalLogins">Внешние входы</NavLink>
-        </li>
+        <NavLink class="hub-nav-item" href="Account/Manage/ExternalLogins">Внешние входы</NavLink>
     }
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/TwoFactorAuthentication">Двухфакторная аутентификация</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/PersonalData">Персональные данные</NavLink>
-    </li>
-</ul>
+    <NavLink class="hub-nav-item" href="/account?tab=security">Двухфакторная аутентификация</NavLink>
+    <NavLink class="hub-nav-item" href="Account/Manage/PersonalData">Персональные данные</NavLink>
+</div>
 
 @code {
     private bool hasExternalLogins;

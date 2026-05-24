@@ -1,51 +1,66 @@
 ﻿@page "/Account/LoginWith2fa"
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Data
+@using MiniFinance.Services
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
+@inject ITwoFactorService TwoFactorService
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<LoginWith2fa> Logger
 
-<PageTitle>Two-factor authentication</PageTitle>
+<PageTitle>Двухфакторный вход — MiniFinance</PageTitle>
 
-<h1>Two-factor authentication</h1>
-<hr />
-<StatusMessage Message="@message" />
-<p>Your login is protected with an authenticator app. Enter your authenticator code below.</p>
-<div class="row">
-    <div class="col-md-4">
+<div class="login-page">
+    <div class="login-container">
+        <div class="login-header">
+            <h1>MiniFinance</h1>
+            <p class="text-muted">Код из письма отправлен на @maskedEmail</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert alert-danger" role="alert">@message</div>
+        }
+        @if (!string.IsNullOrEmpty(infoMessage))
+        {
+            <div class="alert alert-success" role="alert">@infoMessage</div>
+        }
+
         <EditForm Model="Input" FormName="login-with-2fa" OnValidSubmit="OnValidSubmitAsync" method="post">
             <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
             <input type="hidden" name="RememberMe" value="@RememberMe" />
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.TwoFactorCode" id="Input.TwoFactorCode" class="form-control" autocomplete="off" />
-                <label for="Input.TwoFactorCode" class="form-label">Authenticator code</label>
+            <div class="form-group">
+                <label class="label" for="Input_TwoFactorCode">Код из email</label>
+                <InputText @bind-Value="Input.TwoFactorCode" id="Input_TwoFactorCode" class="input" autocomplete="one-time-code" placeholder="000000" maxlength="8" inputmode="numeric" />
                 <ValidationMessage For="() => Input.TwoFactorCode" class="text-danger" />
             </div>
-            <div class="checkbox mb-3">
-                <label for="remember-machine" class="form-label">
-                    <InputCheckbox @bind-Value="Input.RememberMachine" />
-                    Remember this machine
-                </label>
+            <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
+                <InputCheckbox @bind-Value="Input.RememberMachine" id="remember-machine" />
+                <label for="remember-machine">Запомнить это устройство</label>
             </div>
-            <div>
-                <button type="submit" class="w-100 btn btn-lg btn-primary">Log in</button>
-            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
         </EditForm>
+
+        <div class="login-footer" style="margin-top:1rem">
+            <button type="button" class="btn btn-outline" style="width:100%" disabled="@_resending" @onclick="ResendCodeAsync">
+                @(_resending ? "Отправка…" : "Отправить код повторно")
+            </button>
+            <a href="/login">Вернуться ко входу</a>
+        </div>
     </div>
 </div>
-<p>
-    Don't have access to your authenticator device? You can
-    <a href="Account/LoginWithRecoveryCode?ReturnUrl=@ReturnUrl">log in with a recovery code</a>.
-</p>
 
 @code {
     private string? message;
+    private string? infoMessage;
+    private string maskedEmail = "";
+    private bool _resending;
     private ApplicationUser user = default!;
 
     [SupplyParameterFromForm]
@@ -61,15 +76,25 @@
     {
         Input ??= new();
 
-        // Ensure the user has gone through the username & password screen first
-        user = await SignInManager.GetTwoFactorAuthenticationUserAsync() ??
-            throw new InvalidOperationException("Unable to load two-factor authentication user.");
+        user = await SignInManager.GetTwoFactorAuthenticationUserAsync()
+            ?? throw new InvalidOperationException("Unable to load two-factor authentication user.");
+
+        var email = await UserManager.GetEmailAsync(user) ?? "";
+        maskedEmail = MaskEmail(email);
     }
 
     private async Task OnValidSubmitAsync()
     {
-        var authenticatorCode = Input.TwoFactorCode!.Replace(" ", string.Empty).Replace("-", string.Empty);
-        var result = await SignInManager.TwoFactorAuthenticatorSignInAsync(authenticatorCode, RememberMe, Input.RememberMachine);
+        var codeCheck = AuthFieldValidation.ValidateTwoFactorCode(Input.TwoFactorCode);
+        if (!codeCheck.Ok)
+        {
+            message = codeCheck.Error;
+            return;
+        }
+
+        var code = Input.TwoFactorCode!.Replace(" ", string.Empty).Replace("-", string.Empty);
+        var result = await SignInManager.TwoFactorSignInAsync(
+            TokenOptions.DefaultEmailProvider, code, RememberMe, Input.RememberMachine);
         var userId = await UserManager.GetUserIdAsync(user);
 
         if (result.Succeeded)
@@ -84,20 +109,46 @@
         }
         else
         {
-            Logger.LogWarning("Invalid authenticator code entered for user with ID '{UserId}'.", userId);
-            message = "Error: Invalid authenticator code.";
+            Logger.LogWarning("Invalid 2FA code for user with ID '{UserId}'.", userId);
+            message = "Неверный или просроченный код. Запросите новый.";
         }
+    }
+
+    private async Task ResendCodeAsync()
+    {
+        message = null;
+        infoMessage = null;
+        _resending = true;
+        try
+        {
+            var (ok, error) = await TwoFactorService.SendLoginCodeAsync(user);
+            if (ok)
+                infoMessage = "Новый код отправлен на email.";
+            else
+                message = error ?? "Не удалось отправить код.";
+        }
+        finally
+        {
+            _resending = false;
+        }
+    }
+
+    private static string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        if (at <= 1) return email;
+        return email[0] + new string('*', Math.Min(at - 1, 5)) + email[at..];
     }
 
     private sealed class InputModel
     {
-        [Required]
-        [StringLength(7, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [Required(ErrorMessage = "Введите код")]
+        [ValidTwoFactorCode]
         [DataType(DataType.Text)]
-        [Display(Name = "Authenticator code")]
+        [Display(Name = "Код")]
         public string? TwoFactorCode { get; set; }
 
-        [Display(Name = "Remember this machine")]
+        [Display(Name = "Запомнить устройство")]
         public bool RememberMachine { get; set; }
     }
 }

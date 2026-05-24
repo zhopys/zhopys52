@@ -12,7 +12,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
 @inject IJSRuntime JS
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Платёжный календарь — MiniFinance</PageTitle>
 

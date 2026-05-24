@@ -4,9 +4,15 @@
     <header class="header glass-header">
         <a href="/" class="brand">
             <span class="brand-mark" aria-hidden="true"></span>
-            <span>MiniFinance</span>
+            <span class="brand-text">MiniFinance</span>
         </a>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="app-sidebar" aria-expanded="false" aria-label="Открыть меню">
+            <span class="nav-toggle-bar" aria-hidden="true"></span>
+            <span class="nav-toggle-bar" aria-hidden="true"></span>
+            <span class="nav-toggle-bar" aria-hidden="true"></span>
+        </button>
         <div class="header-spacer"></div>
+        <HeaderUserInfo />
         <div class="theme-toggle">
             <button class="theme-toggle-btn" onclick="window.toggleTheme && window.toggleTheme()" title="Переключить тему">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -18,7 +24,8 @@
     </header>
 
     <div class="container content">
-        <aside class="sidebar glass-sidebar">
+        <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+        <aside class="sidebar glass-sidebar" id="app-sidebar">
             <NavMenu />
         </aside>
         <main class="main">

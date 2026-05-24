@@ -10,4 +10,5 @@ public interface IReportPdfService
     byte[] GenerateForecastPdf(CashForecastChartDto forecast, DateTime start, DateTime end);
     byte[] GenerateTransactionsPdf(IReadOnlyList<TransactionPdfRow> rows, DateTime start, DateTime end);
     byte[] GenerateFullReportPdf(ReportAnalyticsSnapshot snapshot, IReadOnlyList<TransactionPdfRow> transactions);
+    byte[] GenerateTaxPackagePdf(TaxExportDocument document);
 }

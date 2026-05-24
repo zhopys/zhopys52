@@ -1,12 +1,65 @@
 ﻿@page "/Account/AccessDenied"
 @attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
+@using MiniFinance.Services
 
 <PageTitle>Доступ запрещён — MiniFinance</PageTitle>
 
 <div class="login-page">
     <div class="login-container">
         <h1 class="text-danger">Доступ запрещён</h1>
-        <p class="text-muted">У вашей учётной записи нет прав для этого раздела.</p>
-        <a href="/" class="btn btn-primary mt-3">На главную</a>
+        <p class="text-muted">@_message</p>
+        @if (!string.IsNullOrEmpty(_hint))
+        {
+            <p class="small text-muted">@_hint</p>
+        }
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:1rem">
+            <a href="@_homeLink" class="btn btn-primary">@_homeLabel</a>
+            <a href="/profile" class="btn btn-outline">Профиль</a>
+        </div>
     </div>
 </div>
+
+@code {
+    private string _message = AccessDeniedMessages.Default;
+    private string? _hint;
+    private string _homeLink = "/";
+    private string _homeLabel = "На главную";
+
+    [SupplyParameterFromQuery(Name = "message")]
+    public string? MessageQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "policy")]
+    public string? PolicyQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? FromQuery { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrWhiteSpace(MessageQuery))
+            _message = MessageQuery;
+        else if (!string.IsNullOrWhiteSpace(PolicyQuery))
+            _message = AccessDeniedMessages.ForPolicy(PolicyQuery);
+        else if (!string.IsNullOrWhiteSpace(FromQuery))
+            _message = AccessDeniedMessages.ForPath(FromQuery);
+
+        _hint = PolicyQuery switch
+        {
+            AuthorizationPolicies.CanManageTaxes =>
+                "Бухгалтер работает с операциями и отчётами; налоги — в разделе для налогового специалиста.",
+            AuthorizationPolicies.CanAccessFinances or AuthorizationPolicies.CanImport =>
+                "Налоговый специалист: откройте «Налоги» или «Отчёты» с налоговой аналитикой.",
+            AuthorizationPolicies.CanManageUsers or AuthorizationPolicies.CanManageSettings =>
+                "Управление пользователями и настройками — только у администратора.",
+            _ => null
+        };
+
+        if (PolicyQuery is AuthorizationPolicies.CanManageTaxes
+            or AuthorizationPolicies.CanAccessFinances
+            or AuthorizationPolicies.CanImport)
+        {
+            _homeLink = PolicyQuery == AuthorizationPolicies.CanManageTaxes ? "/taxes" : "/";
+            _homeLabel = PolicyQuery == AuthorizationPolicies.CanManageTaxes ? "К разделу «Налоги»" : "На главную";
+        }
+    }
+}

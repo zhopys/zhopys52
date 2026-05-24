@@ -38,36 +38,45 @@
                 </div>
             }
 
-            <div class="reports-filter-group">
-                <label class="label">Сравнение</label>
-                <select class="input" value="@CompareMode" @onchange="OnCompareModeChange">
-                    <option value="mom">Месяц к месяцу</option>
-                    <option value="yoy">Год к году</option>
-                    <option value="none">Без сравнения</option>
-                </select>
-            </div>
+            @if (!HideCompareMode)
+            {
+                <div class="reports-filter-group">
+                    <label class="label">Сравнение</label>
+                    <select class="input" value="@CompareMode" @onchange="OnCompareModeChange">
+                        <option value="mom">Месяц к месяцу</option>
+                        <option value="yoy">Год к году</option>
+                        <option value="none">Без сравнения</option>
+                    </select>
+                </div>
+            }
 
-            <div class="reports-filter-group">
-                <label class="label">Проект</label>
-                <select class="input" value="@ProjectIdValue" @onchange="OnProjectChange">
-                    <option value="">Все проекты</option>
-                    @foreach (var p in Projects)
-                    {
-                        <option value="@p.Id">@p.Name</option>
-                    }
-                </select>
-            </div>
+            @if (!HideProjectFilter)
+            {
+                <div class="reports-filter-group">
+                    <label class="label">Проект</label>
+                    <select class="input" value="@ProjectIdValue" @onchange="OnProjectChange">
+                        <option value="">Все проекты</option>
+                        @foreach (var p in Projects)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+            }
 
-            <div class="reports-filter-group">
-                <label class="label">Категория</label>
-                <select class="input" value="@CategoryValue" @onchange="OnCategoryChange">
-                    <option value="">Все категории</option>
-                    @foreach (var c in Categories)
-                    {
-                        <option value="@c">@c</option>
-                    }
-                </select>
-            </div>
+            @if (!HideCategoryFilter)
+            {
+                <div class="reports-filter-group">
+                    <label class="label">Категория</label>
+                    <select class="input" value="@CategoryValue" @onchange="OnCategoryChange">
+                        <option value="">Все категории</option>
+                        @foreach (var c in Categories)
+                        {
+                            <option value="@c">@c</option>
+                        }
+                    </select>
+                </div>
+            }
 
             <div class="reports-toolbar-actions">
                 <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyFilters" disabled="@Disabled">
@@ -94,6 +103,8 @@
             </div>
         }
 
+        @if (!HideExport && OnExport.HasDelegate)
+        {
         <div class="reports-toolbar-export-row mt-2">
             <span class="text-muted small">Экспорт (период и фильтры):</span>
             <div class="reports-toolbar-export reports-toolbar-export--wide">
@@ -114,6 +125,7 @@
                 </button>
             </div>
         </div>
+        }
     </div>
 </div>
 
@@ -139,6 +151,10 @@
     [Parameter] public EventCallback<(string Format, string? Report)> OnExport { get; set; }
     [Parameter] public EventCallback OnReset { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool HideCompareMode { get; set; }
+    [Parameter] public bool HideProjectFilter { get; set; }
+    [Parameter] public bool HideCategoryFilter { get; set; }
+    [Parameter] public bool HideExport { get; set; }
 
     private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
 

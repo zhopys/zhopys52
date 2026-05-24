@@ -59,17 +59,15 @@ public class NotificationBackgroundService : BackgroundService
 
         foreach (var user in users)
         {
-            var daysBefore = user.NotificationDaysBefore;
-            var cutoff = now.AddDays(daysBefore);
-
-            // Unpaid reminders due within the notification window
-            var upcomingReminders = await db.Reminders
+            var upcomingReminders = (await db.Reminders
                 .Where(r => r.UserId == user.Id
                     && !r.IsPaid
+                    && !r.IsArchived
                     && r.Date >= now
-                    && r.Date <= cutoff
                     && r.NotificationSentDate == null)
-                .ToListAsync(ct);
+                .ToListAsync(ct))
+                .Where(r => ReminderScheduleHelper.ShouldNotifyToday(r, now))
+                .ToList();
 
             foreach (var reminder in upcomingReminders)
             {
@@ -84,12 +82,12 @@ public class NotificationBackgroundService : BackgroundService
                 reminder.NotificationSentDate = DateTime.UtcNow;
             }
 
-            // Unpaid tax payments due within the notification window
+            var taxCutoff = now.AddDays(user.NotificationDaysBefore);
             var upcomingTaxes = await db.TaxPayments
                 .Where(t => t.UserId == user.Id
                     && !t.IsPaid
                     && t.DueDate >= now
-                    && t.DueDate <= cutoff
+                    && t.DueDate <= taxCutoff
                     && t.NotificationSentDate == null)
                 .ToListAsync(ct);
 

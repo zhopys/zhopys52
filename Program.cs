@@ -5,9 +5,42 @@ using MiniFinance.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using MiniFinance.Components.Account;
 
-var seedDiplomaDemo = args.Any(a => a.Equals("--seed-diploma-demo", StringComparison.OrdinalIgnoreCase));
+if (args.Any(a => a.Equals("--probe-pdf", StringComparison.OrdinalIgnoreCase)))
+{
+    var path = args.FirstOrDefault(a => a.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "samples", "bank-statement-sample.pdf");
+    if (!File.Exists(path))
+    {
+        Console.WriteLine($"PDF not found: {path}");
+        return;
+    }
+
+    var bytes = await File.ReadAllBytesAsync(path);
+    var lines = BankPdfStatementParser.ExtractLinesFromPdf(bytes);
+    Console.WriteLine($"File: {path}");
+    Console.WriteLine($"Lines extracted: {lines.Count}");
+    foreach (var line in lines.Where(l => l.Contains("20.03.2025") || l.Contains("расход") || l.Contains("приход")).Take(15))
+        Console.WriteLine(line);
+
+    var header = BankPdfStatementParser.ParseHeader(lines);
+    Console.WriteLine($"IBAN={header.Iban} credits={header.TotalCredits} debits={header.TotalDebits}");
+
+    var errors = new List<CsvImportError>();
+    var txs = BankPdfStatementParser.ParseTransactionsStatic(lines, errors);
+    Console.WriteLine($"Transactions: {txs.Count}, parse errors: {errors.Count}");
+    foreach (var e in errors.Take(8))
+        Console.WriteLine($"  L{e.LineNumber}: {e.Message} | {e.RawLine?[..Math.Min(120, e.RawLine.Length)]}");
+    return;
+}
+
+var seedDiplomaDemo = args.Any(a =>
+    a.Equals("--seed-diploma-demo", StringComparison.OrdinalIgnoreCase) ||
+    a.Equals("--seed-demo", StringComparison.OrdinalIgnoreCase));
+var resetUsers = args.Any(a => a.Equals("--reset-users", StringComparison.OrdinalIgnoreCase));
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
@@ -36,14 +69,33 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    // Роли временно отключены — достаточно входа в систему
-    // options.AddPolicy("OwnerOnly", p => p.RequireRole(AppRoles.Owner));
-    // options.AddPolicy("CanViewReports", p => p.RequireRole(AppRoles.Owner, AppRoles.Accountant, AppRoles.Manager));
-    // options.AddPolicy("CanManageSettings", p => p.RequireRole(AppRoles.Owner));
-    options.AddPolicy("OwnerOnly", p => p.RequireAuthenticatedUser());
-    options.AddPolicy("CanViewReports", p => p.RequireAuthenticatedUser());
-    options.AddPolicy("CanManageSettings", p => p.RequireAuthenticatedUser());
+    options.AddPolicy(AuthorizationPolicies.AdministratorOnly,
+        p => p.RequireRole(AppRoles.Administrator));
+    options.AddPolicy(AuthorizationPolicies.CanManageUsers,
+        p => p.RequireRole(AppRoles.Administrator));
+    options.AddPolicy(AuthorizationPolicies.CanManageSettings,
+        p => p.RequireRole(AppRoles.Administrator));
+    options.AddPolicy(AuthorizationPolicies.CanAccessFinances,
+        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant));
+    options.AddPolicy(AuthorizationPolicies.CanImport,
+        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant));
+    options.AddPolicy(AuthorizationPolicies.CanViewReports,
+        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant, AppRoles.TaxSpecialist));
+    options.AddPolicy(AuthorizationPolicies.CanManageTaxes,
+        p => p.RequireRole(AppRoles.Administrator, AppRoles.TaxSpecialist));
+
+    // Совместимость со старыми атрибутами
+    options.AddPolicy("OwnerOnly", p => p.RequireRole(AppRoles.Administrator));
+    options.AddPolicy("CanManageSettings", p => p.RequireRole(AppRoles.Administrator));
+    options.AddPolicy("CanViewReports", p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant, AppRoles.TaxSpecialist));
 });
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.AccessDeniedPath = "/Account/AccessDenied";
+});
+
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, RussianAuthorizationMiddlewareResultHandler>();
 
 var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
 var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
@@ -72,7 +124,9 @@ builder.Services.AddScoped<ITransactionDataStatusService, TransactionDataStatusS
 builder.Services.AddScoped<IAccountingIntegrationService, AccountingIntegrationService>();
 builder.Services.AddScoped<IReportPdfService, ReportPdfService>();
 builder.Services.AddScoped<ITaxService, TaxService>();
+builder.Services.AddScoped<ITaxFinanceSummaryService, TaxFinanceSummaryService>();
 builder.Services.AddScoped<ITaxAutoRuleService, TaxAutoRuleService>();
+builder.Services.AddScoped<ITaxExportService, TaxExportService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 builder.Services.AddScoped<ICounterpartyService, CounterpartyService>();
@@ -83,7 +137,8 @@ builder.Services.AddScoped<IPaymentCalendarService, PaymentCalendarService>();
 builder.Services.AddScoped<IDataScopeService, DataScopeService>();
 builder.Services.AddScoped<IUserContextService, UserContextService>();
 builder.Services.AddScoped<IAccountProfileService, AccountProfileService>();
-builder.Services.AddScoped<ITeamService, TeamService>(); // UI РѕС‚РєР»СЋС‡РµРЅРѕ; СЃРµСЂРІРёСЃ РѕСЃС‚Р°РІР»РµРЅ РґР»СЏ Р±СѓРґСѓС‰РµРіРѕ РІРєР»СЋС‡РµРЅРёСЏ
+builder.Services.AddScoped<ITwoFactorService, TwoFactorService>();
+builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<MiniFinance.Components.Account.IdentityRedirectManager>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, IdentitySmtpEmailSender>();
 
@@ -93,6 +148,8 @@ builder.Services.Configure<MiniFinance.Services.NotificationSettings>(builder.Co
 builder.Services.AddScoped<MiniFinance.Services.INotificationEmailService, MiniFinance.Services.NotificationEmailService>();
 builder.Services.AddHostedService<MiniFinance.Services.NotificationBackgroundService>();
 
+builder.Services.AddSingleton<IUserRoleRefreshRegistry, UserRoleRefreshRegistry>();
+builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
@@ -190,7 +247,7 @@ reportsApi.MapGet("/forecast", async (
     return Results.Ok(dto.Forecast);
 });
 
-var integrationsApi = app.MapGroup("/api/integrations").RequireAuthorization();
+var integrationsApi = app.MapGroup("/api/integrations").RequireAuthorization(AuthorizationPolicies.CanAccessFinances);
 
 integrationsApi.MapGet("/data-status", async (
     HttpContext ctx,
@@ -527,6 +584,11 @@ using (var scope = app.Services.CreateScope())
             if (!orgColumns.Contains("OrganizationId"))
             {
                 cmd.CommandText = "ALTER TABLE OrganizationSettings ADD COLUMN OrganizationId TEXT NOT NULL DEFAULT '';";
+                cmd.ExecuteNonQuery();
+            }
+            if (!orgColumns.Contains("TaxpayerKind"))
+            {
+                cmd.CommandText = "ALTER TABLE OrganizationSettings ADD COLUMN TaxpayerKind INTEGER NOT NULL DEFAULT 0;";
                 cmd.ExecuteNonQuery();
             }
             cmd.CommandText = @"UPDATE OrganizationSettings
@@ -932,7 +994,7 @@ app.MapPost("/api/transactions/{id:int}/attachments", async (
 }).RequireAuthorization();
 
 // Роли временно отключены
-// try { await RoleSeedService.SeedAsync(app.Services); } catch { }
+try { await RoleSeedService.SeedAsync(app.Services); } catch (Exception ex) { app.Logger.LogWarning(ex, "Role seed skipped"); }
 
 app.MapGet("/api/account/export", async (HttpContext http, UserManager<ApplicationUser> userManager, IAccountProfileService accountProfile) =>
 {
@@ -953,6 +1015,46 @@ app.MapGet("/api/account/export/csv", async (HttpContext http, UserManager<Appli
     var fileName = $"minifinance-transactions-{DateTime.UtcNow:yyyyMMdd}.csv";
     return Results.File(bytes, "text/csv; charset=utf-8", fileName);
 }).RequireAuthorization();
+
+app.MapGet("/api/taxes/export/pdf", async (
+    HttpContext http,
+    UserManager<ApplicationUser> userManager,
+    IDataScopeService dataScope,
+    ITaxExportService taxExport,
+    string? start,
+    string? end) =>
+{
+    var user = await userManager.GetUserAsync(http.User);
+    if (user == null) return Results.Unauthorized();
+
+    var ownerId = await dataScope.GetDataOwnerUserIdAsync(user.Id);
+    var today = DateTime.Today;
+    if (!DateTime.TryParse(start, out var periodStart))
+    {
+        var q = (today.Month - 1) / 3;
+        periodStart = new DateTime(today.Year, q * 3 + 1, 1);
+    }
+    if (!DateTime.TryParse(end, out var periodEnd))
+        periodEnd = today;
+
+    try
+    {
+        var (data, fileName) = await taxExport.BuildTaxPackagePdfAsync(ownerId, periodStart, periodEnd);
+        return Results.File(data, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+}).RequireAuthorization(AuthorizationPolicies.CanManageTaxes);
+
+if (resetUsers)
+{
+    var removed = await UserResetService.DeleteAllUsersAsync(app.Services);
+    await RoleSeedService.SeedAsync(app.Services);
+    Console.WriteLine($"Удалено учётных записей: {removed}. Зарегистрируйтесь заново на /Account/Register");
+    return;
+}
 
 if (seedDiplomaDemo)
 {

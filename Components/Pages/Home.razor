@@ -13,6 +13,8 @@
 @inject IDebtService DebtService
 @inject IDataScopeService DataScope
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserContextService UserContext
+@inject NavigationManager Navigation
 @inject IJSRuntime JS
 @attribute [Authorize]
 
@@ -275,6 +277,16 @@
 
         if (user != null)
         {
+            var ctx = await UserContext.GetContextAsync(user.Id);
+            if (!UserContext.CanAccessFinances(ctx))
+            {
+                if (UserContext.CanManageTaxes(ctx))
+                    Navigation.NavigateTo("/taxes", replace: true);
+                else
+                    Navigation.NavigateTo("/Account/AccessDenied?policy=" + AuthorizationPolicies.CanAccessFinances, replace: true);
+                return;
+            }
+
             var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             var cats = await DbContext.Categories.AsNoTracking().ToListAsync();
             _categoryByName = cats.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);

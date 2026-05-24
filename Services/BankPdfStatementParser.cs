@@ -30,7 +30,11 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         RegexOptions.Compiled);
 
     private static readonly Regex TransactionTailRx = new(
-        @"(?<cur>BYN|USD|EUR|RUB)\s+(?<dir>приход|расход)\s+(?<opAmt>[\d\s]+[,.]\d{2})\s+(?<accAmt>[\d\s]+[,.]\d{2})(?:\s+(?<bal>[\d\s]+[,.]\d{2}))?(?:\s+(?<mcc>\d{4,6}))?\s*$",
+        @"(?:(?<cur>BYN|USD|EUR|RUB)\s+)?(?<dir>приход|расход|поступление|списание)\s+(?<opAmt>[\d\s]+[,.]\d{2})\s+(?<accAmt>[\d\s]+[,.]\d{2})(?:\s+(?<bal>[\d\s]+[,.]\d{2}))?(?:\s+(?<mcc>\d{4,6}))?\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex TransactionTailAnywhereRx = new(
+        @"(?:(?<cur>BYN|USD|EUR|RUB)\s+)?(?<dir>приход|расход|поступление|списание)\s+(?<opAmt>[\d\s]+[,.]\d{2})\s+(?<accAmt>[\d\s]+[,.]\d{2})(?:\s+(?<bal>[\d\s]+[,.]\d{2}))?(?:\s+(?<mcc>\d{4,6}))?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex CardPrefixRx = new(
@@ -64,7 +68,7 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         var lines = ExtractLinesFromPdf(bytes);
         result.TotalLinesExtracted = lines.Count;
         result.Statement.Header = ParseHeader(lines);
-        result.Statement.Transactions = ParseTransactions(lines, result.Errors);
+        result.Statement.Transactions = ParseTransactionsStatic(lines, result.Errors);
 
         LinkFeesToTransfers(result.Statement.Transactions);
         await _categorization.EnsureDefaultCategoriesAsync();
@@ -163,6 +167,12 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         h.OwnerFullName = MatchGroup(text, @"ФИО владельца:\s*(.+?)(?:\n|$)");
         h.AccountName = MatchGroup(text, @"Название счета:\s*(.+?)(?:\n|$)");
         h.Iban = MatchGroup(text, @"IBAN:\s*(BY[\dA-Z]+)");
+        if (string.IsNullOrEmpty(h.Iban))
+        {
+            var iban = Regex.Match(text, @"\b(BY\d{2}[A-Z0-9]{24,32})\b", RegexOptions.IgnoreCase);
+            if (iban.Success)
+                h.Iban = iban.Groups[1].Value.ToUpperInvariant();
+        }
         h.Currency = MatchGroup(text, @"Валюта счета:\s*(\w+)") ?? "BYN";
         h.OverdraftLimit = ParseDecimal(MatchGroup(text, @"Лимит овердрафта:\s*([\d\s,.]+)"));
         h.OpeningBalance = ParseDecimal(MatchGroup(text, @"Остаток на начало периода:\s*([\d\s,.]+)"));
@@ -174,7 +184,7 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         return h;
     }
 
-    internal List<ParsedBankTransaction> ParseTransactions(IReadOnlyList<string> lines, List<CsvImportError> errors)
+    internal static List<ParsedBankTransaction> ParseTransactionsStatic(IReadOnlyList<string> lines, List<CsvImportError> errors)
     {
         var list = new List<ParsedBankTransaction>();
         var inTable = false;
@@ -272,6 +282,10 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
         var tailMatch = TransactionTailRx.Match(afterDates);
         if (!tailMatch.Success)
+            tailMatch = TransactionTailAnywhereRx.Match(afterDates);
+        if (!tailMatch.Success)
+            tailMatch = TransactionTailAnywhereRx.Match(work);
+        if (!tailMatch.Success)
             return false;
 
         var middle = afterDates[..tailMatch.Index].Trim();
@@ -282,8 +296,12 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         tx.PostedDateTime = posted;
         tx.OperationType = opType;
         tx.MerchantPlace = merchant;
-        tx.OperationCurrency = tailMatch.Groups["cur"].Value.ToUpperInvariant();
-        tx.IsIncome = tailMatch.Groups["dir"].Value.Equals("приход", StringComparison.OrdinalIgnoreCase);
+        var dir = tailMatch.Groups["dir"].Value;
+        tx.OperationCurrency = tailMatch.Groups["cur"].Success
+            ? tailMatch.Groups["cur"].Value.ToUpperInvariant()
+            : "BYN";
+        tx.IsIncome = dir.Equals("приход", StringComparison.OrdinalIgnoreCase)
+            || dir.Equals("поступление", StringComparison.OrdinalIgnoreCase);
         tx.OperationAmount = ParseDecimal(tailMatch.Groups["opAmt"].Value) ?? 0;
         tx.AccountAmount = ParseDecimal(tailMatch.Groups["accAmt"].Value) ?? tx.OperationAmount;
         tx.BalanceAfter = ParseDecimal(tailMatch.Groups["bal"].Value);
@@ -339,7 +357,8 @@ public class BankPdfStatementParser : IBankPdfStatementParser
     }
 
     private static bool LooksLikeTransactionLine(string line) =>
-        DateTimeRx.IsMatch(line) && TransactionTailRx.IsMatch(line);
+        DateTimeRx.IsMatch(line)
+        && (TransactionTailRx.IsMatch(line) || TransactionTailAnywhereRx.IsMatch(line));
 
     private static bool IsTableHeaderRepeat(string line) =>
         line.Contains("Номер карты", StringComparison.OrdinalIgnoreCase)

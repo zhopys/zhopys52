@@ -13,8 +13,7 @@
 @inject IUserContextService UserContext
 @inject ITaxAutoRuleService TaxAutoRuleService
 @inject IJSRuntime JS
-@* Роли временно отключены: @attribute [Authorize(Policy = "CanManageSettings")] *@
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanManageSettings)]
 
 <PageTitle>Настройки — MiniFinance</PageTitle>
 
@@ -52,13 +51,25 @@
                                     <input class="form-input" @bind="unp" placeholder="123456789" />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Система налогообложения</label>
+                                    <label class="form-label">Система налогообложения (РБ)</label>
                                     <select class="form-input" @bind="taxSystem">
-                                        <option value="USN">УСН</option>
-                                        <option value="OSN">ОСН</option>
+                                        <option value="USN">УСН — ~6% от выручки (квартал)</option>
+                                        <option value="OSN">ОСН — доход минус расход</option>
+                                        <option value="NPD">НПД — профдоход (4% / 8%)</option>
+                                        <option value="UnifiedTax">Единый налог — фиксированная сумма</option>
                                     </select>
-                                    <span class="small text-muted">Используется в разделе «Налоги»</span>
+                                    <span class="small text-muted">@GetTaxSystemHint()</span>
                                 </div>
+                                @if (taxSystem == "OSN")
+                                {
+                                    <div class="form-group">
+                                        <label class="form-label">Форма (для ОСН)</label>
+                                        <select class="form-input" @bind="taxpayerKind">
+                                            <option value="LegalEntity">Юридическое лицо — налог на прибыль ~20%</option>
+                                            <option value="IndividualEntrepreneur">ИП — подоходный ~16%</option>
+                                        </select>
+                                    </div>
+                                }
                                 <div class="form-group">
                                     <label class="form-label">Минимальный остаток (BYN)</label>
                                     <input type="number" class="form-input" @bind="minCashBalance" step="100" min="0" />
@@ -108,6 +119,7 @@
     private string companyName = "";
     private string unp = "";
     private string taxSystem = "USN";
+    private string taxpayerKind = "LegalEntity";
     private decimal minCashBalance = 1000;
     private bool isDark;
     private bool showMessage;
@@ -129,6 +141,7 @@
             companyName = settings.CompanyName;
             unp = settings.UNP;
             taxSystem = settings.TaxSystem.ToString();
+            taxpayerKind = settings.TaxpayerKind.ToString();
             minCashBalance = settings.MinCashBalance;
         }
     }
@@ -150,14 +163,13 @@
         var user = await UserManager.GetUserAsync(auth.User);
         if (user != null)
         {
-            // Роли временно отключены
-            // var ctx = await UserContext.GetContextAsync(user.Id);
-            // if (!UserContext.CanAccessSettings(ctx))
-            // {
-            //     _errorMessage = "Изменять настройки организации может только владелец";
-            //     showError = true;
-            //     return;
-            // }
+            var ctx = await UserContext.GetContextAsync(user.Id);
+            if (!UserContext.CanAccessSettings(ctx))
+            {
+                _errorMessage = "Изменять настройки организации может только администратор.";
+                showError = true;
+                return;
+            }
         }
 
         _saving = true;
@@ -166,6 +178,8 @@
         {
             if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
                 parsedTax = TaxSystem.USN;
+            if (!Enum.TryParse<TaxpayerKind>(taxpayerKind, out var parsedKind))
+                parsedKind = TaxpayerKind.LegalEntity;
 
             var settings = await DbContext.OrganizationSettings.FirstOrDefaultAsync(s => s.UserId == _userId);
             var previousTaxSystem = settings?.TaxSystem;
@@ -178,6 +192,7 @@
             settings.CompanyName = companyName.Trim();
             settings.UNP = unp.Trim();
             settings.TaxSystem = parsedTax;
+            settings.TaxpayerKind = parsedKind;
             settings.MinCashBalance = minCashBalance;
 
             await DbContext.SaveChangesAsync();
@@ -215,4 +230,7 @@
         showMessage = true;
         showError = false;
     }
+
+    private string GetTaxSystemHint() =>
+        Enum.TryParse<TaxSystem>(taxSystem, out var ts) ? TaxSystemInfo.GetDescription(ts) : "";
 }

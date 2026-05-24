@@ -114,7 +114,8 @@
     private sealed class InputModel
     {
         [Required(ErrorMessage = "Email обязателен")]
-        [EmailAddress(ErrorMessage = "Некорректный email")]
+        [ValidAuthEmail]
+        [StringLength(AuthFieldValidation.MaxEmailLength)]
         public string Email { get; set; } = "";
     }
 }

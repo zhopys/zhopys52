@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using MiniFinance.Data;
 using MiniFinance.Data.Models;
 
@@ -23,11 +22,10 @@ public class UserContextService : IUserContextService
             ? (await _userManager.GetRolesAsync(user)).ToList()
             : new List<string>();
 
-        // Роли временно отключены — полный доступ для любого авторизованного пользователя
-        if (!roles.Contains(AppRoles.Owner))
-            roles.Add(AppRoles.Owner);
-        // if (roles.Count == 0 && string.IsNullOrWhiteSpace(user?.WorkspaceOwnerUserId))
-        //     roles.Add(AppRoles.Owner);
+        NormalizeLegacyRoles(roles);
+
+        if (roles.Count == 0 && string.IsNullOrWhiteSpace(user?.WorkspaceOwnerUserId))
+            roles.Add(AppRoles.Administrator);
 
         var dataUserId = await _dataScope.GetDataOwnerUserIdAsync(userId);
 
@@ -41,28 +39,30 @@ public class UserContextService : IUserContextService
         };
     }
 
-    // Роли временно отключены
-    public bool CanAccessSettings(UserContext ctx) => true;
-    public bool CanManageTransactions(UserContext ctx) => true;
-    public bool CanApproveTransactions(UserContext ctx) => true;
-    public bool CanViewReports(UserContext ctx) => true;
-    // public bool CanAccessSettings(UserContext ctx) => ctx.IsOwner;
-    // public bool CanManageTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
-    // public bool CanApproveTransactions(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant;
-    // public bool CanViewReports(UserContext ctx) => ctx.IsOwner || ctx.IsAccountant || ctx.IsManager;
+    public bool IsAdministrator(UserContext ctx) => ctx.IsAdministrator;
+    public bool IsAccountant(UserContext ctx) => ctx.IsAccountant;
+    public bool IsTaxSpecialist(UserContext ctx) => ctx.IsTaxSpecialist;
+    public bool CanManageUsers(UserContext ctx) => ctx.IsAdministrator;
+    public bool CanAccessSettings(UserContext ctx) => ctx.IsAdministrator;
+    public bool CanAccessFinances(UserContext ctx) => ctx.IsAdministrator || ctx.IsAccountant;
+    public bool CanImport(UserContext ctx) => ctx.IsAdministrator || ctx.IsAccountant;
+    public bool CanManageTransactions(UserContext ctx) => CanAccessFinances(ctx);
+    public bool CanApproveTransactions(UserContext ctx) => ctx.IsAdministrator || ctx.IsAccountant;
+    public bool CanViewReports(UserContext ctx) =>
+        ctx.IsAdministrator || ctx.IsAccountant || ctx.IsTaxSpecialist;
+    public bool CanManageTaxes(UserContext ctx) => ctx.IsAdministrator || ctx.IsTaxSpecialist;
+    public bool IsTaxSpecialistOnly(UserContext ctx) =>
+        ctx.IsTaxSpecialist && !ctx.IsAdministrator && !ctx.IsAccountant;
 
-    public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx) => q;
-    // public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx)
-    // {
-    //     if (ctx.IsOwner || ctx.IsAccountant)
-    //         return q;
-    //     if (ctx.IsManager)
-    //     {
-    //         if (ctx.ActiveProjectId.HasValue)
-    //             return q.Where(t => t.ProjectId == ctx.ActiveProjectId);
-    //         if (!string.IsNullOrWhiteSpace(ctx.Department))
-    //             return q.Where(t => t.Project != null && t.Project.Department == ctx.Department);
-    //     }
-    //     return q;
-    // }
+    public IQueryable<Transaction> FilterTransactionsForRole(IQueryable<Transaction> q, UserContext ctx) =>
+        CanAccessFinances(ctx) ? q : q.Where(_ => false);
+
+    private static void NormalizeLegacyRoles(List<string> roles)
+    {
+        for (var i = 0; i < roles.Count; i++)
+        {
+            if (AppRoles.LegacyRoleMap.TryGetValue(roles[i], out var mapped) && !roles.Contains(mapped))
+                roles[i] = mapped;
+        }
+    }
 }

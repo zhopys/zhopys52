@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using MiniFinance.Data;
+using MiniFinance.Services;
 
 namespace MiniFinance.Components.Account;
 
@@ -26,7 +27,8 @@ internal static class LoginEndpoint
         [FromServices] SignInManager<ApplicationUser> signInManager,
         [FromServices] UserManager<ApplicationUser> userManager,
         [FromServices] IAntiforgery antiforgery,
-        [FromServices] ILogger<Program> logger)
+        [FromServices] ILogger<Program> logger,
+        [FromServices] ITwoFactorService twoFactor)
     {
         if (!httpContext.Request.HasFormContentType)
             return Results.Redirect(AccountUrls.Login(error: "empty"));
@@ -42,7 +44,7 @@ internal static class LoginEndpoint
         }
 
         var form = await httpContext.Request.ReadFormAsync();
-        var email = (form["email"].ToString() ?? "").Trim().ToLowerInvariant();
+        var email = AuthFieldValidation.NormalizeEmail(form["email"].ToString());
         var password = form["password"].ToString() ?? "";
         var rememberMe = form["rememberMe"].ToString();
         var returnUrl = form["returnUrl"].ToString();
@@ -50,6 +52,19 @@ internal static class LoginEndpoint
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
             return Results.Redirect(AccountUrls.Login(error: "empty", email: email));
+
+        var emailCheck = AuthFieldValidation.ValidateEmail(email);
+        if (!emailCheck.Ok)
+            return Results.Redirect(AccountUrls.Login(error: "invalid_email", email: email));
+
+        var passwordCheck = AuthFieldValidation.ValidatePassword(password);
+        if (!passwordCheck.Ok)
+        {
+            var err = password.Contains('\0') || password.Length > AuthFieldValidation.MaxPasswordLength
+                ? "password_too_long"
+                : "password_invalid";
+            return Results.Redirect(AccountUrls.Login(error: err, email: email));
+        }
 
         var user = await userManager.FindByEmailAsync(email)
                    ?? await userManager.FindByNameAsync(email);
@@ -79,6 +94,17 @@ internal static class LoginEndpoint
 
         if (result.RequiresTwoFactor)
         {
+            var twoFactorUser = await signInManager.GetTwoFactorAuthenticationUserAsync();
+            if (twoFactorUser is not null)
+            {
+                var (sent, sendError) = await twoFactor.SendLoginCodeAsync(twoFactorUser);
+                if (!sent)
+                {
+                    logger.LogWarning("2FA code not sent for {Email}: {Error}", email, sendError);
+                    return Results.Redirect(AccountUrls.Login(error: "2fa_email", email: email));
+                }
+            }
+
             return Results.Redirect(QueryHelpers.AddQueryString("/Account/LoginWith2fa",
                 new Dictionary<string, string?>
                 {

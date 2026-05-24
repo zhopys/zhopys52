@@ -7,6 +7,7 @@ public sealed class TaxRulePreview
     public TaxAutoRule Rule { get; init; } = new();
     public decimal Income { get; init; }
     public decimal Expenses { get; init; }
+    public int OperationCount { get; init; }
     public decimal CalculatedAmount { get; init; }
     public DateTime PeriodStart { get; init; }
     public DateTime PeriodEnd { get; init; }
@@ -28,6 +29,7 @@ public interface ITaxAutoRuleService
     Task DeleteAsync(int id, string userId);
     Task<List<TaxRulePreview>> PreviewAsync(string userId, DateTime? referenceDate = null);
     Task<TaxRuleGenerateResult> GeneratePaymentsAsync(string userId, bool skipExisting = true, DateTime? referenceDate = null);
+    Task<TaxRuleGenerateResult> CreatePaymentFromPreviewAsync(string userId, TaxRulePreview preview);
     Task EnsureDefaultRulesAsync(string userId, TaxSystem? taxSystem);
     Task SyncRulesForTaxSystemAsync(string userId, TaxSystem taxSystem, bool replaceExisting = false);
 }

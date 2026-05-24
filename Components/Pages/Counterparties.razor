@@ -10,7 +10,7 @@
 @using CounterpartySvc = MiniFinance.Services.CounterpartyService
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Контрагенты — MiniFinance</PageTitle>
 

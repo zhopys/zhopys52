@@ -4,8 +4,15 @@
     <Router AppAssembly="typeof(Program).Assembly">
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-                <NotAuthorized>
-                    <RedirectToLogin />
+                <NotAuthorized Context="routeAuth">
+                    @if (routeAuth.User.Identity?.IsAuthenticated == true)
+                    {
+                        <RedirectToAccessDenied />
+                    }
+                    else
+                    {
+                        <RedirectToLogin />
+                    }
                 </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="routeData" Selector="h1" />

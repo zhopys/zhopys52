@@ -11,17 +11,19 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject ITaxService TaxService
 @inject ITaxAutoRuleService TaxAutoRuleService
-@inject ITransactionService TxService
+@inject ITaxFinanceSummaryService FinanceSummary
+@inject IUserContextService UserContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
 @inject IJSRuntime JS
-@attribute [Authorize]
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = AuthorizationPolicies.CanManageTaxes)]
 
 <PageTitle>Налоги и счета — MiniFinance</PageTitle>
 
 <div class="page-header">
     <div class="title">
-        <h1>Налоги и счета</h1>
+        <h1>@(_isTaxOnly ? "Налоги" : "Налоги и счета")</h1>
         <div class="meta text-muted">
             @if (!string.IsNullOrWhiteSpace(_companyName))
             {
@@ -32,16 +34,25 @@
                 }
                 <span> · </span>
             }
-            Система: <strong>@GetTaxSystemLabel(_taxSystem)</strong>
-            <a href="/settings" class="small" style="margin-left:.5rem">Настроить</a>
+            Система: <strong>@TaxSystemInfo.GetLabel(_taxSystem)</strong>
+            @if (!_isTaxOnly)
+            {
+                <a href="/settings" class="small" style="margin-left:.5rem">Настроить</a>
+            }
         </div>
     </div>
     <div class="page-actions">
         <a href="/payment-calendar" class="btn btn-outline">Календарь платежей</a>
-        <a href="/reminders" class="btn btn-outline">Напоминания</a>
+        @if (!_isTaxOnly)
+        {
+            <a href="/reminders" class="btn btn-outline">Напоминания</a>
+        }
         @if (_mainTab == "taxes")
         {
-            <button class="btn btn-primary" @onclick="OpenTaxForm">
+            <button type="button" class="btn btn-outline" @onclick="ExportTaxPdf" title="Сводка, оценка налога и операции за период">
+                PDF для налоговика
+            </button>
+            <button type="button" class="btn btn-primary" @onclick="OpenTaxForm">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Добавить налог
             </button>
@@ -64,31 +75,58 @@
 {
     <div class="alert alert-error">@_errorMessage</div>
 }
+@if (_isTaxOnly)
+{
+    <div class="alert alert-info mb-3 small">
+        <strong>Режим налогового специалиста.</strong> Доход и расход подставляются из сводки по подтверждённым операциям организации — список транзакций недоступен. Оплата налога создаёт проводку в учёте автоматически.
+    </div>
+}
 @if (!_taxSystem.HasValue && _mainTab == "taxes")
 {
     <div class="alert alert-warning mb-3">
-        Укажите систему налогообложения в <a href="/settings">настройках организации</a> — от неё зависят калькулятор, шаблоны сроков и автоматические правила.
+        @if (_isTaxOnly)
+        {
+            <span>Система налогообложения не указана. Попросите администратора задать её в настройках организации — от неё зависят калькулятор и автоматические правила.</span>
+        }
+        else
+        {
+            <span>Укажите систему налогообложения в <a href="/settings">настройках организации</a> — от неё зависят калькулятор, шаблоны сроков и автоматические правила.</span>
+        }
     </div>
 }
 
-<!-- Main tabs: taxes / bills -->
-<div class="card mb-3">
-    <div class="card-body" style="padding:.5rem">
-        <div class="tab-bar">
-            <button class="tab @(_mainTab == "taxes" ? "active" : "")" @onclick="@(() => SetMainTab("taxes"))">
-                Налоги
-                @if (_summary?.OverdueCount > 0) { <span class="tab-count tab-count-danger">@_summary.OverdueCount</span> }
-            </button>
-            <button class="tab @(_mainTab == "bills" ? "active" : "")" @onclick="@(() => SetMainTab("bills"))">
-                Счета к оплате
-                @if (_billOverdueCount > 0) { <span class="tab-count tab-count-danger">@_billOverdueCount</span> }
-            </button>
+@if (!_isTaxOnly)
+{
+    <!-- Main tabs: taxes / bills -->
+    <div class="card mb-3">
+        <div class="card-body" style="padding:.5rem">
+            <div class="tab-bar">
+                <button class="tab @(_mainTab == "taxes" ? "active" : "")" @onclick="@(() => SetMainTab("taxes"))">
+                    Налоги
+                    @if (_summary?.OverdueCount > 0) { <span class="tab-count tab-count-danger">@_summary.OverdueCount</span> }
+                </button>
+                <button class="tab @(_mainTab == "bills" ? "active" : "")" @onclick="@(() => SetMainTab("bills"))">
+                    Счета к оплате
+                    @if (_billOverdueCount > 0) { <span class="tab-count tab-count-danger">@_billOverdueCount</span> }
+                </button>
+            </div>
         </div>
     </div>
-</div>
+}
 
 @if (_mainTab == "taxes")
 {
+    @if (_taxSystem.HasValue)
+    {
+        <div class="card mb-3 tax-regime-card">
+            <div class="card-header">@TaxSystemInfo.GetLabel(_taxSystem) — справка (Республика Беларусь)</div>
+            <div class="card-body small text-muted">
+                <p class="mb-2">@TaxSystemInfo.GetDescription(_taxSystem.Value)</p>
+                <p class="mb-0">@TaxSystemInfo.GetMnsHint()</p>
+            </div>
+        </div>
+    }
+
     @if (_summary != null)
     {
         <div class="reports-tax-summary cols-4 mb-3">
@@ -101,8 +139,12 @@
                 <span class="reports-tax-kpi-value text-success">@_summary.PaidYearToDate.ToString("N0") Br</span>
             </div>
             <div class="reports-tax-kpi">
-                <span class="reports-tax-kpi-label">Расходы «Налоги»</span>
+                <span class="reports-tax-kpi-label">Учтено в «Налоги»</span>
                 <span class="reports-tax-kpi-value">@_summary.PaidInTransactionsYearToDate.ToString("N0") Br</span>
+                @if (_isTaxOnly)
+                {
+                    <span class="small text-muted d-block">по сводке учёта, без списка операций</span>
+                }
             </div>
             <div class="reports-tax-kpi">
                 <span class="reports-tax-kpi-label">Ближайший</span>
@@ -131,22 +173,52 @@
                         <option value="year">Прошлый год</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Доход за период (Br)</label>
-                    <input type="number" class="form-input" @bind="_calcIncome" step="100" min="0" />
-                </div>
-                @if (_taxSystem != TaxSystem.OSN)
+                @if (_taxSystem == TaxSystem.UnifiedTax)
                 {
                     <div class="form-group">
-                        <label class="form-label">Расходы (для УСН 15%)</label>
-                        <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
+                        <label class="form-label">Единый налог за период (Br)</label>
+                        <input type="number" class="form-input" @bind="_unifiedTaxAmount" step="10" min="0" />
                     </div>
                 }
+                else if (_taxSystem == TaxSystem.NPD)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Доход от физлиц (Br)</label>
+                        <input type="number" class="form-input" @bind="_calcIncomeFromFl" step="100" min="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Доход от юрлиц и ИП (Br)</label>
+                        <input type="number" class="form-input" @bind="_calcIncomeFromYur" step="100" min="0" />
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Выручка / доход за период (Br)</label>
+                        <input type="number" class="form-input" @bind="_calcIncome" step="100" min="0" />
+                    </div>
+                    @if (TaxSystemInfo.UsesExpenses(_taxSystem))
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Расходы (документально)</label>
+                            <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
+                        </div>
+                    }
+                }
                 <div class="form-group" style="display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap">
-                    <button type="button" class="btn btn-outline" @onclick="FillCalcFromTransactions">Из транзакций</button>
+                    <button type="button" class="btn btn-outline" @onclick="FillCalcFromPeriodSummary">Подставить сводку за период</button>
                     <button class="btn btn-primary" @onclick="RunTaxCalculator">Рассчитать</button>
                 </div>
             </div>
+            @if (_calcPeriodSummary != null)
+            {
+                <div class="small text-muted mt-2">
+                    Сводка @_calcPeriodSummary.PeriodStart:dd.MM.yyyy – @_calcPeriodSummary.PeriodEnd:dd.MM.yyyy:
+                    доход @_calcPeriodSummary.Income.ToString("N0") Br,
+                    расход @_calcPeriodSummary.Expenses.ToString("N0") Br
+                    (@_calcPeriodSummary.OperationCount операций в учёте, список скрыт).
+                </div>
+            }
             @if (_calcResult != null && _calcResult.TaxAmount > 0)
             {
                 <div class="alert alert-info mt-3 mb-0">
@@ -162,9 +234,23 @@
                             }
                         </ul>
                     }
-                    <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:.5rem">
-                        <button class="btn btn-sm btn-primary" @onclick="CreatePaymentsFromCalculator">Создать платёж @(_calcResult.Lines.Count > 1 ? "и" : "")</button>
-                        <button class="btn btn-sm btn-outline" @onclick="ApplyCalcToTaxForm">Открыть форму для правки</button>
+                    <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center">
+                        <button class="btn btn-sm btn-primary" @onclick="CreatePaymentsFromCalculator">
+                            @(_calcResult.Lines.Count(l => l.Amount > 0) > 1 ? "Создать все платежи" : "Создать платёж")
+                        </button>
+                        @if (_calcResult.Lines.Count(l => l.Amount > 0) <= 1)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => ApplyCalcLineToTaxForm(null)">Открыть форму для правки</button>
+                        }
+                        else
+                        {
+                            @foreach (var line in _calcResult.Lines.Where(l => l.Amount > 0))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline" @onclick="() => ApplyCalcLineToTaxForm(line)">
+                                    Форма: @ShortLineLabel(line.Name)
+                                </button>
+                            }
+                        }
                     </div>
                 </div>
             }
@@ -185,13 +271,13 @@
         </div>
         <div class="card-body">
             <p class="small text-muted mb-3">
-                Переменные: <code>income</code>, <code>expenses</code>, <code>profit</code> (доход − расход).
+                Переменные: <code>income</code>, <code>expenses</code>, <code>profit</code> (доход − расход) — из сводки за период, без доступа к операциям.
                 Функции: <code>max(a,b)</code>, <code>min(a,b)</code>, <code>round(x)</code>.
                 Примеры: <code>income * 0.06</code>, <code>max(0, income - expenses) * 0.15</code>.
             </p>
             @if (_autoRulePreviews.Count == 0 && !_showAutoRuleForm)
             {
-                <div class="text-muted small">Нет правил. Нажмите «Добавить правило» или откройте страницу снова — подставятся типовые формулы для @GetTaxSystemLabel(_taxSystem).</div>
+                <div class="text-muted small">Нет правил. Нажмите «Добавить правило» или откройте страницу снова — подставятся типовые формулы для @TaxSystemInfo.GetLabel(_taxSystem).</div>
             }
             else
             {
@@ -224,11 +310,16 @@
                                     else
                                     {
                                         <span>@p.CalculatedAmount.ToString("N2") Br</span>
-                                        <div class="small text-muted">доход @p.Income.ToString("N0") / расх. @p.Expenses.ToString("N0")</div>
+                                        <div class="small text-muted">доход @p.Income.ToString("N0") / расх. @p.Expenses.ToString("N0") · @p.OperationCount оп.</div>
                                     }
                                 </td>
                                 <td>@p.DueDate.ToString("dd.MM.yyyy")</td>
                                 <td class="text-end" style="white-space:nowrap">
+                                    @if (string.IsNullOrEmpty(p.Error) && p.CalculatedAmount > 0)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline" title="Открыть форму" @onclick="() => ApplyRulePreviewToForm(p)">Форма</button>
+                                        <button type="button" class="btn btn-sm btn-outline" title="Создать плановый платёж" @onclick="() => CreatePaymentFromRulePreview(p)">+</button>
+                                    }
                                     <button type="button" class="btn btn-sm btn-outline" @onclick="() => EditAutoRule(p.Rule)">Изм.</button>
                                     <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAutoRule(p.Rule.Id)">×</button>
                                 </td>
@@ -297,12 +388,12 @@
     @if (_taxSystem.HasValue)
     {
         <div class="card mb-3">
-            <div class="card-header">Типовые сроки (@GetTaxSystemLabel(_taxSystem))</div>
+            <div class="card-header">Типовые сроки (@TaxSystemInfo.GetLabel(_taxSystem))</div>
             <div class="card-body">
                 <div style="display:flex;flex-wrap:wrap;gap:.5rem">
                     @foreach (var hint in GetTaxHints(_taxSystem.Value))
                     {
-                        <button type="button" class="btn btn-sm btn-outline" @onclick="() => ApplyTaxHint(hint)">@hint.Label</button>
+                        <button type="button" class="btn btn-sm btn-outline" @onclick="async () => await ApplyTaxHint(hint)">@hint.Label</button>
                     }
                 </div>
             </div>
@@ -352,7 +443,7 @@
 
     @if (_showTaxForm)
     {
-        <div class="card mb-3">
+        <div id="tax-payment-form" class="card mb-3 @(_taxFormHighlight ? "tax-form-highlight" : "")">
             <div class="card-header">@(_editTaxId == 0 ? "Новый налоговый платёж" : "Редактирование")</div>
             <div class="card-body">
                 <div class="form-grid">
@@ -410,7 +501,7 @@
                 <div class="empty-state">
                     <div class="empty-state-title">@GetTaxEmptyTitle()</div>
                     <div class="empty-state-text">@GetTaxEmptyText()</div>
-                    <button class="btn btn-primary" @onclick="OpenTaxForm">Добавить налог</button>
+                    <button type="button" class="btn btn-primary" @onclick="OpenTaxForm">Добавить налог</button>
                 </div>
             }
             else
@@ -473,7 +564,7 @@
                                         <button class="btn btn-sm btn-success" title="Отметить оплаченным" @onclick="() => MarkPaid(tax.Id)">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                                         </button>
-                                        <button class="btn btn-sm btn-outline" title="Редактировать" @onclick="() => EditTax(tax)">
+                                        <button class="btn btn-sm btn-outline" title="Редактировать" @onclick="async () => await EditTax(tax)">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
                                         </button>
                                     }
@@ -490,7 +581,7 @@
     </div>
 
     <TaxPaymentDetailsPanel TaxId="@_taxDetailId" UserId="@_userId" IsOpen="@_taxDetailOpen"
-                            OnClose="CloseTaxDetail" OnChanged="ReloadAsync" />
+                            OnClose="CloseTaxDetail" OnChanged="ReloadAsync" OnEdit="EditTaxFromDetail" />
 }
 else
 {
@@ -633,6 +724,8 @@ else
 
 @code {
     private string _userId = "";
+    private bool _isTaxOnly;
+    private TaxPeriodTotalsDto? _calcPeriodSummary;
     private int _taxDetailId;
     private bool _taxDetailOpen;
     private List<TaxPayment> _taxes = new();
@@ -640,6 +733,7 @@ else
     private List<string> _categories = new();
     private TaxSummaryDto? _summary;
     private TaxSystem? _taxSystem;
+    private TaxpayerKind _taxpayerKind = TaxpayerKind.LegalEntity;
     private string _companyName = "";
     private string _companyUnp = "";
 
@@ -656,6 +750,7 @@ else
     private int _billOverdueCount;
 
     private bool _showTaxForm;
+    private bool _taxFormHighlight;
     private int _editTaxId;
     private string _taxTypeSelect = "НДС";
     private string _customTaxName = "";
@@ -664,6 +759,9 @@ else
 
     private decimal _calcIncome;
     private decimal _calcExpenses;
+    private decimal _calcIncomeFromFl;
+    private decimal _calcIncomeFromYur;
+    private decimal _unifiedTaxAmount;
     private string _calcPeriod = "quarter";
     private TaxCalculationResult? _calcResult;
 
@@ -691,6 +789,10 @@ else
         var user = await UserManager.GetUserAsync(auth.User);
         if (user == null) return;
         _userId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+        var ctx = await UserContext.GetContextAsync(user.Id);
+        _isTaxOnly = UserContext.IsTaxSpecialistOnly(ctx);
+        if (_isTaxOnly)
+            _mainTab = "taxes";
         await ReloadAsync();
     }
 
@@ -700,20 +802,29 @@ else
         var ctx = await TaxService.GetPageContextAsync(_userId);
         _summary = ctx.Summary;
         _taxSystem = ctx.TaxSystem;
+        _taxpayerKind = ctx.TaxpayerKind;
         _companyName = ctx.CompanyName;
         _companyUnp = ctx.CompanyUnp;
         _taxes = await TaxService.GetTaxesAsync(_userId);
         _taxUpcomingCount = _taxes.Count(t => !t.IsPaid && t.DueDate.Date >= DateTime.Today);
 
-        _bills = await DbContext.Reminders
-            .Where(r => r.UserId == _userId && r.Frequency == ReminderFrequency.OneTime)
-            .OrderBy(r => r.IsPaid)
-            .ThenBy(r => r.Date)
-            .ToListAsync();
+        if (!_isTaxOnly)
+        {
+            _bills = await DbContext.Reminders
+                .Where(r => r.UserId == _userId && r.Frequency == ReminderFrequency.OneTime)
+                .OrderBy(r => r.IsPaid)
+                .ThenBy(r => r.Date)
+                .ToListAsync();
 
-        _billOverdueCount = _bills.Count(b => !b.IsPaid && b.Date.Date < DateTime.Today);
-
-        _categories = await DbContext.Categories.Select(c => c.Name).ToListAsync();
+            _billOverdueCount = _bills.Count(b => !b.IsPaid && b.Date.Date < DateTime.Today);
+            _categories = await DbContext.Categories.Select(c => c.Name).ToListAsync();
+        }
+        else
+        {
+            _bills = new List<Reminder>();
+            _billOverdueCount = 0;
+            _categories = new List<string>();
+        }
 
         if (_taxSystem.HasValue)
             await TaxAutoRuleService.SyncRulesForTaxSystemAsync(_userId, _taxSystem.Value);
@@ -763,13 +874,6 @@ else
         return $"Через {days} дн.";
     }
 
-    private static string GetTaxSystemLabel(TaxSystem? system) => system switch
-    {
-        TaxSystem.USN => "УСН",
-        TaxSystem.OSN => "ОСН (с НДС)",
-        _ => "не указана"
-    };
-
     private string GetTaxEmptyTitle() => _taxFilter switch
     {
         "overdue" => "Нет просроченных налогов",
@@ -784,20 +888,27 @@ else
 
     private static IEnumerable<TaxHintDto> GetTaxHints(TaxSystem system)
     {
-        if (system == TaxSystem.USN)
+        switch (system)
         {
-            yield return new("УСН за квартал", "УСН", 0);
-            yield return new("ФСЗН за месяц", "ФСЗН", 0);
-        }
-        else
-        {
-            yield return new("НДС за месяц", "НДС", 0);
-            yield return new("ФСЗН за месяц", "ФСЗН", 0);
-            yield return new("Подоходный", "Подоходный", 0);
+            case TaxSystem.NPD:
+                yield return new("НПД за месяц", "НПД", 0);
+                break;
+            case TaxSystem.UnifiedTax:
+                yield return new("Единый налог", "Единый", 0);
+                break;
+            case TaxSystem.OSN:
+                yield return new("Подоходный / прибыль", "Подоходный", 0);
+                yield return new("НДС (оценка)", "НДС", 0);
+                yield return new("ФСЗН за месяц", "ФСЗН", 0);
+                break;
+            default:
+                yield return new("УСН за квартал", "УСН", 0);
+                yield return new("ФСЗН за месяц", "ФСЗН", 0);
+                break;
         }
     }
 
-    private void ApplyTaxHint(TaxHintDto hint)
+    private async Task ApplyTaxHint(TaxHintDto hint)
     {
         _editTaxId = 0;
         _taxAmount = 0;
@@ -805,16 +916,18 @@ else
         if (_taxTypeSelect == "Другое") _customTaxName = hint.Label;
         else _customTaxName = "";
         SetTaxDuePreset(hint.DuePresetDays);
-        if (hint.Name == "УСН") SetTaxDueQuarterEnd();
-        else SetTaxDueEndOfMonth();
-        _showTaxForm = true;
+        if (hint.Name == "УСН")
+            _taxDueDate = TaxDueDateHelper.GetCalculatorDueDate(TaxSystem.USN, "quarter", DateTime.Today);
+        else
+            _taxDueDate = TaxDueDateHelper.DueAfterPeriodEnd(DateTime.Today, 1, 25);
+        await OpenTaxFormAsync(scroll: true);
     }
 
-    private void OpenTaxForm()
+    private async Task OpenTaxForm()
     {
         _editTaxId = 0;
         ResetTaxForm();
-        _showTaxForm = true;
+        await OpenTaxFormAsync(scroll: true);
     }
 
     private void OpenBillForm()
@@ -862,10 +975,7 @@ else
 
     private void OnTaxTypeChanged() { }
 
-    private string ResolveTaxName() =>
-        _taxTypeSelect == "Другое"
-            ? (string.IsNullOrWhiteSpace(_customTaxName) ? "Налог" : _customTaxName.Trim())
-            : _taxTypeSelect;
+    private string ResolveTaxName() => TaxFormHelper.ResolvePaymentName(_taxTypeSelect, _customTaxName);
 
     private void SetTaxDuePreset(int days) => _taxDueDate = DateTime.Today.AddDays(days);
 
@@ -883,23 +993,28 @@ else
         _taxDueDate = new DateTime(d.Year, endMonth, DateTime.DaysInMonth(d.Year, endMonth));
     }
 
-    private void EditTax(TaxPayment tax)
+    private async Task EditTax(TaxPayment tax)
     {
         _editTaxId = tax.Id;
-        var known = new[] { "НДС", "УСН", "ФСЗН", "Подоходный" };
-        if (known.Contains(tax.Name))
+        if (TaxFormHelper.IsKnownTypeName(tax.Name))
         {
             _taxTypeSelect = tax.Name;
             _customTaxName = "";
         }
         else
-        {
-            _taxTypeSelect = "Другое";
-            _customTaxName = tax.Name;
-        }
+            (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(tax.Name);
+
         _taxAmount = tax.Amount;
         _taxDueDate = tax.DueDate;
-        _showTaxForm = true;
+        _showPartialForm = false;
+        await OpenTaxFormAsync(scroll: true);
+    }
+
+    private async Task EditTaxFromDetail(int taxId)
+    {
+        var tax = _taxes.FirstOrDefault(t => t.Id == taxId);
+        if (tax != null)
+            await EditTax(tax);
     }
 
     private void EditBill(Reminder bill)
@@ -937,6 +1052,17 @@ else
             }
             else
             {
+                var existing = _taxes.FirstOrDefault(t => t.Id == _editTaxId);
+                if (existing == null)
+                {
+                    ShowError("Платёж не найден");
+                    return;
+                }
+                if (existing.IsPaid)
+                {
+                    ShowError("Нельзя изменить уже оплаченный платёж");
+                    return;
+                }
                 await TaxService.UpdateTaxAsync(new TaxPayment
                 {
                     Id = _editTaxId,
@@ -960,61 +1086,41 @@ else
     private void RunTaxCalculator()
     {
         var system = _taxSystem ?? TaxSystem.USN;
-        _calcResult = TaxCalculatorHelper.Calculate(system, _calcIncome, _calcExpenses);
+        _calcResult = TaxCalculatorHelper.Calculate(new TaxCalculatorInput
+        {
+            System = system,
+            TaxpayerKind = _taxpayerKind,
+            Income = _calcIncome,
+            Expenses = _calcExpenses,
+            IncomeFromIndividuals = _calcIncomeFromFl,
+            IncomeFromLegalEntities = _calcIncomeFromYur,
+            UnifiedTaxAmount = _unifiedTaxAmount
+        });
     }
 
-    private async Task FillCalcFromTransactions()
+    private async Task FillCalcFromPeriodSummary()
     {
         var (start, end) = GetCalcPeriodBounds();
-        var txs = await DbContext.Transactions
-            .Where(t => t.UserId == _userId && t.IsConfirmed && t.Date >= start && t.Date <= end)
-            .Select(t => t.Amount)
-            .ToListAsync();
-        _calcIncome = txs.Where(a => a > 0).Sum();
-        _calcExpenses = Math.Abs(txs.Where(a => a < 0).Sum());
+        _calcPeriodSummary = await FinanceSummary.GetPeriodTotalsAsync(_userId, start, end);
+        _calcIncome = _calcPeriodSummary.Income;
+        _calcExpenses = _calcPeriodSummary.Expenses;
+        if (_taxSystem == TaxSystem.NPD)
+            _calcIncomeFromYur = _calcPeriodSummary.Income;
         RunTaxCalculator();
     }
 
-    private (DateTime Start, DateTime End) GetCalcPeriodBounds()
+    private void ExportTaxPdf()
     {
-        var today = DateTime.Today;
-        return _calcPeriod switch
-        {
-            "month" => (
-                new DateTime(today.Year, today.Month, 1).AddMonths(-1),
-                new DateTime(today.Year, today.Month, 1).AddDays(-1)),
-            "year" => (
-                new DateTime(today.Year - 1, 1, 1),
-                new DateTime(today.Year - 1, 12, 31)),
-            _ => GetLastQuarterBounds(today)
-        };
+        var (start, end) = GetCalcPeriodBounds();
+        var qs = $"start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}";
+        Navigation.NavigateTo($"/api/taxes/export/pdf?{qs}", forceLoad: true);
     }
 
-    private static (DateTime Start, DateTime End) GetLastQuarterBounds(DateTime refDate)
-    {
-        var q = (refDate.Month - 1) / 3;
-        var year = refDate.Year;
-        if (q == 0) { year--; q = 3; } else { q--; }
-        var startMonth = q * 3 + 1;
-        var endMonth = startMonth + 2;
-        return (
-            new DateTime(year, startMonth, 1),
-            new DateTime(year, endMonth, DateTime.DaysInMonth(year, endMonth)));
-    }
+    private (DateTime Start, DateTime End) GetCalcPeriodBounds() =>
+        TaxDueDateHelper.GetPeriodBounds(_calcPeriod, DateTime.Today);
 
-    private DateTime GetCalcDueDate()
-    {
-        if (_taxSystem == TaxSystem.USN)
-        {
-            SetTaxDueQuarterEnd();
-            return _taxDueDate;
-        }
-        SetTaxDueEndOfMonth();
-        return _taxDueDate;
-    }
-
-    private static string MapTaxTypeSelect(string paymentName) =>
-        paymentName is "УСН" or "НДС" or "ФСЗН" or "Подоходный" ? paymentName : "Другое";
+    private DateTime GetCalcDueDate() =>
+        TaxDueDateHelper.GetCalculatorDueDate(_taxSystem, _calcPeriod, DateTime.Today);
 
     private async Task CreatePaymentsFromCalculator()
     {
@@ -1046,17 +1152,91 @@ else
         catch (Exception ex) { ShowError(ex.Message); }
     }
 
-    private void ApplyCalcToTaxForm()
+    private async Task ApplyCalcLineToTaxForm(TaxCalcLine? line)
     {
         if (_calcResult == null || _calcResult.TaxAmount <= 0) return;
+        line ??= _calcResult.Lines.FirstOrDefault(l => l.Amount > 0)
+            ?? new TaxCalcLine { Name = _calcResult.SuggestedPaymentName, Amount = _calcResult.TaxAmount };
+        if (line.Amount <= 0) return;
+
         _editTaxId = 0;
-        var line = _calcResult.Lines.FirstOrDefault() ?? new TaxCalcLine { Name = _calcResult.SuggestedPaymentName, Amount = _calcResult.TaxAmount };
         _taxAmount = line.Amount;
-        _taxTypeSelect = MapTaxTypeSelect(line.Name);
-        _customTaxName = _taxTypeSelect == "Другое" ? line.Name : "";
-        GetCalcDueDate();
-        _showTaxForm = true;
+        (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(line.Name, _calcResult.SuggestedPaymentName);
+        _taxDueDate = GetCalcDueDate();
+        _showPartialForm = false;
+        await OpenTaxFormAsync(scroll: true);
+        ShowSuccess("Проверьте сумму и срок в форме ниже, затем нажмите «Добавить»");
     }
+
+    private async Task ApplyRulePreviewToForm(TaxRulePreview preview)
+    {
+        if (!string.IsNullOrEmpty(preview.Error) || preview.CalculatedAmount <= 0)
+        {
+            ShowError(preview.Error ?? "Сумма по правилу равна нулю");
+            return;
+        }
+
+        _editTaxId = 0;
+        var paymentName = preview.Rule.Period switch
+        {
+            TaxRulePeriod.Monthly => $"{preview.Rule.PaymentName} {preview.PeriodStart:MMM yyyy}",
+            TaxRulePeriod.Yearly => $"{preview.Rule.PaymentName} {preview.PeriodStart:yyyy}",
+            _ => $"{preview.Rule.PaymentName} Q{(preview.PeriodStart.Month - 1) / 3 + 1} {preview.PeriodStart:yyyy}"
+        };
+
+        (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(paymentName, preview.Rule.PaymentName);
+        _taxAmount = preview.CalculatedAmount;
+        _taxDueDate = preview.DueDate;
+        _showPartialForm = false;
+        await OpenTaxFormAsync(scroll: true);
+    }
+
+    private async Task CreatePaymentFromRulePreview(TaxRulePreview preview)
+    {
+        ClearAlerts();
+        try
+        {
+            var result = await TaxAutoRuleService.CreatePaymentFromPreviewAsync(_userId, preview);
+            if (result.CreatedCount > 0)
+                ShowSuccess(result.Messages.FirstOrDefault() ?? "Платёж создан");
+            else
+                ShowError(result.Messages.FirstOrDefault() ?? "Платёж не создан");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
+    }
+
+    private async Task OpenTaxFormAsync(bool scroll)
+    {
+        _showTaxForm = true;
+        _taxFormHighlight = true;
+        await InvokeAsync(StateHasChanged);
+        if (scroll)
+            await ScrollToTaxFormAsync();
+        _ = ClearTaxFormHighlightSoonAsync();
+    }
+
+    private async Task ScrollToTaxFormAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("uiEnhance.scrollToId", "tax-payment-form");
+        }
+        catch
+        {
+            // ignore if JS not ready
+        }
+    }
+
+    private async Task ClearTaxFormHighlightSoonAsync()
+    {
+        await Task.Delay(2500);
+        _taxFormHighlight = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string ShortLineLabel(string name) =>
+        name.Length > 28 ? name[..25] + "…" : name;
 
     private static string FormatRulePeriod(TaxRulePeriod period) => period switch
     {
@@ -1067,12 +1247,22 @@ else
 
     private void OpenNewAutoRule()
     {
-        var (payName, formula, period) = _taxSystem == TaxSystem.OSN
-            ? ("НДС", "income * 20 / 120", TaxRulePeriod.Monthly)
-            : ("УСН", "income * 0.06", TaxRulePeriod.Quarterly);
+        var (payName, formula, period) = _taxSystem switch
+        {
+            TaxSystem.OSN => ("Подоходный", "max(0, income - expenses) * 0.16", TaxRulePeriod.Quarterly),
+            TaxSystem.NPD => ("НПД", "income * 0.08", TaxRulePeriod.Monthly),
+            TaxSystem.UnifiedTax => ("Единый", "0", TaxRulePeriod.Monthly),
+            _ => ("УСН", "income * 0.06", TaxRulePeriod.Quarterly)
+        };
         _editRule = new TaxAutoRule
         {
-            Name = _taxSystem == TaxSystem.OSN ? "НДС (оценка)" : "УСН 6% (доход)",
+            Name = _taxSystem switch
+            {
+                TaxSystem.OSN => "ОСН (оценка)",
+                TaxSystem.NPD => "НПД 8%",
+                TaxSystem.UnifiedTax => "Единый налог",
+                _ => "УСН 6% (выручка)"
+            },
             PaymentName = payName,
             Formula = formula,
             Period = period,
@@ -1141,11 +1331,14 @@ else
         {
             var result = await TaxAutoRuleService.GeneratePaymentsAsync(_userId);
             if (result.CreatedCount > 0)
-                ShowSuccess($"Создано платежей: {result.CreatedCount}");
+            {
+                var extra = result.SkippedCount > 0 ? $" (пропущено: {result.SkippedCount})" : "";
+                ShowSuccess($"Создано платежей: {result.CreatedCount}{extra}");
+            }
             else if (result.Messages.Count > 0)
-                ShowSuccess(string.Join("; ", result.Messages.Take(3)));
+                ShowSuccess(string.Join(" · ", result.Messages.Take(5)));
             else
-                ShowSuccess("Новых платежей не требуется — всё уже в плане");
+                ShowSuccess("Новых платежей не требуется — проверьте правила и сводку за период");
             await ReloadAsync();
         }
         catch (Exception ex) { ShowError(ex.Message); }
@@ -1178,7 +1371,7 @@ else
     {
         ClearAlerts();
         await TaxService.MarkAsPaidAsync(id, _userId);
-        ShowSuccess("Налог оплачен, создана транзакция в категории «Налоги»");
+        ShowSuccess("Налог оплачен, проводка учтена в категории «Налоги»");
         await ReloadAsync();
     }
 
@@ -1243,17 +1436,21 @@ else
         var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == _userId);
         if (bill == null || bill.IsPaid) return;
 
-        await TxService.CreateAsync(new Transaction
+        DbContext.Transactions.Add(new Transaction
         {
+            UserId = _userId,
             Date = DateTime.Today,
             Amount = -Math.Abs(bill.Amount),
             Description = $"Оплата счёта: {bill.Name}",
-            Category = bill.Category ?? ""
-        }, _userId);
+            Category = bill.Category ?? "",
+            IsConfirmed = true,
+            ApprovalStatus = TransactionApprovalStatus.Approved,
+            CreatedAt = DateTime.UtcNow
+        });
         bill.IsPaid = true;
         bill.PaidDate = DateTime.Now;
         await DbContext.SaveChangesAsync();
-        ShowSuccess("Счёт оплачен, создана транзакция");
+        ShowSuccess("Счёт оплачен");
         await ReloadAsync();
     }
 

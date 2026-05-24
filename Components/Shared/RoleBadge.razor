@@ -1,0 +1,11 @@
+@using MiniFinance.Services
+
+<span class="badge role-badge @AppRoles.GetBadgeClass(Role)" title="@Title">@AppRoles.GetDisplayName(Role)</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Role { get; set; } = "";
+
+    [Parameter]
+    public string? Title { get; set; }
+}

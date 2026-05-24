@@ -1,172 +1,128 @@
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Identity
-@using MiniFinance.Data
-@inject SignInManager<ApplicationUser> SignInManager
-@inject UserManager<ApplicationUser> UserManager
+@using MiniFinance.Services
+@implements IDisposable
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthState
 
-<AuthorizeView>
-    <Authorized>
-        <nav class="sidebar-nav">
+@if (_snapshot.IsAuthenticated)
+{
+    <nav class="sidebar-nav">
+        <div class="nav-section">
+            <div class="nav-section-label">Основное</div>
+            <ul class="nav-list">
+                @if (_snapshot.CanAccessFinances)
+                {
+                    <li class="nav-item">
+                        <NavLink href="/" Match="NavLinkMatch.All"><span>Главная</span></NavLink>
+                    </li>
+                    <li class="nav-item"><NavLink href="/counterparties"><span>Контрагенты</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/debts"><span>Долги</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/import"><span>Импорт</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/transactions"><span>Транзакции</span></NavLink></li>
+                }
+                @* Налоги — только для налогового специалиста без финансового раздела *@
+                @if (_snapshot.CanManageTaxes && !_snapshot.CanAccessFinances)
+                {
+                    <li class="nav-item">
+                        <NavLink href="/taxes" Match="NavLinkMatch.All"><span>Налоги</span></NavLink>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        @if (_snapshot.CanViewReports)
+        {
             <div class="nav-section">
-                <div class="nav-section-label">Основное</div>
+                <div class="nav-section-label">Отчёты</div>
                 <ul class="nav-list">
-                    <li class="nav-item">
-                        <NavLink href="/" Match="NavLinkMatch.All">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                            <span>Главная</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/counterparties">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                            <span>Контрагенты</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/debts">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                            <span>Долги</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/import">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            <span>Импорт</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/transactions">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                            <span>Транзакции</span>
-                        </NavLink>
-                    </li>
+                    <li class="nav-item"><NavLink href="/reports"><span>Отчёты</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/analytics"><span>Аналитика</span></NavLink></li>
                 </ul>
             </div>
+        }
 
+        @if (_snapshot.CanAccessFinances)
+        {
             <div class="nav-section">
                 <div class="nav-section-label">Финансы</div>
                 <ul class="nav-list">
-                    <li class="nav-item">
-                        <NavLink href="/reports">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-                            <span>Отчёты</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/taxes">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                            <span>Налоги</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/payment-calendar">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            <span>Платёжный календарь</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/cash-forecast">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                            <span>Прогноз кассы</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/reminders">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                            <span>Напоминания</span>
-                        </NavLink>
-                    </li>
-                    <li class="nav-item">
-                        <NavLink href="/categories">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                            <span>Категории</span>
-                        </NavLink>
-                    </li>
+                    @if (_snapshot.CanManageTaxes)
+                    {
+                        <li class="nav-item"><NavLink href="/taxes"><span>Налоги и счета</span></NavLink></li>
+                    }
+                    <li class="nav-item"><NavLink href="/payment-calendar"><span>Платёжный календарь</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/cash-forecast"><span>Прогноз кассы</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/reminders"><span>Напоминания</span></NavLink></li>
+                    <li class="nav-item"><NavLink href="/categories"><span>Категории</span></NavLink></li>
                 </ul>
             </div>
+        }
 
-            <div class="nav-section">
-                <div class="nav-section-label">Управление</div>
-                <ul class="nav-list">
-                    @* Команда — временно скрыто
-                    <AuthorizeView Roles="Owner">
-                        <li class="nav-item">
-                            <NavLink href="/team">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                <span>Команда</span>
-                            </NavLink>
-                        </li>
-                    </AuthorizeView>
-                    *@
-                    <li class="nav-item">
-                        <NavLink href="/projects">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                            <span>Проекты</span>
-                        </NavLink>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="nav-section">
-                <div class="nav-section-label">Аналитика</div>
-                <ul class="nav-list">
-                    <li class="nav-item">
-                        <NavLink href="/analytics">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                            <span>Финансовая аналитика</span>
-                        </NavLink>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="nav-footer">
-                <div class="nav-section">
-                    <ul class="nav-list">
-                        <li class="nav-item">
-                            <NavLink href="/profile">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                                <span>Профиль</span>
-                            </NavLink>
-                        </li>
-                        <li class="nav-item">
-                            <NavLink href="/settings">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                <span>Настройки</span>
-                            </NavLink>
-                        </li>
-                    </ul>
-                </div>
-                <button class="nav-logout" @onclick="Logout">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    <span>Выйти</span>
-                </button>
-            </div>
-        </nav>
-    </Authorized>
-    <NotAuthorized>
-        <nav class="sidebar-nav">
+        <div class="nav-section">
+            <div class="nav-section-label">Управление</div>
             <ul class="nav-list">
-                <li class="nav-item">
-                    <NavLink href="/login" Match="NavLinkMatch.All">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                        <span>Вход</span>
-                    </NavLink>
-                </li>
+                @if (_snapshot.IsAdministrator)
+                {
+                    <li class="nav-item"><NavLink href="/team"><span>Команда</span></NavLink></li>
+                }
+                @if (_snapshot.CanAccessFinances)
+                {
+                    <li class="nav-item"><NavLink href="/projects"><span>Проекты</span></NavLink></li>
+                }
             </ul>
-        </nav>
-    </NotAuthorized>
-</AuthorizeView>
+        </div>
+
+        <div class="nav-footer">
+            @if (!string.IsNullOrEmpty(_snapshot.PrimaryRole))
+            {
+                <div class="nav-user-role">
+                    <div class="nav-user-role-label">Ваша роль</div>
+                    <RoleBadge Role="@_snapshot.PrimaryRole" />
+                </div>
+            }
+            <ul class="nav-list">
+                <li class="nav-item"><NavLink href="/profile"><span>Профиль</span></NavLink></li>
+                @if (_snapshot.IsAdministrator)
+                {
+                    <li class="nav-item"><NavLink href="/settings"><span>Настройки</span></NavLink></li>
+                }
+            </ul>
+            <button class="nav-logout" @onclick="Logout">Выйти</button>
+        </div>
+    </nav>
+}
+else
+{
+    <nav class="sidebar-nav">
+        <ul class="nav-list">
+            <li class="nav-item"><NavLink href="/login"><span>Вход</span></NavLink></li>
+        </ul>
+    </nav>
+}
 
 @code {
+    private RoleAccessSnapshot _snapshot;
+
     protected override async Task OnInitializedAsync()
     {
-        await Task.CompletedTask;
+        AuthState.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await ApplyAuthStateAsync();
     }
 
-    private void Logout()
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> _)
     {
-        NavigationManager.NavigateTo("/do-logout", forceLoad: true);
+        await ApplyAuthStateAsync();
+        await InvokeAsync(StateHasChanged);
     }
+
+    private async Task ApplyAuthStateAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _snapshot = RoleAccessSnapshot.FromPrincipal(state.User);
+    }
+
+    private void Logout() => NavigationManager.NavigateTo("/do-logout", forceLoad: true);
+
+    public void Dispose() => AuthState.AuthenticationStateChanged -= OnAuthenticationStateChanged;
 }

@@ -43,7 +43,7 @@ public class PaymentCalendarService : IPaymentCalendarService
 
         foreach (var r in reminders.Where(r => !r.IsPaid || r.Frequency != ReminderFrequency.OneTime))
         {
-            if (r.SnoozedUntil.HasValue && r.SnoozedUntil.Value.Date > today)
+            if (ReminderScheduleHelper.IsSnoozedActive(r, today))
                 continue;
 
             if (r.Frequency == ReminderFrequency.OneTime)

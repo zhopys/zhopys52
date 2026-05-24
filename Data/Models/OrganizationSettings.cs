@@ -19,6 +19,9 @@ namespace MiniFinance.Data.Models
 
         public TaxSystem TaxSystem { get; set; }
 
+        /// <summary>ИП или юрлицо — для расчёта ОСН (16% / 20%).</summary>
+        public TaxpayerKind TaxpayerKind { get; set; } = TaxpayerKind.LegalEntity;
+
         // Integration settings
         public string? ApiKey { get; set; }
         public string? IntegrationUrl { get; set; }

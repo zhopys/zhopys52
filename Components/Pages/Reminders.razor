@@ -14,7 +14,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
 @inject MiniFinance.Services.INotificationEmailService EmailService
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Напоминания - MiniFinance</PageTitle>
 
@@ -72,6 +72,10 @@
             <button class="tab @(_activeTab == "all" ? "active" : "")" @onclick="@(() => SetTab("all"))">
                 Все
             </button>
+            <button class="tab @(_activeTab == "snoozed" ? "active" : "")" @onclick="@(() => SetTab("snoozed"))">
+                Отложенные
+                @if (_snoozedCount > 0) { <span class="tab-count">@_snoozedCount</span> }
+            </button>
             <button class="tab @(_activeTab == "archive" ? "active" : "")" @onclick="@(() => SetTab("archive"))">
                 Архив
             </button>
@@ -125,12 +129,8 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Напомнить за (дней)</label>
-                    <select class="form-select form-input" @bind="_newNotifyDays">
-                        <option value="7">7 дней</option>
-                        <option value="3">3 дня</option>
-                        <option value="1">1 день</option>
-                        <option value="0">В день платежа</option>
-                    </select>
+                    <input type="number" class="form-input" @bind="_newNotifyDays" min="0" max="90" step="1" />
+                    <span class="small text-muted">За сколько дней до даты платежа отправлять email (0 — в день платежа)</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Дата</label>
@@ -259,7 +259,11 @@
                                 <div class="@(isOverdue ? "text-danger" : "")">
                                     @r.Date.ToString("dd.MM.yyyy")
                                 </div>
-                                @if (!r.IsPaid)
+                                @if (ReminderScheduleHelper.IsSnoozedActive(r))
+                                {
+                                    <div class="small text-muted">Отложено до @r.SnoozedUntil!.Value.ToString("dd.MM.yyyy")</div>
+                                }
+                                else if (!r.IsPaid)
                                 {
                                     <div class="small @(isOverdue ? "text-danger" : "text-muted")">
                                         @if (isOverdue)
@@ -303,11 +307,15 @@
                                 }
                             </td>
                             <td class="text-center" style="white-space: nowrap;">
+                                @if (ReminderScheduleHelper.IsSnoozedActive(r) && _activeTab == "snoozed")
+                                {
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => ClearSnooze(r))" title="Вернуть в список">Вернуть</button>
+                                }
                                 @if (!r.IsPaid && _activeTab != "archive")
                                 {
-                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 1))" title="Напомнить через 1 день">+1д</button>
-                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 3))" title="Через 3 дня">+3д</button>
-                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Snooze(r, 7))" title="Через неделю">+7д</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Postpone(r, 1))" title="Перенести дату на 1 день">+1д</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Postpone(r, 3))" title="Перенести на 3 дня">+3д</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="@(() => Postpone(r, 7))" title="Перенести на неделю">+7д</button>
                                     <button class="btn btn-sm btn-success" @onclick="@(() => MarkPaid(r.Id))" title="Отметить как оплаченное">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                                     </button>
@@ -342,6 +350,8 @@
     private string _activeTab = "upcoming";
     private int _upcomingCount;
     private int _overdueCount;
+    private int _snoozedCount;
+    private string _dataUserId = "";
 
     private int _editId;
     private string _newName = string.Empty;
@@ -387,13 +397,15 @@
         var user = await UserManager.GetUserAsync(authState.User);
         if (user != null)
         {
-            var dataId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
+            _dataUserId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             _reminders = await DbContext.Reminders
-                .Where(r => r.UserId == dataId)
+                .Where(r => r.UserId == _dataUserId)
                 .ToListAsync();
 
-            _upcomingCount = _reminders.Count(r => !r.IsArchived && !r.IsPaid && r.Date >= DateTime.Today);
-            _overdueCount = _reminders.Count(r => !r.IsArchived && !r.IsPaid && r.Date < DateTime.Today);
+            var today = DateTime.Today;
+            _upcomingCount = _reminders.Count(r => ReminderScheduleHelper.MatchesUpcoming(r, today));
+            _overdueCount = _reminders.Count(r => ReminderScheduleHelper.MatchesOverdue(r, today));
+            _snoozedCount = _reminders.Count(r => ReminderScheduleHelper.IsSnoozedActive(r, today));
         }
     }
 
@@ -401,11 +413,13 @@
     {
         if (_reminders == null) return Enumerable.Empty<Reminder>();
 
+        var today = DateTime.Today;
         return _activeTab switch
         {
-            "upcoming" => _reminders.Where(r => !r.IsArchived && !r.IsPaid && r.Date >= DateTime.Today && (r.SnoozedUntil == null || r.SnoozedUntil.Value.Date <= DateTime.Today)),
-            "overdue" => _reminders.Where(r => !r.IsArchived && !r.IsPaid && r.Date < DateTime.Today && (r.SnoozedUntil == null || r.SnoozedUntil.Value.Date <= DateTime.Today)),
+            "upcoming" => _reminders.Where(r => ReminderScheduleHelper.MatchesUpcoming(r, today)),
+            "overdue" => _reminders.Where(r => ReminderScheduleHelper.MatchesOverdue(r, today)),
             "paid" => _reminders.Where(r => !r.IsArchived && r.IsPaid),
+            "snoozed" => _reminders.Where(r => !r.IsArchived && !r.IsPaid && ReminderScheduleHelper.IsSnoozedActive(r, today)),
             "archive" => _reminders.Where(r => r.IsArchived),
             _ => _reminders.Where(r => !r.IsArchived)
         };
@@ -446,6 +460,7 @@
 
         if (_editId == 0)
         {
+            var ownerId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             var r = new Reminder
             {
                 Name = _newName,
@@ -457,7 +472,7 @@
                 Date = _newDate,
                 ProjectId = _newProjectId,
                 Notes = _newNotes,
-                UserId = user.Id,
+                UserId = ownerId,
                 IsPaid = false
             };
             DbContext.Reminders.Add(r);
@@ -507,11 +522,21 @@
         _showCreateForm = true;
     }
 
-    private async Task Snooze(Reminder r, int days)
+    private async Task Postpone(Reminder r, int days)
     {
         if (days <= 0) return;
-        r.SnoozedUntil = DateTime.Today.AddDays(days);
+        ReminderScheduleHelper.PostponeByDays(r, days);
         DbContext.Reminders.Update(r);
+        await DbContext.SaveChangesAsync();
+        await LoadReminders();
+        _message = $"Дата перенесена на {r.Date:dd.MM.yyyy}";
+        _showMessage = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ClearSnooze(Reminder r)
+    {
+        r.SnoozedUntil = null;
         await DbContext.SaveChangesAsync();
         await LoadReminders();
     }
@@ -553,15 +578,19 @@
                 return;
             }
 
+            var ownerId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
             var now = DateTime.Today;
-            var cutoff = now.AddDays(user.NotificationDaysBefore);
 
-            var upcomingReminders = await DbContext.Reminders
-                .Where(r => r.UserId == user.Id && !r.IsPaid && r.Date >= now && r.Date <= cutoff)
-                .ToListAsync();
+            var upcomingReminders = (await DbContext.Reminders
+                .Where(r => r.UserId == ownerId && !r.IsPaid && !r.IsArchived && r.Date >= now)
+                .ToListAsync())
+                .Where(r => ReminderScheduleHelper.ShouldNotifyToday(r, now) && r.NotificationSentDate == null)
+                .ToList();
 
+            var taxLead = user.NotificationDaysBefore;
+            var taxCutoff = now.AddDays(taxLead);
             var upcomingTaxes = await DbContext.TaxPayments
-                .Where(t => t.UserId == user.Id && !t.IsPaid && t.DueDate >= now && t.DueDate <= cutoff)
+                .Where(t => t.UserId == ownerId && !t.IsPaid && t.DueDate >= now && t.DueDate <= taxCutoff)
                 .ToListAsync();
 
             var items = upcomingReminders.Select(r => (user.Email, r.Name, r.Amount, r.Date, "reminder", (int)(r.Date - now).TotalDays))
@@ -633,6 +662,7 @@
             "upcoming" => "Нет предстоящих платежей",
             "overdue" => "Нет просроченных платежей",
             "paid" => "Нет оплаченных напоминаний",
+            "snoozed" => "Нет отложенных напоминаний",
             "archive" => "Архив пуст",
             _ => "Нет напоминаний"
         };
@@ -645,6 +675,7 @@
             "upcoming" => "Все платежи оплачены",
             "overdue" => "Отличная работа, всё оплачено вовремя!",
             "paid" => "Пока нет оплаченных напоминаний",
+            "snoozed" => "Здесь напоминания, отложенные ранее (скрытые). Нажмите «Вернуть» или перенесите дату кнопками +1д / +3д / +7д.",
             "archive" => "Архивируйте напоминания, чтобы скрывать неактуальные записи.",
             _ => "Создайте первое напоминание, чтобы отслеживать платежи"
         };

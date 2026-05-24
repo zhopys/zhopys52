@@ -22,11 +22,13 @@
 
   <ItemGroup>
     <Folder Include="Data\Statements\" />
+    <InternalsVisibleTo Include="MiniFinance.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="tools\**\*.cs" />
     <Compile Remove="bin-build-check\**\*.cs" />
+    <Compile Remove="MiniFinance.Tests\**\*.cs" />
     <Content Remove="tools\**\*" />
     <Content Remove="bin-build-check\**\*" />
     <None Remove="tools\**\*" />

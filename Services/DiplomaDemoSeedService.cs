@@ -7,13 +7,16 @@ namespace MiniFinance.Services;
 
 /// <summary>
 /// Полный сброс БД и демо-данные для защиты диплома / курсовой.
-/// Запуск: dotnet run -- --seed-diploma-demo
+/// Запуск: dotnet run -- --seed-demo  (или --seed-diploma-demo)
 /// </summary>
 public static class DiplomaDemoSeedService
 {
     public const string TargetEmail = "1238606@mtp.by";
+    public const string AccountantEmail = "buhgalter@demo.local";
+    public const string TaxSpecialistEmail = "nalog@demo.local";
     /// <summary>Пароль только если пользователь создаётся заново.</summary>
-    public const string DefaultPassword = "123456";
+    public const string DefaultPassword = "Demo1234!";
+    public const string TeamDemoPassword = "Demo1234!";
 
     public static async Task RunAsync(IServiceProvider services)
     {
@@ -50,7 +53,12 @@ public static class DiplomaDemoSeedService
         }
         else
         {
-            Console.WriteLine($"Сохранён существующий пользователь {TargetEmail} (пароль не менялся).");
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var reset = await userManager.ResetPasswordAsync(user, token, DefaultPassword);
+            if (reset.Succeeded)
+                Console.WriteLine($"Пароль администратора {TargetEmail} сброшен на: {DefaultPassword}");
+            else
+                Console.WriteLine($"Сохранён {TargetEmail} (пароль не изменён: {string.Join("; ", reset.Errors.Select(e => e.Description))})");
         }
 
         foreach (var role in AppRoles.All)
@@ -60,13 +68,74 @@ public static class DiplomaDemoSeedService
         }
 
         var roles = await userManager.GetRolesAsync(user);
-        if (!roles.Contains(AppRoles.Owner))
-            await userManager.AddToRoleAsync(user, AppRoles.Owner);
+        if (!roles.Contains(AppRoles.Administrator))
+            await userManager.AddToRoleAsync(user, AppRoles.Administrator);
 
+        await SeedTeamMembersAsync(userManager, user.Id);
         await DeleteOtherUsersAsync(userManager, user.Id);
         await SeedDemoDataAsync(db, user.Id);
 
+        Console.WriteLine();
+        Console.WriteLine("=== Учётные записи для сдачи ===");
+        Console.WriteLine($"  Администратор:  {TargetEmail}  /  {DefaultPassword}");
+        Console.WriteLine($"  Бухгалтер:      {AccountantEmail}  /  {TeamDemoPassword}");
+        Console.WriteLine($"  Налоговый:      {TaxSpecialistEmail}  /  {TeamDemoPassword}");
+        Console.WriteLine();
         Console.WriteLine("Демо-данные загружены успешно.");
+    }
+
+    private static async Task SeedTeamMembersAsync(UserManager<ApplicationUser> userManager, string ownerUserId)
+    {
+        await EnsureTeamUserAsync(userManager, ownerUserId, AccountantEmail, "Анна", "Бухгалтерова",
+            "Бухгалтерия", AppRoles.Accountant);
+        await EnsureTeamUserAsync(userManager, ownerUserId, TaxSpecialistEmail, "Игорь", "Налогов",
+            "Налоги", AppRoles.TaxSpecialist);
+    }
+
+    private static async Task EnsureTeamUserAsync(
+        UserManager<ApplicationUser> userManager,
+        string ownerUserId,
+        string email,
+        string firstName,
+        string lastName,
+        string department,
+        string role)
+    {
+        var existing = await userManager.FindByEmailAsync(email);
+        if (existing != null)
+        {
+            if (existing.WorkspaceOwnerUserId != ownerUserId)
+            {
+                existing.WorkspaceOwnerUserId = ownerUserId;
+                await userManager.UpdateAsync(existing);
+            }
+            var roles = await userManager.GetRolesAsync(existing);
+            if (!roles.Contains(role))
+            {
+                await userManager.RemoveFromRolesAsync(existing, roles);
+                await userManager.AddToRoleAsync(existing, role);
+            }
+            Console.WriteLine($"  Команда: {email} (уже есть)");
+            return;
+        }
+
+        var member = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            FirstName = firstName,
+            LastName = lastName,
+            Department = department,
+            WorkspaceOwnerUserId = ownerUserId,
+            BaseCurrency = "BYN",
+            CreatedAt = DateTime.UtcNow
+        };
+        var created = await userManager.CreateAsync(member, TeamDemoPassword);
+        if (!created.Succeeded)
+            throw new InvalidOperationException($"Не удалось создать {email}: " + string.Join("; ", created.Errors.Select(e => e.Description)));
+        await userManager.AddToRoleAsync(member, role);
+        Console.WriteLine($"  Команда: {email} / {TeamDemoPassword}");
     }
 
     private static async Task ClearBusinessDataAsync(ApplicationDbContext db)
@@ -90,7 +159,10 @@ public static class DiplomaDemoSeedService
 
     private static async Task DeleteOtherUsersAsync(UserManager<ApplicationUser> userManager, string keepUserId)
     {
-        foreach (var u in await userManager.Users.Where(x => x.Id != keepUserId).ToListAsync())
+        var toRemove = await userManager.Users
+            .Where(x => x.Id != keepUserId && x.WorkspaceOwnerUserId != keepUserId)
+            .ToListAsync();
+        foreach (var u in toRemove)
             await userManager.DeleteAsync(u);
     }
 
@@ -163,6 +235,7 @@ public static class DiplomaDemoSeedService
             new TaxPayment { UserId = userId, Name = "УСН Q1 " + today.Year, Amount = 2840m, DueDate = new DateTime(today.Year, 4, 25), IsPaid = true, PaidDate = new DateTime(today.Year, 4, 22), PaidAmount = 2840m },
             new TaxPayment { UserId = userId, Name = "УСН Q2 " + today.Year, Amount = 3120m, DueDate = new DateTime(today.Year, 7, 25) },
             new TaxPayment { UserId = userId, Name = "ФСЗН " + today.ToString("MMM yyyy"), Amount = 1850m, DueDate = today.AddDays(12) },
+            new TaxPayment { UserId = userId, Name = "УСН (просрочено)", Amount = 980m, DueDate = today.AddDays(-18), PaidAmount = 0 },
             new TaxPayment { UserId = userId, Name = "УСН Q1 " + (today.Year - 1), Amount = 2650m, DueDate = today.AddMonths(-2), IsPaid = true, PaidDate = today.AddMonths(-2).AddDays(-3), PaidAmount = 2650m }
         );
 
@@ -186,6 +259,33 @@ public static class DiplomaDemoSeedService
 
         var transactions = BuildTransactions(userId, today, crmId, webId, generalId, belLog, kozlov, rent, hoster);
         db.Transactions.AddRange(transactions);
+
+        db.Transactions.AddRange(
+            new Transaction
+            {
+                UserId = userId, Date = today.AddDays(-2), Amount = -2400m,
+                Description = "Закупка ноутбука для разработки", Category = "Закупки",
+                ProjectId = crmId, Counterparty = "ООО «Поставка ПО»", PaymentMethod = PaymentMethod.Card,
+                IsConfirmed = false, ApprovalStatus = TransactionApprovalStatus.Pending,
+                CreatedAt = DateTime.UtcNow.AddDays(-2)
+            },
+            new Transaction
+            {
+                UserId = userId, Date = today.AddDays(-1), Amount = 12000m,
+                Description = "Аванс по CRM — ожидает утверждения", Category = "Доход от услуг",
+                ProjectId = crmId, Counterparty = belLog.Name, CounterpartyId = belLog.Id,
+                IsConfirmed = false, ApprovalStatus = TransactionApprovalStatus.Pending,
+                CreatedAt = DateTime.UtcNow.AddDays(-1)
+            },
+            new Transaction
+            {
+                UserId = userId, Date = today, Amount = -890m,
+                Description = "Командировочные (чек приложен)", Category = "Прочее",
+                ProjectId = webId, IsConfirmed = false, ApprovalStatus = TransactionApprovalStatus.Pending,
+                CreatedAt = DateTime.UtcNow
+            }
+        );
+
         await db.SaveChangesAsync();
 
         var txWithTags = transactions.Where(t => t.Description.Contains("CRM") || t.Description.Contains("этап")).Take(4).ToList();
@@ -221,6 +321,8 @@ public static class DiplomaDemoSeedService
         Console.WriteLine($"  Транзакций: {await db.Transactions.CountAsync(t => t.UserId == userId)}");
         Console.WriteLine($"  Контрагентов: {await db.Counterparties.CountAsync(c => c.UserId == userId)}");
         Console.WriteLine($"  Налогов: {await db.TaxPayments.CountAsync(t => t.UserId == userId)}");
+        Console.WriteLine($"  На утверждении: {await db.Transactions.CountAsync(t => t.UserId == userId && t.ApprovalStatus == TransactionApprovalStatus.Pending)}");
+        Console.WriteLine($"  Напоминаний: {await db.Reminders.CountAsync(r => r.UserId == userId)}");
     }
 
     private static async Task InsertOrganizationSettingsAsync(ApplicationDbContext db, string userId)

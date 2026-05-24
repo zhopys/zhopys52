@@ -11,7 +11,7 @@
 @inject IForecastingService ForecastingService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
-@attribute [Authorize]
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Прогноз кассовых разрывов — MiniFinance</PageTitle>
 

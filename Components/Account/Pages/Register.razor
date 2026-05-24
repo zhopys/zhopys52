@@ -95,7 +95,26 @@
 
         try
         {
-            var email = Input.Email.Trim().ToLowerInvariant();
+            var email = AuthFieldValidation.NormalizeEmail(Input.Email);
+            var emailCheck = AuthFieldValidation.ValidateEmail(email);
+            if (!emailCheck.Ok)
+            {
+                _errorMessage = emailCheck.Error;
+                return;
+            }
+
+            var pwdCheck = AuthFieldValidation.ValidatePassword(Input.Password);
+            if (!pwdCheck.Ok)
+            {
+                _errorMessage = pwdCheck.Error;
+                return;
+            }
+
+            if (!string.Equals(Input.Password, Input.ConfirmPassword, StringComparison.Ordinal))
+            {
+                _errorMessage = "Пароли не совпадают.";
+                return;
+            }
             var existing = await UserManager.FindByEmailAsync(email);
             if (existing != null)
             {
@@ -121,7 +140,7 @@
             }
 
             // Роли временно отключены
-            // await UserManager.AddToRoleAsync(user, AppRoles.Owner);
+            await UserManager.AddToRoleAsync(user, AppRoles.Administrator);
             Logger.LogInformation("User {Email} registered.", email);
 
             var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
@@ -161,17 +180,18 @@
     private sealed class InputModel
     {
         [Required(ErrorMessage = "Email обязателен")]
-        [EmailAddress(ErrorMessage = "Некорректный email")]
+        [ValidAuthEmail]
+        [StringLength(AuthFieldValidation.MaxEmailLength, ErrorMessage = "Слишком длинный email")]
         public string Email { get; set; } = "";
 
         [Required(ErrorMessage = "Пароль обязателен")]
-        [StringLength(100, MinimumLength = 8, ErrorMessage = "Пароль должен быть не менее 8 символов.")]
-        [RegularExpression(@".*\d.*", ErrorMessage = "Пароль должен содержать хотя бы одну цифру.")]
+        [ValidAuthPassword]
         [DataType(DataType.Password)]
         public string Password { get; set; } = "";
 
+        [Required(ErrorMessage = "Подтвердите пароль")]
         [DataType(DataType.Password)]
-        [Compare("Password", ErrorMessage = "Пароли не совпадают.")]
+        [Compare(nameof(Password), ErrorMessage = "Пароли не совпадают.")]
         public string ConfirmPassword { get; set; } = "";
     }
 }

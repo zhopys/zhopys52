@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Components.Account
 @using MiniFinance.Components.Account.Shared
+@using MiniFinance.Services
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IAntiforgery Antiforgery
 @inject NavigationManager NavigationManager
@@ -53,6 +54,7 @@
                        value="@_email"
                        autocomplete="username"
                        placeholder="name@example.com"
+                       maxlength="@AuthFieldValidation.MaxEmailLength"
                        required />
             </div>
 
@@ -63,7 +65,9 @@
                        name="password"
                        class="input"
                        autocomplete="current-password"
-                       placeholder="Введите пароль"
+                       placeholder="Минимум 8 символов, цифра"
+                       minlength="@AuthFieldValidation.MinPasswordLength"
+                       maxlength="@AuthFieldValidation.MaxPasswordLength"
                        required />
             </div>
 
@@ -148,6 +152,9 @@
         _errorMessage = ErrorFromQuery switch
         {
             "empty" => "Введите email и пароль.",
+            "invalid_email" => "Укажите корректный email (например name@example.com).",
+            "password_invalid" => $"Пароль: не менее {AuthFieldValidation.MinPasswordLength} символов и хотя бы одна цифра.",
+            "password_too_long" => $"Пароль не длиннее {AuthFieldValidation.MaxPasswordLength} символов.",
             "invalid" => "Неверный email или пароль.",
             "unconfirmed" => null,
             "invalid_link" => "Некорректная ссылка.",
@@ -155,6 +162,7 @@
             "user_not_found" => "Пользователь не найден.",
             "confirm_failed" => "Не удалось подтвердить email.",
             "invalid_code" => "Ссылка устарела.",
+            "2fa_email" => "Не удалось отправить код 2FA на email. Проверьте настройки почты или отключите 2FA в профиле.",
             _ => _errorMessage
         };
     }

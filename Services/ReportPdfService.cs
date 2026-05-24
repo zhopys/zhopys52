@@ -1,4 +1,5 @@
 using System.Globalization;
+using MiniFinance.Data.Models;
 using iText.IO.Font;
 using iText.IO.Font.Constants;
 using iText.Kernel.Colors;
@@ -489,5 +490,69 @@ public class ReportPdfService : IReportPdfService
         }
         return null;
     }
+
+    public byte[] GenerateTaxPackagePdf(TaxExportDocument doc) =>
+        BuildPdf("Налоговый пакет для специалиста (РБ)", doc.PeriodStart, doc.PeriodEnd, body =>
+        {
+            if (!string.IsNullOrWhiteSpace(doc.CompanyName))
+                body.Add(Line($"Организация: {doc.CompanyName}", bold: true));
+            if (!string.IsNullOrWhiteSpace(doc.Unp))
+                body.Add(Line($"УНП: {doc.Unp}"));
+            body.Add(Line($"Режим: {TaxSystemInfo.GetLabel(doc.TaxSystem)}"));
+            if (doc.TaxSystem == TaxSystem.OSN)
+            {
+                var kind = doc.TaxpayerKind == TaxpayerKind.IndividualEntrepreneur ? "ИП (подоходный)" : "Юридическое лицо (налог на прибыль)";
+                body.Add(Line($"Налогоплательщик: {kind}", size: 10));
+            }
+            body.Add(Spacer(8));
+
+            body.Add(SectionTitle("Сводка по учёту за период"));
+            body.Add(Line($"Доход (выручка): {doc.Totals.Income:N2} Br"));
+            body.Add(Line($"Расходы: {doc.Totals.Expenses:N2} Br"));
+            body.Add(Line($"Финансовый результат: {doc.Totals.Profit:N2} Br"));
+            body.Add(Line($"Операций в учёте: {doc.Totals.OperationCount}"));
+            body.Add(Spacer(8));
+
+            if (doc.Estimate != null && doc.Estimate.TaxAmount > 0)
+            {
+                body.Add(SectionTitle("Оценка налога (MiniFinance)"));
+                body.Add(Line(doc.Estimate.Description, size: 10));
+                foreach (var line in doc.Estimate.Lines)
+                    body.Add(Line($"  · {line.Name}: {line.Amount:N2} Br", size: 10));
+                body.Add(Line($"Итого к ориентиру: {doc.Estimate.TaxAmount:N2} Br", bold: true));
+                body.Add(Spacer(8));
+            }
+
+            body.Add(SectionTitle("Плановые налоговые платежи"));
+            if (doc.Payments.Count == 0)
+                body.Add(Line("Нет записей за период", size: 10));
+            else
+            {
+                var pt = new Table(UnitValue.CreatePercentArray(new float[] { 28, 22, 18, 32 })).UseAllAvailableWidth();
+                pt.AddHeaderCell(H("Название"));
+                pt.AddHeaderCell(H("Срок"));
+                pt.AddHeaderCell(H("Сумма"));
+                pt.AddHeaderCell(H("Статус"));
+                foreach (var p in doc.Payments)
+                {
+                    pt.AddCell(D(p.Name));
+                    pt.AddCell(D(p.DueDate.ToString("dd.MM.yyyy")));
+                    pt.AddCell(N(p.Amount, decimals: true));
+                    pt.AddCell(D(TaxCalculatorHelper.GetPaymentStatusLabel(p)));
+                }
+                body.Add(pt);
+            }
+            body.Add(Spacer(10));
+
+            body.Add(SectionTitle("Операции учёта (для первичной сверки)"));
+            body.Add(Line("Подтверждённые транзакции за период — основание для расчёта выручки и расходов.", size: 9, color: ColorConstants.GRAY));
+            if (doc.Transactions.Count == 0)
+                body.Add(Line("Нет операций", size: 10));
+            else
+                body.Add(BuildTransactionsTable(doc.Transactions));
+
+            body.Add(Spacer(12));
+            body.Add(Line(TaxSystemInfo.GetMnsHint(), size: 8, color: ColorConstants.GRAY));
+        });
 
 }
