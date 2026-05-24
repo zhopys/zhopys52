@@ -265,17 +265,7 @@
         _ => "—"
     };
 
-    private static string ApprovalLabel(TransactionApprovalStatus s) => s switch
-    {
-        TransactionApprovalStatus.Pending => "На утверждении",
-        TransactionApprovalStatus.Rejected => "Отклонена",
-        _ => "Утверждена"
-    };
+    private static string ApprovalLabel(TransactionApprovalStatus s) => TransactionApprovalHelper.Label(s);
 
-    private static string ApprovalBadgeClass(TransactionApprovalStatus s) => s switch
-    {
-        TransactionApprovalStatus.Pending => "badge-warning",
-        TransactionApprovalStatus.Rejected => "badge-danger",
-        _ => "badge-success"
-    };
+    private static string ApprovalBadgeClass(TransactionApprovalStatus s) => TransactionApprovalHelper.BadgeClass(s);
 }

@@ -37,8 +37,8 @@
 
         @if (_pending.Any())
         {
-            <div class="alert alert-warning mb-3">
-                <strong>На утверждении:</strong> @_pending.Count операций
+            <div class="alert alert-warning mb-3" role="button" style="cursor:pointer" @onclick="ShowPendingOnly" title="Показать только ожидающие">
+                <strong>На утверждении:</strong> @_pending.Count операций — нажмите, чтобы отфильтровать
             </div>
         }
 
@@ -99,6 +99,15 @@
                                 {
                                     <InputText class="input mt-1" placeholder="Название контрагента" @bind-Value="_newCounterpartyManual" />
                                 }
+                            </div>
+                            <div>
+                                <label class="label">Статус</label>
+                                <InputSelect class="input" @bind-Value="_newTransaction.ApprovalStatus">
+                                    <option value="@TransactionApprovalStatus.Approved">Утверждена</option>
+                                    <option value="@TransactionApprovalStatus.Pending">На утверждении</option>
+                                    <option value="@TransactionApprovalStatus.Rejected">Отклонена</option>
+                                </InputSelect>
+                                <div class="small text-muted">В учёте только «Утверждена»</div>
                             </div>
                         </div>
                         <div style="margin-top:1rem;display:flex;gap:.5rem">
@@ -162,6 +171,14 @@
                                     <InputText class="input mt-1" placeholder="Название контрагента" @bind-Value="_editCounterpartyManual" />
                                 }
                             </div>
+                            <div>
+                                <label class="label">Статус</label>
+                                <InputSelect class="input" @bind-Value="_editTransaction.ApprovalStatus">
+                                    <option value="@TransactionApprovalStatus.Approved">Утверждена</option>
+                                    <option value="@TransactionApprovalStatus.Pending">На утверждении</option>
+                                    <option value="@TransactionApprovalStatus.Rejected">Отклонена</option>
+                                </InputSelect>
+                            </div>
                         </div>
                         <div style="margin-top:1rem;display:flex;gap:.5rem">
                             <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -192,6 +209,15 @@
                             <option value="all">Все</option>
                             <option value="income">Доходы</option>
                             <option value="expense">Расходы</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label">Статус</label>
+                        <select class="input" @bind="_filterApprovalStatus" @bind:after="RefreshFilteredList">
+                            <option value="all">Все</option>
+                            <option value="pending">На утверждении</option>
+                            <option value="approved">Утверждена</option>
+                            <option value="rejected">Отклонена</option>
                         </select>
                     </div>
                     <div>
@@ -231,47 +257,83 @@
                 }
                 else
                 {
-                    <div class="virtual-table">
+                    <div class="virtual-table tx-list-table">
                         <table class="table virtual-table-head-table">
+                            <colgroup>
+                                <col class="col-date" />
+                                <col class="col-type" />
+                                <col class="col-status" />
+                                <col class="col-category" />
+                                <col class="col-description" />
+                                <col class="col-counterparty" />
+                                <col class="col-amount" />
+                                <col class="col-actions" />
+                            </colgroup>
                             <thead>
                                 <tr>
-                                    <th style="width:100px">Дата</th>
-                                    <th style="width:90px">Тип</th>
+                                    <th>Дата</th>
+                                    <th>Тип</th>
+                                    <th>Статус</th>
                                     <th>Категория</th>
+                                    <th>Описание</th>
                                     <th>Контрагент</th>
-                                    <th class="text-end" style="width:120px">Сумма</th>
-                                    <th class="text-center" style="width:220px">Действия</th>
+                                    <th class="text-end">Сумма</th>
+                                    <th class="text-center">Действия</th>
                                 </tr>
                             </thead>
                         </table>
-                        <div class="virtual-table-scroll">
+                        <div class="virtual-table-scroll tx-list-table-scroll">
                             <Virtualize Items="_filteredList" Context="t" ItemSize="52" OverscanCount="12">
                                 <table class="table virtual-table-body-table">
+                                    <colgroup>
+                                        <col class="col-date" />
+                                        <col class="col-type" />
+                                        <col class="col-status" />
+                                        <col class="col-category" />
+                                        <col class="col-description" />
+                                        <col class="col-counterparty" />
+                                        <col class="col-amount" />
+                                        <col class="col-actions" />
+                                    </colgroup>
                                     <tbody>
                                         <tr class="@(t.Amount < 0 ? "negative-balance" : null)" data-balance="@t.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)">
-                                            <td class="text-muted" style="width:100px">@t.Date.ToString("dd.MM.yyyy")</td>
-                                            <td style="width:90px"><span class="badge @(t.Amount >= 0 ? "badge-success" : "badge-danger")">@(t.Amount >= 0 ? "Доход" : "Расход")</span></td>
-                                            <td>
-                                                @{
-                                                    _categoryByName.TryGetValue(t.Category, out var catRow);
-                                                }
-                                                @if (catRow != null)
-                                                {
-                                                    <CategoryBadge Category="@catRow" Name="@catRow.Name" />
-                                                }
-                                                else
-                                                {
-                                                    <CategoryBadge Name="@t.Category" />
-                                                }
+                                            <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
+                                            <td><span class="badge @(t.Amount >= 0 ? "badge-success" : "badge-danger")">@(t.Amount >= 0 ? "Доход" : "Расход")</span></td>
+                                            <td class="tx-status-cell">
+                                                <span class="badge tx-status-badge @TransactionApprovalHelper.BadgeClass(t.ApprovalStatus)" title="@TransactionApprovalHelper.Label(t.ApprovalStatus)">
+                                                    @TransactionApprovalHelper.ShortLabel(t.ApprovalStatus)
+                                                </span>
                                             </td>
-                                            <td>@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</td>
-                                            <td class="text-end fw-bold amount @(t.Amount >= 0 ? "text-success" : "text-danger")" style="width:120px">
+                                            <td class="tx-cell-ellipsis">
+                                                <span class="tx-cell-ellipsis-inner" title="@t.Category">
+                                                    @{
+                                                        _categoryByName.TryGetValue(t.Category, out var catRow);
+                                                    }
+                                                    @if (catRow != null)
+                                                    {
+                                                        <CategoryBadge Category="@catRow" Name="@catRow.Name" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <CategoryBadge Name="@t.Category" />
+                                                    }
+                                                </span>
+                                            </td>
+                                            <td class="tx-cell-ellipsis">
+                                                <span class="tx-cell-ellipsis-inner" title="@t.Description">@t.Description</span>
+                                            </td>
+                                            <td class="tx-cell-ellipsis">
+                                                <span class="tx-cell-ellipsis-inner" title="@(t.Counterparty ?? "")">@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</span>
+                                            </td>
+                                            <td class="text-end fw-bold amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                                 @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") Br
                                             </td>
-                                            <td class="text-center" style="width:220px">
-                                                <button class="btn btn-sm btn-outline" @onclick="() => OpenDetails(t.Id)">Подробнее</button>
-                                                <button class="btn btn-sm btn-outline" @onclick="() => StartEdit(t)">Изменить</button>
-                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(t)">Удалить</button>
+                                            <td class="tx-actions">
+                                                <div class="tx-row-actions">
+                                                    <button type="button" class="btn btn-sm btn-outline" @onclick="() => OpenDetails(t.Id)">Подробнее</button>
+                                                    <button type="button" class="btn btn-sm btn-outline" @onclick="() => StartEdit(t)">Изменить</button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(t)">Удалить</button>
+                                                </div>
                                             </td>
                                         </tr>
                                     </tbody>
@@ -324,6 +386,7 @@
     private string _searchQuery = string.Empty;
     private string _filterCategory = string.Empty;
     private string _filterType = "all";
+    private string _filterApprovalStatus = "all";
     private string _filterProjectId = string.Empty;
     private DateTime? _filterDateFrom;
     private DateTime? _filterDateTo;
@@ -395,6 +458,13 @@
             q = q.Where(t => t.Category == _filterCategory);
         if (_filterType == "income") q = q.Where(t => t.Amount > 0);
         else if (_filterType == "expense") q = q.Where(t => t.Amount < 0);
+        q = _filterApprovalStatus switch
+        {
+            "pending" => q.Where(t => t.ApprovalStatus == TransactionApprovalStatus.Pending),
+            "approved" => q.Where(t => t.ApprovalStatus == TransactionApprovalStatus.Approved),
+            "rejected" => q.Where(t => t.ApprovalStatus == TransactionApprovalStatus.Rejected),
+            _ => q
+        };
         if (int.TryParse(_filterProjectId, out var pid)) q = q.Where(t => t.ProjectId == pid);
         if (_filterDateFrom.HasValue) q = q.Where(t => t.Date >= _filterDateFrom.Value);
         if (_filterDateTo.HasValue) q = q.Where(t => t.Date <= _filterDateTo.Value);
@@ -403,7 +473,12 @@
 
     private void OpenAddModal()
     {
-        _newTransaction = new Transaction { Date = DateTime.Today, UserId = _userId ?? "" };
+        _newTransaction = new Transaction
+        {
+            Date = DateTime.Today,
+            UserId = _userId ?? "",
+            ApprovalStatus = TransactionApprovalStatus.Approved
+        };
         _newProjectId = null;
         _newCounterpartyKey = "";
         _newCounterpartyManual = "";
@@ -518,6 +593,7 @@
             ProjectId = t.ProjectId,
             PaymentMethod = t.PaymentMethod,
             IsMandatory = t.IsMandatory,
+            ApprovalStatus = t.ApprovalStatus,
             IsConfirmed = t.IsConfirmed
         };
         _editProjectId = t.ProjectId?.ToString();
@@ -560,11 +636,18 @@
         }
     }
 
+    private void ShowPendingOnly()
+    {
+        _filterApprovalStatus = "pending";
+        RefreshFilteredList();
+    }
+
     private void ClearFilters()
     {
         _searchQuery = string.Empty;
         _filterCategory = string.Empty;
         _filterType = "all";
+        _filterApprovalStatus = "all";
         _filterProjectId = string.Empty;
         _filterDateFrom = null;
         _filterDateTo = null;

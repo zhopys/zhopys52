@@ -44,9 +44,7 @@ namespace MiniFinance.Services
             transaction.UserId = ownerId;
             transaction.CreatedAt = DateTime.UtcNow;
             transaction.UpdatedAt = null;
-
-            transaction.ApprovalStatus = TransactionApprovalStatus.Approved;
-            transaction.IsConfirmed = true;
+            TransactionApprovalHelper.Normalize(transaction);
 
             if (string.IsNullOrWhiteSpace(transaction.Category))
                 transaction.Category = _categorizationService.CategorizeTransaction(transaction.Description, transaction.Amount);
@@ -80,8 +78,8 @@ namespace MiniFinance.Services
             existing.ProjectId = transaction.ProjectId;
             existing.PaymentMethod = transaction.PaymentMethod;
             existing.IsMandatory = transaction.IsMandatory;
-            existing.IsConfirmed = transaction.IsConfirmed;
             existing.Notes = transaction.Notes;
+            TransactionApprovalHelper.ApplyStatus(existing, transaction.ApprovalStatus);
             existing.CounterpartyId = transaction.CounterpartyId;
             existing.Counterparty = transaction.Counterparty;
 
@@ -218,8 +216,7 @@ namespace MiniFinance.Services
                     t.UserId = ownerId;
                     t.CreatedAt = DateTime.UtcNow;
                     t.UpdatedAt = null;
-                    t.ApprovalStatus = TransactionApprovalStatus.Approved;
-                    t.IsConfirmed = true;
+                    TransactionApprovalHelper.ApplyStatus(t, TransactionApprovalStatus.Approved);
                     t.ImportBatchId = batch?.Id;
 
                     if (string.IsNullOrWhiteSpace(t.Category))
@@ -314,8 +311,7 @@ namespace MiniFinance.Services
             var ownerId = await OwnerIdAsync(userId);
             var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null) throw new KeyNotFoundException();
-            t.ApprovalStatus = TransactionApprovalStatus.Approved;
-            t.IsConfirmed = true;
+            TransactionApprovalHelper.ApplyStatus(t, TransactionApprovalStatus.Approved);
             t.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
@@ -329,8 +325,7 @@ namespace MiniFinance.Services
             var ownerId = await OwnerIdAsync(userId);
             var t = await _db.Transactions.FirstOrDefaultAsync(x => x.Id == id && x.UserId == ownerId);
             if (t == null) throw new KeyNotFoundException();
-            t.ApprovalStatus = TransactionApprovalStatus.Rejected;
-            t.IsConfirmed = false;
+            TransactionApprovalHelper.ApplyStatus(t, TransactionApprovalStatus.Rejected);
             t.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
