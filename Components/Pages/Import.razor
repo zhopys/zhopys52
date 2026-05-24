@@ -56,6 +56,9 @@
                 <p><code>Date;Amount;Description;Category</code></p>
                 <p>Пример: <code>2025-01-15;-1500.00;Аренда офиса;Аренда</code></p>
                 <p>Дубликаты (дата + сумма + описание) пропускаются в файле и в базе.</p>
+                <p>
+                    <a href="/samples/sample_import.csv" download="sample_import.csv">Скачать пример CSV</a>
+                </p>
             </div>
 
             <EditForm Model="@uploadModel" OnValidSubmit="@HandleCsvImport">
@@ -63,7 +66,7 @@
                     <label class="label">Файл CSV:</label>
                     <InputFile class="input" OnChange="@OnFileSelected" accept=".csv,text/csv" />
                 </div>
-                @RenderImportActions("Предпросмотр CSV")
+                @RenderImportActions("Предпросмотр CSV", showSampleDownload: true)
             </EditForm>
         </div>
     </div>
@@ -438,7 +441,7 @@ else
 
     private void DownloadSample() => JS.InvokeVoidAsync("downloadFile", "/samples/sample_import.csv", "sample_import.csv");
 
-    private RenderFragment RenderImportActions(string submitLabel) => __builder =>
+    private RenderFragment RenderImportActions(string submitLabel, bool showSampleDownload = false) => __builder =>
     {
         if (importErrors.Any())
         {
@@ -449,10 +452,16 @@ else
                 }
             </ul>
         }
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
             <button type="submit" class="btn btn-primary" disabled="@(isProcessing || selectedFile == null)">
                 @(isProcessing ? "Обработка..." : submitLabel)
             </button>
+            @if (showSampleDownload)
+            {
+                <button type="button" class="btn btn-outline" @onclick="DownloadSample">
+                    <i class="bi bi-download" aria-hidden="true"></i> Пример CSV
+                </button>
+            }
         </div>
     };
 }
