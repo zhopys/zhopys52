@@ -113,6 +113,7 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
 builder.Services.AddScoped<ICsvParser, CsvParser>();
 builder.Services.AddScoped<IBankPdfStatementParser, BankPdfStatementParser>();
 builder.Services.AddScoped<ICategorizationService, CategorizationService>();
+builder.Services.AddScoped<ConfirmDialogService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IForecastingService, ForecastingService>();
@@ -661,6 +662,24 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN SubmittedByUserId TEXT;";
                 cmd.ExecuteNonQuery();
             }
+            if (!columns.Contains("ImportBatchId"))
+            {
+                cmd.CommandText = "ALTER TABLE Transactions ADD COLUMN ImportBatchId INTEGER;";
+                cmd.ExecuteNonQuery();
+            }
+
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS TransactionImportBatches (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                UserId TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL,
+                SourceType TEXT NOT NULL DEFAULT 'csv',
+                FileName TEXT,
+                SuccessCount INTEGER NOT NULL DEFAULT 0,
+                FailedCount INTEGER NOT NULL DEFAULT 0,
+                IsRolledBack INTEGER NOT NULL DEFAULT 0,
+                RolledBackAt TEXT
+            );";
+            cmd.ExecuteNonQuery();
 
             // Add columns to AspNetUsers if missing
             cmd.CommandText = "PRAGMA table_info('AspNetUsers');";

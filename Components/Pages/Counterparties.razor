@@ -10,6 +10,7 @@
 @using CounterpartySvc = MiniFinance.Services.CounterpartyService
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
+@inject ConfirmDialogService ConfirmDialog
 @attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Контрагенты — MiniFinance</PageTitle>
@@ -94,8 +95,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in _list)
-                        {
+                        <Virtualize Items="_list" Context="c" ItemSize="56" OverscanCount="10">
                             <tr class="cp-table-row" @onclick="() => OpenDetail(c.Id)">
                                 <td style="width:52px" @onclick:stopPropagation="true">
                                     <img src="@CounterpartySvc.GetDisplayLogoUrl(c)" alt="" class="cp-avatar" width="36" height="36" loading="lazy" referrerpolicy="no-referrer" />
@@ -125,10 +125,10 @@
                                 <td class="text-end" style="white-space:nowrap" @onclick:stopPropagation="true">
                                     <button class="btn btn-sm btn-outline" @onclick="() => OpenDetail(c.Id)">Подробнее</button>
                                     <button class="btn btn-sm btn-outline" @onclick="() => Edit(c)">Изменить</button>
-                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => Delete(c.Id)">Удалить</button>
+                                    <button class="btn btn-sm btn-outline text-danger" @onclick="() => ConfirmDelete(c)">Удалить</button>
                                 </td>
                             </tr>
-                        }
+                        </Virtualize>
                     </tbody>
                 </table>
             </div>
@@ -206,9 +206,11 @@
         catch (Exception ex) { _message = ex.Message; _isError = true; }
     }
 
-    private async Task Delete(int id)
+    private async Task ConfirmDelete(CounterpartyRecord c)
     {
-        await CounterpartyService.DeleteAsync(id, _userId);
+        var ok = await ConfirmDialog.ConfirmDeleteAsync($"контрагента «{c.Name}»");
+        if (!ok) return;
+        await CounterpartyService.DeleteAsync(c.Id, _userId);
         await LoadAsync();
     }
 

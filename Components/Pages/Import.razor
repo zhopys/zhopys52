@@ -15,6 +15,7 @@
 @inject IJSRuntime JS
 @inject ITransactionService TransactionService
 @inject ICategorizationService CategorizationService
+@inject ConfirmDialogService ConfirmDialog
 @attribute [Authorize(Policy = AuthorizationPolicies.CanImport)]
 
 <PageTitle>Импорт транзакций - MiniFinance</PageTitle>
@@ -22,9 +23,24 @@
 <div class="page-header" style="margin-bottom: 1.5rem;">
     <div class="title">
         <h1>Импорт транзакций</h1>
-        <div class="meta text-muted">CSV или PDF-выписка (BYN, белорусские банки)</div>
+        <div class="meta text-muted">CSV или PDF-выписка · предпросмотр, дедупликация, откат пакета</div>
     </div>
 </div>
+
+@if (_undoBatch != null)
+{
+    <div class="alert alert-info import-undo-banner mb-3">
+        <div>
+            <strong>Последний импорт:</strong>
+            @_undoBatch.SuccessCount операций
+            @if (!string.IsNullOrEmpty(_undoBatch.FileName)) { <span class="text-muted">· @_undoBatch.FileName</span> }
+            <span class="text-muted">· @_undoBatch.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger" disabled="@isProcessing" @onclick="RollbackLastImport">
+            Отменить импорт
+        </button>
+    </div>
+}
 
 <div class="hub-nav card mb-3" style="display:flex;gap:8px;padding:8px">
     <button type="button" class="hub-nav-item @(_mode == "csv" ? "active" : "")" @onclick='() => SwitchMode("csv")'>CSV</button>
@@ -39,7 +55,7 @@
             <div class="alert alert-info">
                 <p><code>Date;Amount;Description;Category</code></p>
                 <p>Пример: <code>2025-01-15;-1500.00;Аренда офиса;Аренда</code></p>
-                <p>Сумма: положительная — доход, отрицательная — расход.</p>
+                <p>Дубликаты (дата + сумма + описание) пропускаются в файле и в базе.</p>
             </div>
 
             <EditForm Model="@uploadModel" OnValidSubmit="@HandleCsvImport">
@@ -58,11 +74,9 @@ else
         <div class="card-header">Импорт PDF (банковская выписка)</div>
         <div class="card-body">
             <div class="alert alert-info">
-                <p>Поддерживается выписка в BYN с таблицей операций (AKBB и аналоги): дата, тип, место, валюта, приход/расход, MCC.</p>
-                <p>Комиссии «Плата за перевод…» связываются с предыдущим переводом. Операции в USD/EUR сохраняют сумму в BYN и курс в примечании.</p>
+                <p>Поддерживается выписка в BYN с таблицей операций (AKBB и аналоги).</p>
                 <p>
                     <a href="/samples/bank-statement-sample.pdf" target="_blank" rel="noopener">Скачать пример PDF-выписки</a>
-                    (выписка AKBB за год, для проверки импорта).
                 </p>
             </div>
 
@@ -96,14 +110,6 @@ else
                             {
                                 <div><span class="text-muted">Остаток на конец:</span> @_pdfHeader.ClosingBalance.Value.ToString("N2") @_pdfHeader.Currency</div>
                             }
-                            @if (_pdfHeader.TotalCredits.HasValue)
-                            {
-                                <div><span class="text-muted">Зачислено:</span> @_pdfHeader.TotalCredits.Value.ToString("N2")</div>
-                            }
-                            @if (_pdfHeader.TotalDebits.HasValue)
-                            {
-                                <div><span class="text-muted">Списано:</span> @_pdfHeader.TotalDebits.Value.ToString("N2")</div>
-                            }
                         </div>
                     </div>
                 </div>
@@ -121,44 +127,65 @@ else
 {
     <div class="card">
         <div class="card-header">
-            Предпросмотр (@previewDisplayCount из @totalParsed)
+            Предпросмотр — @totalParsed операций
             @if (skippedDuplicates > 0) { <span class="text-muted small"> · дубликатов: @skippedDuplicates</span> }
-            @if (skippedInvalid > 0) { <span class="text-muted small"> · пропущено: @skippedInvalid</span> }
+            @if (skippedInvalid > 0) { <span class="text-muted small"> · ошибок: @skippedInvalid</span> }
+        </div>
+        <div class="card-body">
+            <div class="import-preview-stats mb-3">
+                <div class="import-preview-stat">
+                    <span class="import-preview-stat-label">Доход</span>
+                    <span class="import-preview-stat-value text-success">+@_previewIncome.ToString("N0") Br</span>
+                </div>
+                <div class="import-preview-stat">
+                    <span class="import-preview-stat-label">Расход</span>
+                    <span class="import-preview-stat-value text-danger">@_previewExpense.ToString("N0") Br</span>
+                </div>
+                <div class="import-preview-stat">
+                    <span class="import-preview-stat-label">Чистый поток</span>
+                    <span class="import-preview-stat-value @(_previewNet >= 0 ? "text-success" : "text-danger")">@(_previewNet >= 0 ? "+" : "")@_previewNet.ToString("N0") Br</span>
+                </div>
+            </div>
         </div>
         <div class="card-body" style="padding:0">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th class="text-end">Сумма</th>
-                        <th>Описание</th>
-                        <th>Категория</th>
-                        @if (_mode == "pdf") { <th>Контрагент</th> }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in parsedPreview.Take(50))
-                    {
-                        <tr class="@(p.Amount < 0 ? "negative-balance" : null)">
-                            <td>@p.Date.ToString("dd.MM.yyyy")</td>
-                            <td class="text-end">@p.Amount.ToString("N2")</td>
-                            <td>
-                                @p.Description
-                                @if (!string.IsNullOrEmpty(p.Notes))
-                                {
-                                    <div class="small text-muted">@p.Notes</div>
-                                }
-                            </td>
-                            <td>@p.Category</td>
-                            @if (_mode == "pdf")
-                            {
-                                <td>@(p.Counterparty ?? "—")</td>
-                            }
+            <div class="virtual-table">
+                <table class="table virtual-table-head-table">
+                    <thead>
+                        <tr>
+                            <th style="width:100px">Дата</th>
+                            <th class="text-end" style="width:110px">Сумма</th>
+                            <th>Описание</th>
+                            <th style="width:140px">Категория</th>
+                            @if (_mode == "pdf") { <th style="width:120px">Контрагент</th> }
                         </tr>
-                    }
-                </tbody>
-            </table>
-            <div style="padding:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+                    </thead>
+                </table>
+                <div class="virtual-table-scroll import-preview-scroll">
+                    <Virtualize Items="parsedPreview" Context="p" ItemSize="44" OverscanCount="16">
+                        <table class="table virtual-table-body-table">
+                            <tbody>
+                                <tr class="@(p.Amount < 0 ? "negative-balance" : null)">
+                                    <td style="width:100px">@p.Date.ToString("dd.MM.yyyy")</td>
+                                    <td class="text-end amount" style="width:110px">@p.Amount.ToString("N2")</td>
+                                    <td>
+                                        @p.Description
+                                        @if (!string.IsNullOrEmpty(p.Notes))
+                                        {
+                                            <div class="small text-muted">@p.Notes</div>
+                                        }
+                                    </td>
+                                    <td style="width:140px">@p.Category</td>
+                                    @if (_mode == "pdf")
+                                    {
+                                        <td style="width:120px">@(p.Counterparty ?? "—")</td>
+                                    }
+                                </tr>
+                            </tbody>
+                        </table>
+                    </Virtualize>
+                </div>
+            </div>
+            <div style="padding:1rem;display:flex;gap:.5rem;flex-wrap:wrap;border-top:1px solid var(--border)">
                 <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@isProcessing">
                     Подтвердить импорт (@totalParsed)
                 </button>
@@ -177,6 +204,7 @@ else
     private UploadModel uploadModel = new();
 
     private string _mode = "csv";
+    private string? _userId;
     private IBrowserFile? selectedFile;
     private string message = string.Empty;
     private bool isError;
@@ -187,10 +215,29 @@ else
     private List<Transaction> parsedPreview = new();
     private List<string> importErrors = new();
     private AccountStatementHeader? _pdfHeader;
+    private TransactionImportBatch? _undoBatch;
+
     private int totalParsed;
-    private int previewDisplayCount;
     private int skippedDuplicates;
     private int skippedInvalid;
+    private decimal _previewIncome;
+    private decimal _previewExpense;
+    private decimal _previewNet;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+        _userId = user.Id;
+        await LoadUndoBatchAsync();
+    }
+
+    private async Task LoadUndoBatchAsync()
+    {
+        if (_userId == null) return;
+        _undoBatch = await TransactionService.GetLatestImportBatchAsync(_userId);
+    }
 
     private void SwitchMode(string mode)
     {
@@ -251,6 +298,7 @@ else
                 return;
             }
 
+            _userId = user.Id;
             await CategorizationService.EnsureDefaultCategoriesAsync();
             var existingHashes = await TransactionService.GetExistingHashesAsync(user.Id);
 
@@ -276,7 +324,7 @@ else
 
             parsedPreview = allPending;
             totalParsed = allPending.Count;
-            previewDisplayCount = Math.Min(50, totalParsed);
+            UpdatePreviewTotals();
 
             if (!allPending.Any())
             {
@@ -287,7 +335,7 @@ else
             }
 
             showPreview = true;
-            message = $"Готово к импорту: {totalParsed} операций. Дубликатов: {skippedDuplicates}, пропущено: {skippedInvalid}.";
+            message = $"Готово к импорту: {totalParsed} операций. Пропущено дубликатов: {skippedDuplicates}, ошибок разбора: {skippedInvalid}.";
             isError = skippedInvalid > 0;
         }
         catch (Exception ex)
@@ -302,21 +350,36 @@ else
         }
     }
 
+    private void UpdatePreviewTotals()
+    {
+        _previewIncome = parsedPreview.Where(t => t.Amount > 0).Sum(t => t.Amount);
+        _previewExpense = parsedPreview.Where(t => t.Amount < 0).Sum(t => t.Amount);
+        _previewNet = _previewIncome + _previewExpense;
+    }
+
     private async Task ConfirmImport()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = await UserManager.GetUserAsync(authState.User);
-        if (user == null)
+        if (_userId == null) return;
+
+        var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
         {
-            message = "Ошибка авторизации";
-            isError = true;
-            return;
-        }
+            Title = "Подтвердить импорт?",
+            Message = $"В базу будет добавлено {totalParsed} операций.",
+            Detail = skippedDuplicates > 0 ? $"Дубликаты ({skippedDuplicates}) уже исключены из файла." : null,
+            ConfirmText = "Импортировать",
+            CancelText = "Отмена",
+            IsDanger = false
+        });
+        if (!ok) return;
 
         isProcessing = true;
         message = "Импорт...";
 
-        var result = await TransactionService.ImportManyAsync(allPending, user.Id);
+        var result = await TransactionService.ImportManyAsync(allPending, _userId, new ImportBatchMetadata
+        {
+            SourceType = _mode,
+            FileName = selectedFile?.Name
+        });
         importErrors = result.Errors;
 
         message = $"Импорт завершён. Успешно: {result.SuccessCount}, ошибок: {result.FailedCount}.";
@@ -326,6 +389,42 @@ else
         parsedPreview.Clear();
         _pdfHeader = null;
         isProcessing = false;
+
+        await LoadUndoBatchAsync();
+    }
+
+    private async Task RollbackLastImport()
+    {
+        if (_undoBatch == null || _userId == null) return;
+
+        var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
+        {
+            Title = "Отменить импорт?",
+            Message = $"Будут удалены {_undoBatch.SuccessCount} операций из последнего пакета.",
+            Detail = "Операции, добавленные вручную, не затронуты.",
+            ConfirmText = "Отменить импорт",
+            CancelText = "Оставить",
+            IsDanger = true
+        });
+        if (!ok) return;
+
+        isProcessing = true;
+        try
+        {
+            var removed = await TransactionService.RollbackImportAsync(_undoBatch.Id, _userId);
+            message = $"Импорт отменён. Удалено операций: {removed}.";
+            isError = false;
+            _undoBatch = null;
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+            isError = true;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
     }
 
     private void CancelPreview()
@@ -334,7 +433,6 @@ else
         allPending.Clear();
         parsedPreview.Clear();
         _pdfHeader = null;
-        message = string.IsNullOrEmpty(message) ? "" : message;
         isError = false;
     }
 
@@ -357,5 +455,4 @@ else
             </button>
         </div>
     };
-
 }

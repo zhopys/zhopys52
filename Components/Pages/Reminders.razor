@@ -9,7 +9,7 @@
 @using MiniFinance.Services
 @inject ApplicationDbContext DbContext
 @inject ITransactionService TransactionService
-@inject IJSRuntime JsRuntime
+@inject ConfirmDialogService ConfirmDialog
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
@@ -543,11 +543,11 @@
 
     private async Task ConfirmDelete(int id)
     {
-        var ok = await JsRuntime.InvokeAsync<bool>("confirm", "Удалить?");
+        var r = await DbContext.Reminders.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        var label = r != null ? $"напоминание «{r.Name}»" : "напоминание";
+        var ok = await ConfirmDialog.ConfirmDeleteAsync(label);
         if (ok)
-        {
             await DeleteReminder(id);
-        }
     }
 
     private async Task DeleteReminder(int id)

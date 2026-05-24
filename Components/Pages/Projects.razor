@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @inject ApplicationDbContext DbContext
+@inject ConfirmDialogService ConfirmDialog
 @inject IJSRuntime JS
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -800,7 +801,10 @@
             return;
         }
 
-        var ok = await JS.InvokeAsync<bool>("confirm", "Удалить проект? Это действие нельзя отменить.");
+        var p = await DbContext.Projects.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        var ok = await ConfirmDialog.ConfirmDeleteAsync(
+            p != null ? $"проект «{p.Name}»" : "проект",
+            "Операции, привязанные к проекту, нужно сначала переназначить.");
         if (!ok) return;
 
         await DeleteProject(id);

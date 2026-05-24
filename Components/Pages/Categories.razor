@@ -9,7 +9,7 @@
 @using MiniFinance.Data
 @inject ApplicationDbContext DbContext
 @inject ICategorizationService CategorizationService
-@inject IJSRuntime JS
+@inject ConfirmDialogService ConfirmDialog
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
@@ -297,8 +297,14 @@
     private async Task RunBulkRecategorize()
     {
         if (string.IsNullOrEmpty(_dataUserId)) return;
-        var ok = await JsDialogHelper.ConfirmAsync(JS,
-            "Пересчитать категории у операций без категории или с «Прочее»/«Доход от услуг» по ключевым словам?");
+        var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
+        {
+            Title = "Пересчитать категории?",
+            Message = "Категории будут назначены по ключевым словам в описании.",
+            Detail = "Затронуты операции без категории и с «Прочее» / «Доход от услуг».",
+            ConfirmText = "Пересчитать",
+            IsDanger = false
+        });
         if (!ok) return;
 
         _busy = true;
@@ -345,7 +351,14 @@
 
     private async Task ConfirmDelete(int id)
     {
-        var ok = await JsDialogHelper.ConfirmAsync(JS, "Удалить категорию? Операции будут перенесены в «Прочее».");
+        var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
+        {
+            Title = "Удалить категорию?",
+            Message = "Категория будет удалена.",
+            Detail = "Операции с этой категорией будут перенесены в «Прочее».",
+            ConfirmText = "Удалить",
+            IsDanger = true
+        });
         if (!ok) return;
 
         var cat = await DbContext.Categories.FindAsync(id);

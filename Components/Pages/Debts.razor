@@ -8,7 +8,7 @@
 @using MiniFinance.Services
 @inject IDebtService DebtService
 @inject ICounterpartyService CounterpartyService
-@inject IJSRuntime JS
+@inject ConfirmDialogService ConfirmDialog
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
@@ -226,8 +226,14 @@
             return;
         }
 
-        var ok = await JS.InvokeAsync<bool>("confirm",
-            $"Погасить {remaining:N0} Br по контрагенту «{d.CounterpartyName}»? Будет создана транзакция.");
+        var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
+        {
+            Title = "Погасить долг?",
+            Message = $"Списать {remaining:N0} Br по контрагенту «{d.CounterpartyName}».",
+            Detail = "Будет создана подтверждённая транзакция.",
+            ConfirmText = "Погасить",
+            IsDanger = false
+        });
         if (!ok) return;
 
         try

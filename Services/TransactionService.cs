@@ -189,17 +189,44 @@ namespace MiniFinance.Services
             return await q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToListAsync();
         }
 
-        public async Task<TransactionImportResult> ImportManyAsync(IEnumerable<Transaction> transactions, string userId)
+        public async Task<TransactionImportResult> ImportManyAsync(IEnumerable<Transaction> transactions, string userId, ImportBatchMetadata? batchMeta = null)
         {
             await EnsureFinanceAccessAsync(userId);
+            var ownerId = await OwnerIdAsync(userId);
             var result = new TransactionImportResult();
             await _categorizationService.EnsureDefaultCategoriesAsync();
+
+            TransactionImportBatch? batch = null;
+            if (batchMeta != null)
+            {
+                batch = new TransactionImportBatch
+                {
+                    UserId = ownerId,
+                    CreatedAt = DateTime.UtcNow,
+                    SourceType = batchMeta.SourceType,
+                    FileName = batchMeta.FileName
+                };
+                _db.TransactionImportBatches.Add(batch);
+                await _db.SaveChangesAsync();
+                result.ImportBatchId = batch.Id;
+            }
 
             foreach (var t in transactions)
             {
                 try
                 {
-                    await CreateAsync(t, userId);
+                    t.UserId = ownerId;
+                    t.CreatedAt = DateTime.UtcNow;
+                    t.UpdatedAt = null;
+                    t.ApprovalStatus = TransactionApprovalStatus.Approved;
+                    t.IsConfirmed = true;
+                    t.ImportBatchId = batch?.Id;
+
+                    if (string.IsNullOrWhiteSpace(t.Category))
+                        t.Category = _categorizationService.CategorizeTransaction(t.Description, t.Amount);
+
+                    await ValidateTransactionAsync(t, ownerId, isNew: true);
+                    _db.Transactions.Add(t);
                     result.SuccessCount++;
                 }
                 catch (Exception ex)
@@ -210,7 +237,72 @@ namespace MiniFinance.Services
                 }
             }
 
+            if (result.SuccessCount > 0)
+            {
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    if (batch != null)
+                    {
+                        batch.SuccessCount = result.SuccessCount;
+                        batch.FailedCount = result.FailedCount;
+                        await _db.SaveChangesAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Импорт: ошибка сохранения пакета");
+                    throw new InvalidOperationException("Не удалось сохранить импортированные операции.");
+                }
+            }
+            else if (batch != null)
+            {
+                _db.TransactionImportBatches.Remove(batch);
+                await _db.SaveChangesAsync();
+                result.ImportBatchId = null;
+            }
+
             return result;
+        }
+
+        public async Task<int> RollbackImportAsync(int batchId, string userId)
+        {
+            await EnsureFinanceAccessAsync(userId);
+            var ownerId = await OwnerIdAsync(userId);
+            var batch = await _db.TransactionImportBatches
+                .FirstOrDefaultAsync(b => b.Id == batchId && b.UserId == ownerId);
+            if (batch == null)
+                throw new KeyNotFoundException("Пакет импорта не найден.");
+            if (batch.IsRolledBack)
+                throw new InvalidOperationException("Этот импорт уже отменён.");
+
+            var txs = await _db.Transactions
+                .Where(t => t.ImportBatchId == batchId && t.UserId == ownerId)
+                .ToListAsync();
+
+            _db.Transactions.RemoveRange(txs);
+            batch.IsRolledBack = true;
+            batch.RolledBackAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            return txs.Count;
+        }
+
+        public async Task<TransactionImportBatch?> GetImportBatchAsync(int batchId, string userId)
+        {
+            var ownerId = await OwnerIdAsync(userId);
+            return await _db.TransactionImportBatches
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == batchId && b.UserId == ownerId);
+        }
+
+        public async Task<TransactionImportBatch?> GetLatestImportBatchAsync(string userId)
+        {
+            var ownerId = await OwnerIdAsync(userId);
+            return await _db.TransactionImportBatches
+                .AsNoTracking()
+                .Where(b => b.UserId == ownerId && !b.IsRolledBack && b.SuccessCount > 0)
+                .OrderByDescending(b => b.CreatedAt)
+                .FirstOrDefaultAsync();
         }
 
         public async Task ApproveAsync(int id, string userId)

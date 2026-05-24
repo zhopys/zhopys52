@@ -15,6 +15,7 @@
 @inject IUserContextService UserContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDataScopeService DataScope
+@inject ConfirmDialogService ConfirmDialog
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @attribute [Authorize(Policy = AuthorizationPolicies.CanManageTaxes)]
@@ -1318,7 +1319,7 @@ else
 
     private async Task DeleteAutoRule(int id)
     {
-        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить правило?")) return;
+        if (!await ConfirmDialog.ConfirmDeleteAsync("правило авто-расчёта")) return;
         await TaxAutoRuleService.DeleteAsync(id, _userId);
         await ReloadAsync();
     }
@@ -1380,7 +1381,7 @@ else
 
     private async Task DeleteTax(int id)
     {
-        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить налоговый платёж?")) return;
+        if (!await ConfirmDialog.ConfirmDeleteAsync("налоговый платёж")) return;
         await TaxService.DeleteTaxAsync(id, _userId);
         await ReloadAsync();
     }
@@ -1456,7 +1457,7 @@ else
 
     private async Task DeleteBill(int id)
     {
-        if (!await JsDialogHelper.ConfirmAsync(JS, "Удалить счёт?")) return;
+        if (!await ConfirmDialog.ConfirmDeleteAsync("счёт / напоминание")) return;
         var bill = await DbContext.Reminders.FirstOrDefaultAsync(r => r.Id == id && r.UserId == _userId);
         if (bill == null) return;
         DbContext.Reminders.Remove(bill);

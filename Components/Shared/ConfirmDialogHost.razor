@@ -1,0 +1,33 @@
+@rendermode InteractiveServer
+@inject ConfirmDialogService Confirm
+@implements IDisposable
+
+@if (Confirm.IsVisible && Confirm.Options is { } opts)
+{
+    <div class="confirm-overlay" role="presentation" @onclick="Confirm.Dismiss">
+        <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" @onclick:stopPropagation="true">
+            <div class="confirm-dialog-header">
+                <h2 id="confirm-dialog-title" class="confirm-dialog-title">@opts.Title</h2>
+            </div>
+            <div class="confirm-dialog-body">
+                <p>@opts.Message</p>
+                @if (!string.IsNullOrWhiteSpace(opts.Detail))
+                {
+                    <p class="confirm-dialog-detail">@opts.Detail</p>
+                }
+            </div>
+            <div class="confirm-dialog-footer">
+                <button type="button" class="btn btn-outline" @onclick="Confirm.Dismiss">@opts.CancelText</button>
+                <button type="button" class="btn @(opts.IsDanger ? "btn-danger" : "btn-primary")" @onclick="Confirm.Accept">@opts.ConfirmText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Confirm.StateChanged += OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Confirm.StateChanged -= OnStateChanged;
+}

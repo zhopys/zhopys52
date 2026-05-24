@@ -16,6 +16,7 @@ namespace MiniFinance.Services
     {
         public int SuccessCount { get; set; }
         public int FailedCount { get; set; }
+        public int? ImportBatchId { get; set; }
         public List<string> Errors { get; set; } = new();
     }
 
@@ -26,7 +27,10 @@ namespace MiniFinance.Services
         Task DeleteAsync(int id, string userId);
         Task<Transaction?> GetAsync(int id, string userId);
         Task<List<Transaction>> ListAsync(string userId, TransactionListFilter? filter = null);
-        Task<TransactionImportResult> ImportManyAsync(IEnumerable<Transaction> transactions, string userId);
+        Task<TransactionImportResult> ImportManyAsync(IEnumerable<Transaction> transactions, string userId, ImportBatchMetadata? batchMeta = null);
+        Task<int> RollbackImportAsync(int batchId, string userId);
+        Task<TransactionImportBatch?> GetImportBatchAsync(int batchId, string userId);
+        Task<TransactionImportBatch?> GetLatestImportBatchAsync(string userId);
         Task<HashSet<string>> GetExistingHashesAsync(string userId);
         Task<Transaction> UpdateCategoryAsync(int id, string category, string userId);
         Task ApproveAsync(int id, string userId);

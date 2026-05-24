@@ -24,6 +24,7 @@ namespace MiniFinance.Data
         public DbSet<TransactionComment> TransactionComments { get; set; }
         public DbSet<CounterpartyRecord> Counterparties { get; set; }
         public DbSet<Debt> Debts { get; set; }
+        public DbSet<TransactionImportBatch> TransactionImportBatches { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -46,6 +47,17 @@ namespace MiniFinance.Data
                 .WithMany()
                 .HasForeignKey(t => t.CounterpartyId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<Transaction>()
+                .HasOne(t => t.ImportBatch)
+                .WithMany(b => b.Transactions)
+                .HasForeignKey(t => t.ImportBatchId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<TransactionImportBatch>(b =>
+            {
+                b.HasIndex(x => new { x.UserId, x.CreatedAt });
+            });
 
             builder.Entity<Category>(b =>
             {

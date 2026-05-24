@@ -11,7 +11,7 @@
 @inject ApplicationDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider Auth
-@inject IJSRuntime JS
+@inject ConfirmDialogService ConfirmDialog
 @attribute [Authorize(Policy = AuthorizationPolicies.CanAccessFinances)]
 
 <PageTitle>Платёжный календарь — MiniFinance</PageTitle>
@@ -529,7 +529,13 @@
     private async Task BulkPay()
     {
         if (_selectedKeys.Count == 0) return;
-        if (!await JS.InvokeAsync<bool>("confirm", $"Отметить {_selectedKeys.Count} платеж(ей) как оплаченные?"))
+        if (!await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
+        {
+            Title = "Отметить оплаченными?",
+            Message = $"Будет отмечено платежей: {_selectedKeys.Count}.",
+            ConfirmText = "Отметить",
+            IsDanger = false
+        }))
             return;
 
         _paying = true;

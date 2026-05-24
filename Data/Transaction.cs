@@ -68,6 +68,9 @@ namespace MiniFinance.Data.Models
 
         public string? SubmittedByUserId { get; set; }
 
+        public int? ImportBatchId { get; set; }
+        public TransactionImportBatch? ImportBatch { get; set; }
+
         public ICollection<TransactionTag> TransactionTags { get; set; } = new List<TransactionTag>();
         public ICollection<TransactionAttachment> Attachments { get; set; } = new List<TransactionAttachment>();
         public ICollection<TransactionComment> Comments { get; set; } = new List<TransactionComment>();
