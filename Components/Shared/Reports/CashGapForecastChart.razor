@@ -19,7 +19,7 @@
         @if (Forecast.HasRisk)
         {
             <div class="alert alert-danger small mb-3">
-                <strong>Риск кассового разрыва</strong> — мин. остаток @Forecast.MinBalance.ToString("N0") Br
+                <strong>Риск кассового разрыва</strong> — мин. остаток @Forecast.MinBalance.ToString("N0") <Byn />
             </div>
         }
         @if (!Forecast.Points.Any())

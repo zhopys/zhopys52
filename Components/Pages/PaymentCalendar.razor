@@ -46,15 +46,15 @@
     <div class="payment-cal-kpis">
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Списания (месяц)</span>
-            <span class="reports-tax-kpi-value text-danger">−@_calendar.TotalOutflow.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value text-danger">−@_calendar.TotalOutflow.ToString("N0") <Byn /></span>
         </div>
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">К оплате</span>
-            <span class="reports-tax-kpi-value">@_calendar.UnpaidOutflow.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value">@_calendar.UnpaidOutflow.ToString("N0") <Byn /></span>
         </div>
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Поступления</span>
-            <span class="reports-tax-kpi-value text-success">+@_calendar.TotalInflow.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value text-success">+@_calendar.TotalInflow.ToString("N0") <Byn /></span>
         </div>
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Просрочено</span>
@@ -153,7 +153,7 @@
         {
             <div class="card payment-cal-bulk-bar">
                 <div class="card-body">
-                    <span>Выбрано: <strong>@_selectedKeys.Count</strong> · @_selectedTotal.ToString("N2") Br</span>
+                    <span>Выбрано: <strong>@_selectedKeys.Count</strong> · @_selectedTotal.ToString("N2") <Byn /></span>
                     <div class="payment-cal-bulk-actions">
                         <button class="btn btn-success" @onclick="BulkPay" disabled="@_paying">
                             @if (_paying) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }
@@ -249,10 +249,10 @@
                             <div class="payment-cal-day-header">
                                 <strong>@group.Key.ToString("dddd, dd MMMM", RuCulture)</strong>
                                 <span class="text-muted small">
-                                    −@group.Where(i => !i.IsInflow).Sum(i => i.Amount).ToString("N0") Br
+                                    −@group.Where(i => !i.IsInflow).Sum(i => i.Amount).ToString("N0") <Byn />
                                     @if (group.Any(i => i.IsInflow))
                                     {
-                                        <span> · +@group.Where(i => i.IsInflow).Sum(i => i.Amount).ToString("N0") Br</span>
+                                        <span> · +@group.Where(i => i.IsInflow).Sum(i => i.Amount).ToString("N0") <Byn /></span>
                                     }
                                 </span>
                             </div>
@@ -280,7 +280,7 @@
                                                 <span class="badge @GetStatusBadge(item.Status)">@GetStatusLabel(item.Status)</span>
                                             </td>
                                             <td class="text-end fw-bold @(item.IsInflow ? "text-success" : "text-danger")">
-                                                @(item.IsInflow ? "+" : "−")@item.Amount.ToString("N2") Br
+                                                @(item.IsInflow ? "+" : "−")@item.Amount.ToString("N2") <Byn />
                                             </td>
                                             <td class="text-end col-actions">
                                                 @if (item.CanMarkPaid)

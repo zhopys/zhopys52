@@ -1,6 +1,8 @@
 ﻿@page "/Account/AccessDenied"
 @attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
+@using Microsoft.AspNetCore.Components.Authorization
 @using MiniFinance.Services
+@inject AuthenticationStateProvider Auth
 
 <PageTitle>Доступ запрещён — MiniFinance</PageTitle>
 
@@ -34,7 +36,7 @@
     [SupplyParameterFromQuery(Name = "from")]
     public string? FromQuery { get; set; }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         if (!string.IsNullOrWhiteSpace(MessageQuery))
             _message = MessageQuery;
@@ -46,20 +48,34 @@
         _hint = PolicyQuery switch
         {
             AuthorizationPolicies.CanManageTaxes =>
-                "Бухгалтер работает с операциями и отчётами; налоги — в разделе для налогового специалиста.",
+                "Бухгалтер работает с операциями и отчётами; налоги — у налогового специалиста или администратора.",
             AuthorizationPolicies.CanAccessFinances or AuthorizationPolicies.CanImport =>
-                "Налоговый специалист: откройте «Налоги» или «Отчёты» с налоговой аналитикой.",
+                "Налоговый специалист: разделы «Налоги» и «Отчёты». Бухгалтер — операции и импорт.",
             AuthorizationPolicies.CanManageUsers or AuthorizationPolicies.CanManageSettings =>
                 "Управление пользователями и настройками — только у администратора.",
             _ => null
         };
 
-        if (PolicyQuery is AuthorizationPolicies.CanManageTaxes
-            or AuthorizationPolicies.CanAccessFinances
-            or AuthorizationPolicies.CanImport)
+        var state = await Auth.GetAuthenticationStateAsync();
+        ApplyHomeLink(RoleAccessSnapshot.FromPrincipal(state.User));
+    }
+
+    private void ApplyHomeLink(RoleAccessSnapshot snap)
+    {
+        if (snap.CanManageTaxes && !snap.CanAccessFinances)
         {
-            _homeLink = PolicyQuery == AuthorizationPolicies.CanManageTaxes ? "/taxes" : "/";
-            _homeLabel = PolicyQuery == AuthorizationPolicies.CanManageTaxes ? "К разделу «Налоги»" : "На главную";
+            _homeLink = "/taxes";
+            _homeLabel = "К разделу «Налоги»";
+        }
+        else if (snap.CanAccessFinances)
+        {
+            _homeLink = "/";
+            _homeLabel = "На главную";
+        }
+        else if (snap.CanViewReports)
+        {
+            _homeLink = "/reports";
+            _homeLabel = "К отчётам";
         }
     }
 }

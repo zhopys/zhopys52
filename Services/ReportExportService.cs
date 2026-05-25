@@ -216,7 +216,7 @@ public class ReportExportService : IReportExportService
         ws.Cell(2, 1).Value = $"{s.Filters.Start:dd.MM.yyyy} — {s.Filters.End:dd.MM.yyyy}";
 
         ws.Cell(4, 1).Value = "Показатель";
-        ws.Cell(4, 2).Value = "Сумма (Br)";
+        ws.Cell(4, 2).Value = $"Сумма ({BynCurrency.Symbol})";
         ws.Range(4, 1, 4, 2).Style.Font.Bold = true;
 
         ws.Cell(5, 1).Value = "Доходы";
@@ -364,8 +364,8 @@ public class ReportExportService : IReportExportService
         var ws = wb.Worksheets.Add("Прогноз");
         ws.Cell(1, 1).Value = $"Прогноз баланса ({fc.HorizonDays} дн.)";
         ws.Cell(1, 1).Style.Font.Bold = true;
-        ws.Cell(2, 1).Value = $"Текущий остаток: {fc.CurrentBalance:N0} Br";
-        ws.Cell(3, 1).Value = fc.HasRisk ? $"⚠ Риск: мин. {fc.MinBalance:N0} Br" : "Риск не выявлен";
+        ws.Cell(2, 1).Value = $"Текущий остаток: {fc.CurrentBalance:N0}{BynCurrency.Suffix}";
+        ws.Cell(3, 1).Value = fc.HasRisk ? $"⚠ Риск: мин. {fc.MinBalance:N0}{BynCurrency.Suffix}" : "Риск не выявлен";
 
         ws.Cell(5, 1).Value = "Дата";
         ws.Cell(5, 2).Value = "Баланс";

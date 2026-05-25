@@ -13,8 +13,8 @@
         @if (_tax != null)
         {
             <DetailFields Columns="2">
-                <DetailField Label="Сумма">@_tax.Amount.ToString("N2") Br</DetailField>
-                <DetailField Label="Уплачено">@_tax.PaidAmount.ToString("N2") Br</DetailField>
+                <DetailField Label="Сумма">@_tax.Amount.ToString("N2") <Byn /></DetailField>
+                <DetailField Label="Уплачено">@_tax.PaidAmount.ToString("N2") <Byn /></DetailField>
                 <DetailField Label="Срок">@_tax.DueDate.ToString("dd.MM.yyyy")</DetailField>
                 <DetailField Label="Статус">
                     <span class="badge @StatusBadge(_tax)">@TaxCalculatorHelper.GetPaymentStatusLabel(_tax)</span>
@@ -30,7 +30,7 @@
             </DetailFields>
             @if (!_tax.IsPaid && _tax.Amount - _tax.PaidAmount > 0)
             {
-                <p class="small text-muted mt-2">Остаток к уплате: @((_tax.Amount - _tax.PaidAmount).ToString("N2")) Br</p>
+                <p class="small text-muted mt-2">Остаток к уплате: @((_tax.Amount - _tax.PaidAmount).ToString("N2")) <Byn /></p>
             }
         }
     </ChildContent>

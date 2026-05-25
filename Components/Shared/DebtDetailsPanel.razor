@@ -9,7 +9,7 @@
             var d = _detail.Debt;
             <div class="entity-drawer-head">
                 <div class="entity-drawer-amount @(d.Type == DebtType.Receivable ? "is-income" : "is-expense")">
-                    @_detail.Remaining.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                    @_detail.Remaining.ToString("N2") <Byn class="entity-drawer-currency" />
                 </div>
                 <div class="entity-drawer-head-text">
                     <h3 class="entity-drawer-title">@d.CounterpartyName</h3>
@@ -73,23 +73,23 @@
                     <div class="entity-drawer-progress-fill" style="width:@(_detail.ProgressPercent)%"></div>
                 </div>
                 <div class="entity-drawer-progress-foot">
-                    <span>Оплачено <strong>@d.PaidAmount.ToString("N2") Br</strong></span>
-                    <span>из @d.Amount.ToString("N2") Br</span>
+                    <span>Оплачено <strong>@d.PaidAmount.ToString("N2") <Byn /></strong></span>
+                    <span>из @d.Amount.ToString("N2") <Byn /></span>
                 </div>
             </div>
 
             <div class="reports-tax-summary entity-drawer-kpis">
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Сумма долга</span>
-                    <span class="reports-tax-kpi-value">@d.Amount.ToString("N0") Br</span>
+                    <span class="reports-tax-kpi-value">@d.Amount.ToString("N0") <Byn /></span>
                 </div>
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Оплачено</span>
-                    <span class="reports-tax-kpi-value text-success">@d.PaidAmount.ToString("N0") Br</span>
+                    <span class="reports-tax-kpi-value text-success">@d.PaidAmount.ToString("N0") <Byn /></span>
                 </div>
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Остаток</span>
-                    <span class="reports-tax-kpi-value @(_detail.Remaining > 0 ? "text-danger" : "text-success")">@_detail.Remaining.ToString("N0") Br</span>
+                    <span class="reports-tax-kpi-value @(_detail.Remaining > 0 ? "text-danger" : "text-success")">@_detail.Remaining.ToString("N0") <Byn /></span>
                 </div>
             </div>
 
@@ -125,7 +125,7 @@
                                         <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
                                         <td>@t.Description</td>
                                         <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
-                                            @t.Amount.ToString("N2") Br
+                                            @t.Amount.ToString("N2") <Byn />
                                         </td>
                                     </tr>
                                 }

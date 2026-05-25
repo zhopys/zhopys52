@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace MiniFinance.Services;
 
 /// <summary>Роли MiniFinance: администратор, бухгалтер, налоговый специалист.</summary>
@@ -20,37 +22,79 @@ public static class AppRoles
             [LegacyManager] = TaxSpecialist,
         };
 
-    public static string GetDisplayName(string role) => role switch
+    public static string NormalizeRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return Accountant;
+        return LegacyRoleMap.TryGetValue(role.Trim(), out var mapped) ? mapped : role.Trim();
+    }
+
+    public static bool IsValidRole(string? role) =>
+        !string.IsNullOrWhiteSpace(role) && All.Contains(NormalizeRole(role), StringComparer.OrdinalIgnoreCase);
+
+    public static string GetDisplayName(string role) => NormalizeRole(role) switch
     {
         Administrator => "Администратор",
         Accountant => "Бухгалтер",
         TaxSpecialist => "Налоговый специалист",
-        LegacyOwner => "Администратор",
-        LegacyManager => "Налоговый специалист",
         _ => role
     };
 
-    public static string GetBadgeClass(string role) => role switch
+    public static string GetBadgeClass(string role) => NormalizeRole(role) switch
     {
         Administrator => "badge-role-admin",
         Accountant => "badge-role-accountant",
         TaxSpecialist => "badge-role-tax",
-        LegacyOwner => "badge-role-admin",
-        LegacyManager => "badge-role-tax",
         _ => "badge-accent"
+    };
+
+    public static string GetDescription(string role) => NormalizeRole(role) switch
+    {
+        Administrator =>
+            "Полный доступ: финансы, налоги, отчёты, настройки организации, команда и роли.",
+        Accountant =>
+            "Операции, импорт, контрагенты, долги, проекты, календарь и отчёты. Без раздела «Налоги» и управления пользователями.",
+        TaxSpecialist =>
+            "Налоги, формулы, плановые платежи, PDF для налоговика и отчёты. Без списка транзакций и финансовых разделов.",
+        _ => "Роль не назначена"
     };
 
     public static string GetPrimaryRole(IEnumerable<string> roles)
     {
-        var list = roles.ToList();
-        if (list.Contains(Administrator)) return Administrator;
-        if (list.Contains(Accountant)) return Accountant;
-        if (list.Contains(TaxSpecialist)) return TaxSpecialist;
-        foreach (var r in list)
-        {
-            if (LegacyRoleMap.TryGetValue(r, out var mapped))
-                return mapped;
-        }
-        return list.FirstOrDefault() ?? Accountant;
+        var normalized = roles.Select(NormalizeRole).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (normalized.Contains(Administrator)) return Administrator;
+        if (normalized.Contains(Accountant)) return Accountant;
+        if (normalized.Contains(TaxSpecialist)) return TaxSpecialist;
+        return normalized.FirstOrDefault() ?? Accountant;
     }
+
+    public static bool IsAdministratorRole(string role) =>
+        NormalizeRole(role) == Administrator;
+
+    public static bool HasAdminAccess(ClaimsPrincipal user) =>
+        user.IsInRole(Administrator) || user.IsInRole(LegacyOwner);
+
+    public static bool HasFinanceAccess(ClaimsPrincipal user) =>
+        HasAdminAccess(user) || user.IsInRole(Accountant);
+
+    public static bool HasTaxAccess(ClaimsPrincipal user) =>
+        HasAdminAccess(user) || user.IsInRole(TaxSpecialist) || user.IsInRole(LegacyManager);
+
+    public static bool HasReportsAccess(ClaimsPrincipal user) =>
+        HasFinanceAccess(user) || HasTaxAccess(user);
+
+    public static bool HasAdminAccess(IEnumerable<string> roles) =>
+        roles.Any(r => IsAdministratorRole(r) || r.Equals(LegacyOwner, StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasFinanceAccess(IEnumerable<string> roles) =>
+        HasAdminAccess(roles) || roles.Any(r => NormalizeRole(r) == Accountant);
+
+    public static bool HasTaxAccess(IEnumerable<string> roles) =>
+        HasAdminAccess(roles) || roles.Any(r =>
+        {
+            var n = NormalizeRole(r);
+            return n == TaxSpecialist;
+        }) || roles.Any(r => r.Equals(LegacyManager, StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasReportsAccess(IEnumerable<string> roles) =>
+        HasFinanceAccess(roles) || HasTaxAccess(roles);
 }

@@ -53,7 +53,7 @@
                 <span class="text-muted">Итого по «@Report.SelectedCounterparty»:</span>
                 <span class="text-success ms-2">+@Report.TotalIncome.ToString("N0")</span>
                 <span class="text-danger ms-2">−@Report.TotalExpense.ToString("N0")</span>
-                <span class="fw-bold ms-2">= @Report.Net.ToString("N0") Br</span>
+                <span class="fw-bold ms-2">= @Report.Net.ToString("N0") <Byn /></span>
             </div>
 
             @if (!Report.Transactions.Any())
@@ -79,7 +79,7 @@
                                 <td>@tx.Description</td>
                                 <td class="text-muted small">@tx.Category</td>
                                 <td class="text-end @(tx.Amount >= 0 ? "text-success" : "text-danger")">
-                                    @tx.Amount.ToString("N2") Br
+                                    @tx.Amount.ToString("N2") <Byn />
                                 </td>
                             </tr>
                         }

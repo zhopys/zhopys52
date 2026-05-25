@@ -99,7 +99,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Бюджет проекта (Br)</label>
+                        <label class="form-label">Бюджет проекта (<Byn />)</label>
                         <input type="number" class="form-input" 
                                placeholder="Плановый бюджет" 
                                @bind="newProject.Budget" />
@@ -220,7 +220,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-label">Общий бюджет</div>
-                <div class="stat-value">@totalBudget.ToString("N0") Br</div>
+                <div class="stat-value">@totalBudget.ToString("N0") <Byn /></div>
                 <div class="stat-trend">Плановый</div>
             </div>
         </div>
@@ -230,7 +230,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-label">Факт. доходы</div>
-                <div class="stat-value positive">+@totalActualIncome.ToString("N0") Br</div>
+                <div class="stat-value positive">+@totalActualIncome.ToString("N0") <Byn /></div>
                 <div class="stat-trend">За все время</div>
             </div>
         </div>
@@ -240,7 +240,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-label">Факт. расходы</div>
-                <div class="stat-value negative">-@totalActualCost.ToString("N0") Br</div>
+                <div class="stat-value negative">-@totalActualCost.ToString("N0") <Byn /></div>
                 <div class="stat-trend">За все время</div>
             </div>
         </div>
@@ -271,10 +271,10 @@
                                 <td><strong>@dept.Department</strong></td>
                                 <td class="text-center">@dept.ProjectCount</td>
                                 <td class="text-center">@dept.ActiveProjects</td>
-                                <td class="text-end text-success">@dept.TotalIncome.ToString("N0") Br</td>
-                                <td class="text-end text-danger">@dept.TotalExpense.ToString("N0") Br</td>
+                                <td class="text-end text-success">@dept.TotalIncome.ToString("N0") <Byn /></td>
+                                <td class="text-end text-danger">@dept.TotalExpense.ToString("N0") <Byn /></td>
                                 <td class="text-end fw-bold @(dept.TotalProfit >= 0 ? "text-success" : "text-danger")">
-                                    @dept.TotalProfit.ToString("N0") Br
+                                    @dept.TotalProfit.ToString("N0") <Byn />
                                 </td>
                                 <td class="text-end">
                                     <span class="@(dept.AvgMargin >= 0 ? "text-success" : "text-danger")">
@@ -324,7 +324,7 @@
                                 <td class="text-end text-success">@m.TotalIncome.ToString("N0")</td>
                                 <td class="text-end text-danger">@m.TotalExpense.ToString("N0")</td>
                                 <td class="text-end fw-bold @(m.Profit >= 0 ? "text-success" : "text-danger")">
-                                    @m.Profit.ToString("N0") Br
+                                    @m.Profit.ToString("N0") <Byn />
                                 </td>
                                 <td class="text-end">
                                     <span class="@(m.Margin >= 0 ? "text-success" : "text-danger")">
@@ -336,7 +336,7 @@
                                         @m.ROI.ToString("F2")x
                                     </span>
                                 </td>
-                                <td class="text-end">@m.AvgMonthlyProfit.ToString("N0") Br</td>
+                                <td class="text-end">@m.AvgMonthlyProfit.ToString("N0") <Byn /></td>
                                 <td class="text-center">
                                     @if (m.IsOnTrack)
                                     {
@@ -472,16 +472,16 @@
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Доходы</span>
-                                <span class="stat-value positive">+@stats.TotalIncome.ToString("N0") Br</span>
+                                <span class="stat-value positive">+@stats.TotalIncome.ToString("N0") <Byn /></span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Расходы</span>
-                                <span class="stat-value negative">@stats.TotalExpense.ToString("N0") Br</span>
+                                <span class="stat-value negative">@stats.TotalExpense.ToString("N0") <Byn /></span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Прибыль</span>
                                 <span class="stat-value @(stats.Profit >= 0 ? "positive" : "negative")">
-                                    @(stats.Profit >= 0 ? "+" : "")@stats.Profit.ToString("N0") Br
+                                    @(stats.Profit >= 0 ? "+" : "")@stats.Profit.ToString("N0") <Byn />
                                 </span>
                             </div>
                             <div class="stat-item">

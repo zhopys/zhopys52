@@ -15,7 +15,7 @@
         {
             <div class="entity-drawer-head">
                 <div class="entity-drawer-amount @(_tx.Amount >= 0 ? "is-income" : "is-expense")">
-                    @(_tx.Amount >= 0 ? "+" : "")@_tx.Amount.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                    @(_tx.Amount >= 0 ? "+" : "")@_tx.Amount.ToString("N2") <Byn class="entity-drawer-currency" />
                 </div>
                 <div class="entity-drawer-head-text">
                     <h3 class="entity-drawer-title">@_tx.Description</h3>

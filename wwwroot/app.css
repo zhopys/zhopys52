@@ -1,5 +1,22 @@
 /* MiniFinance — premium fintech design system */
 
+@font-face {
+  font-family: "NBRB";
+  src: url("/fonts/nbrb/nbrb.woff2") format("woff2"),
+       url("/fonts/nbrb/nbrb.woff") format("woff"),
+       url("/fonts/nbrb/nbrb.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.byn-symbol {
+  font-family: "NBRB", sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+}
+
 /* ── Light theme ── */
 :root {
   --bg: #eef4f8;
@@ -2220,9 +2237,9 @@ textarea.form-input { resize: vertical; }
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-.capital-currency {
+.capital-currency.byn-symbol {
   font-size: 0.45em;
-  font-weight: 500;
+  font-weight: normal;
   -webkit-text-fill-color: var(--text-tertiary);
   margin-left: 4px;
 }
@@ -3381,9 +3398,9 @@ html:not([data-theme="dark"]) .details-drawer-overlay {
 }
 .entity-drawer-amount.is-income { color: var(--success); }
 .entity-drawer-amount.is-expense { color: var(--danger); }
-.entity-drawer-currency {
+.entity-drawer-currency.byn-symbol {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: normal;
   opacity: 0.85;
 }
 .entity-drawer-head-text { min-width: 0; flex: 1; }

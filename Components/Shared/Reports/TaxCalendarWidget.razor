@@ -15,7 +15,7 @@
                     <div class="tax-alert-content">
                         <div class="fw-bold">@alert.Message</div>
                         <div class="small text-muted">
-                            @alert.DueDate.ToString("dd MMMM yyyy", RuCulture) · @alert.Amount.ToString("N0") Br
+                            @alert.DueDate.ToString("dd MMMM yyyy", RuCulture) · @alert.Amount.ToString("N0") <Byn />
                         </div>
                     </div>
                     @if (alert.Source == "reminder")

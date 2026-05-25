@@ -14,21 +14,21 @@
                     <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
                         <div class="metric-label">Операционная деятельность</div>
                         <div class="metric-value" style="font-size:1.2rem;color:@(Statement.OperatingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.OperatingCashFlow.ToString("N0") Br
+                            @Statement.OperatingCashFlow.ToString("N0") <Byn />
                         </div>
                         <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.OperatingIncome.ToString("N0") | Расход: @Statement.OperatingExpenses.ToString("N0")</div>
                     </div>
                     <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
                         <div class="metric-label">Инвестиционная деятельность</div>
                         <div class="metric-value" style="font-size:1.2rem;color:@(Statement.InvestmentCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.InvestmentCashFlow.ToString("N0") Br
+                            @Statement.InvestmentCashFlow.ToString("N0") <Byn />
                         </div>
                         <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.InvestmentIncome.ToString("N0") | Расход: @Statement.InvestmentExpenses.ToString("N0")</div>
                     </div>
                     <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
                         <div class="metric-label">Финансовая деятельность</div>
                         <div class="metric-value" style="font-size:1.2rem;color:@(Statement.FinancingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.FinancingCashFlow.ToString("N0") Br
+                            @Statement.FinancingCashFlow.ToString("N0") <Byn />
                         </div>
                         <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.FinancingIncome.ToString("N0") | Расход: @Statement.FinancingExpenses.ToString("N0")</div>
                     </div>
@@ -36,7 +36,7 @@
                 <div style="margin-top:1rem;padding:1rem;background:var(--surface-hover);border-radius:var(--radius);text-align:center">
                     <div class="metric-label">Чистый денежный поток</div>
                     <div class="metric-value" style="color:@(Statement.NetCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                        @Statement.NetCashFlow.ToString("N0") Br
+                        @Statement.NetCashFlow.ToString("N0") <Byn />
                     </div>
                 </div>
             </div>
@@ -57,10 +57,10 @@
                         {
                             <tr class="@(cat.NetFlow < 0 ? "negative-balance" : null)" data-balance="@cat.NetFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                                 <td>@cat.Category</td>
-                                <td class="text-end text-success">@cat.Income.ToString("N0") Br</td>
-                                <td class="text-end text-danger">@cat.Expense.ToString("N0") Br</td>
+                                <td class="text-end text-success">@cat.Income.ToString("N0") <Byn /></td>
+                                <td class="text-end text-danger">@cat.Expense.ToString("N0") <Byn /></td>
                                 <td class="text-end fw-bold @(cat.NetFlow >= 0 ? "text-success" : "text-danger")">
-                                    @cat.NetFlow.ToString("N0") Br
+                                    @cat.NetFlow.ToString("N0") <Byn />
                                 </td>
                                 <td class="text-end text-muted">@cat.TransactionCount</td>
                             </tr>
@@ -91,10 +91,10 @@
                     {
                         <tr class="@(c.Balance < 0 ? "negative-balance" : null)" data-balance="@c.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                             <td class="text-muted">@c.Date.ToString("MMMM yyyy", RuCulture)</td>
-                            <td class="text-end text-success">@c.Income.ToString("N2") Br</td>
-                            <td class="text-end text-danger">@c.Expense.ToString("N2") Br</td>
+                            <td class="text-end text-success">@c.Income.ToString("N2") <Byn /></td>
+                            <td class="text-end text-danger">@c.Expense.ToString("N2") <Byn /></td>
                             <td class="text-end fw-bold @(c.Balance >= 0 ? "text-success" : "text-danger")">
-                                @c.Balance.ToString("N2") Br
+                                @c.Balance.ToString("N2") <Byn />
                             </td>
                         </tr>
                     }

@@ -28,14 +28,16 @@ public class TeamService : ITeamService
         var ownerId = await _dataScope.GetDataOwnerUserIdAsync(actorUserId);
         var users = await _userManager.Users
             .Where(u => u.Id == ownerId || u.WorkspaceOwnerUserId == ownerId)
-            .OrderBy(u => u.Email)
+            .OrderBy(u => u.Id == ownerId ? 0 : 1)
+            .ThenBy(u => u.Email)
             .ToListAsync();
 
         var list = new List<TeamMemberDto>();
         foreach (var u in users)
         {
             var roles = await _userManager.GetRolesAsync(u);
-            var role = ResolvePrimaryRole(roles);
+            var role = AppRoles.GetPrimaryRole(roles);
+            var isOwner = u.Id == ownerId;
             list.Add(new TeamMemberDto
             {
                 Id = u.Id,
@@ -44,6 +46,8 @@ public class TeamService : ITeamService
                 LastName = u.LastName,
                 Department = u.Department,
                 Role = role,
+                IsWorkspaceOwner = isOwner,
+                CanChangeRole = !isOwner,
                 CreatedAt = u.CreatedAt
             });
         }
@@ -57,19 +61,15 @@ public class TeamService : ITeamService
             return (false, "Укажите email");
         if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
             return (false, "Пароль не короче 8 символов");
-        if (!AppRoles.All.Contains(request.Role))
+
+        var role = AppRoles.NormalizeRole(request.Role);
+        if (!AppRoles.IsValidRole(role))
             return (false, "Некорректная роль");
-        if (request.Role == AppRoles.Administrator)
-            return (false, "Нельзя пригласить второго администратора через эту форму. Смените роль после создания.");
 
         if (await _userManager.FindByEmailAsync(email) != null)
             return (false, "Пользователь с таким email уже есть");
 
-        foreach (var role in AppRoles.All)
-        {
-            if (!await _roleManager.RoleExistsAsync(role))
-                await _roleManager.CreateAsync(new IdentityRole(role));
-        }
+        await EnsureRolesExistAsync();
 
         var workspaceOwnerId = await _dataScope.GetDataOwnerUserIdAsync(invitedByUserId);
 
@@ -89,13 +89,14 @@ public class TeamService : ITeamService
         if (!created.Succeeded)
             return (false, string.Join("; ", created.Errors.Select(e => e.Description)));
 
-        await _userManager.AddToRoleAsync(user, request.Role);
+        await _userManager.AddToRoleAsync(user, role);
         return (true, null);
     }
 
     public async Task<(bool Ok, string? Error)> SetRoleAsync(string userId, string role, string actorUserId)
     {
-        if (!AppRoles.All.Contains(role))
+        role = AppRoles.NormalizeRole(role);
+        if (!AppRoles.IsValidRole(role))
             return (false, "Некорректная роль");
 
         var user = await _userManager.FindByIdAsync(userId);
@@ -105,20 +106,24 @@ public class TeamService : ITeamService
         if (user.Id != ownerId && user.WorkspaceOwnerUserId != ownerId)
             return (false, "Пользователь не входит в вашу организацию");
 
+        if (user.Id == ownerId && role != AppRoles.Administrator)
+            return (false, "Владелец организации всегда остаётся администратором");
+
         if (userId == actorUserId && role != AppRoles.Administrator)
         {
-            if (await CountInRoleAsync(AppRoles.Administrator) <= 1)
-                return (false, "Нельзя снять с себя роль администратора — в системе должен остаться администратор");
+            if (await CountWorkspaceAdminsAsync(ownerId) <= 1)
+                return (false, "Нельзя снять с себя роль администратора — в организации должен остаться администратор");
         }
 
         if (await _userManager.IsInRoleAsync(user, AppRoles.Administrator) && role != AppRoles.Administrator)
         {
-            if (await CountInRoleAsync(AppRoles.Administrator) <= 1)
-                return (false, "В системе должен остаться хотя бы один администратор");
+            if (await CountWorkspaceAdminsAsync(ownerId) <= 1)
+                return (false, "В организации должен остаться хотя бы один администратор");
         }
 
         var current = await _userManager.GetRolesAsync(user);
-        if (current.Count == 1 && current[0] == role)
+        var normalizedCurrent = current.Select(AppRoles.NormalizeRole).Distinct().ToList();
+        if (normalizedCurrent.Count == 1 && normalizedCurrent[0] == role)
             return (true, null);
 
         await _userManager.RemoveFromRolesAsync(user, current);
@@ -156,26 +161,36 @@ public class TeamService : ITeamService
         if (user.WorkspaceOwnerUserId != ownerId)
             return (false, "Пользователь не входит в вашу организацию");
 
-        if (await _userManager.IsInRoleAsync(user, AppRoles.Administrator) && await CountInRoleAsync(AppRoles.Administrator) <= 1)
-            return (false, "Нельзя удалить последнего администратора");
+        if (await _userManager.IsInRoleAsync(user, AppRoles.Administrator)
+            && await CountWorkspaceAdminsAsync(ownerId) <= 1)
+            return (false, "Нельзя удалить последнего администратора организации");
 
         var result = await _userManager.DeleteAsync(user);
         return result.Succeeded ? (true, null) : (false, string.Join("; ", result.Errors.Select(e => e.Description)));
     }
 
-    private async Task<int> CountInRoleAsync(string role)
+    private async Task EnsureRolesExistAsync()
     {
-        var users = await _userManager.GetUsersInRoleAsync(role);
-        return users.Count;
+        foreach (var role in AppRoles.All)
+        {
+            if (!await _roleManager.RoleExistsAsync(role))
+                await _roleManager.CreateAsync(new IdentityRole(role));
+        }
     }
 
-    private static string ResolvePrimaryRole(IList<string> roles)
+    private async Task<int> CountWorkspaceAdminsAsync(string ownerId)
     {
-        if (roles.Contains(AppRoles.Administrator)) return AppRoles.Administrator;
-        if (roles.Contains(AppRoles.Accountant)) return AppRoles.Accountant;
-        if (roles.Contains(AppRoles.TaxSpecialist)) return AppRoles.TaxSpecialist;
-        if (roles.Count > 0 && AppRoles.LegacyRoleMap.TryGetValue(roles[0], out var mapped))
-            return mapped;
-        return AppRoles.Accountant;
+        var users = await _userManager.Users
+            .Where(u => u.Id == ownerId || u.WorkspaceOwnerUserId == ownerId)
+            .ToListAsync();
+
+        var count = 0;
+        foreach (var u in users)
+        {
+            if (await _userManager.IsInRoleAsync(u, AppRoles.Administrator)
+                || await _userManager.IsInRoleAsync(u, AppRoles.LegacyOwner))
+                count++;
+        }
+        return count;
     }
 }

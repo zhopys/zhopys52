@@ -94,7 +94,16 @@
                                                     <RoleBadge Role="@_userRole" />
                                                 }
                                             </div>
-                                            <div class="small text-muted">Роль назначает администратор в разделе «Команда»</div>
+                                            <div class="small text-muted">
+                                                @if (!string.IsNullOrEmpty(_userRole))
+                                                {
+                                                    @AppRoles.GetDescription(_userRole)
+                                                }
+                                                else
+                                                {
+                                                    <span>Роль назначает администратор в разделе «Команда»</span>
+                                                }
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="mt-3">
@@ -110,7 +119,7 @@
                                 <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
                                     <div>
                                         <div class="small text-muted">Баланс</div>
-                                        <div class="fw-bold @(_balance >= 0 ? "text-success" : "text-danger")">@_balance.ToString("N0") Br</div>
+                                        <div class="fw-bold @(_balance >= 0 ? "text-success" : "text-danger")">@_balance.ToString("N0") <Byn /></div>
                                     </div>
                                     <div>
                                         <div class="small text-muted">Операций</div>
@@ -246,7 +255,7 @@
                                         <div><div class="small text-muted">Вложений</div><div class="fw-bold">@_dataSummary.Attachments</div></div>
                                     </div>
                                     <p class="small text-muted mt-3 mb-0">
-                                        Баланс: <span class="@(_dataSummary.Balance >= 0 ? "text-success" : "text-danger") fw-bold">@_dataSummary.Balance.ToString("N0") Br</span>
+                                        Баланс: <span class="@(_dataSummary.Balance >= 0 ? "text-success" : "text-danger") fw-bold">@_dataSummary.Balance.ToString("N0") <Byn /></span>
                                     </p>
                                 }
                             </div>

@@ -6,6 +6,8 @@ namespace MiniFinance.Services;
 public readonly record struct RoleAccessSnapshot(
     bool IsAuthenticated,
     bool IsAdministrator,
+    bool CanManageUsers,
+    bool CanManageSettings,
     bool CanAccessFinances,
     bool CanManageTaxes,
     bool CanViewReports,
@@ -15,14 +17,20 @@ public readonly record struct RoleAccessSnapshot(
     {
         var authenticated = user.Identity?.IsAuthenticated == true;
         if (!authenticated)
-            return new RoleAccessSnapshot(false, false, false, false, false, "");
+            return new RoleAccessSnapshot(false, false, false, false, false, false, false, "");
 
-        var isAdmin = user.IsInRole(AppRoles.Administrator);
-        var canFinance = isAdmin || user.IsInRole(AppRoles.Accountant);
-        var canTax = isAdmin || user.IsInRole(AppRoles.TaxSpecialist);
-        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
+        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
         var primary = AppRoles.GetPrimaryRole(roles);
+        var isAdmin = AppRoles.HasAdminAccess(user);
 
-        return new RoleAccessSnapshot(authenticated, isAdmin, canFinance, canTax, canFinance || canTax, primary);
+        return new RoleAccessSnapshot(
+            true,
+            isAdmin,
+            isAdmin,
+            isAdmin,
+            AppRoles.HasFinanceAccess(user),
+            AppRoles.HasTaxAccess(user),
+            AppRoles.HasReportsAccess(user),
+            primary);
     }
 }

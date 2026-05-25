@@ -167,12 +167,12 @@
         <div class="kpi-grid">
             <div class="kpi-card">
                 <div class="kpi-label">К оплате</div>
-                <div class="kpi-value">@totalDue.ToString("N0") Br</div>
+                <div class="kpi-value">@totalDue.ToString("N0") <Byn /></div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Ближайший</div>
                 <div class="kpi-value" style="font-size:20px">@nextDue?.Name</div>
-                <div class="text-muted small">@nextDue?.Date.ToString("dd.MM.yyyy") · @nextDue?.Amount.ToString("N0") Br</div>
+                <div class="text-muted small">@nextDue?.Date.ToString("dd.MM.yyyy") · @nextDue?.Amount.ToString("N0") <Byn /></div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Количество</div>
@@ -254,7 +254,7 @@
                                     <span class="text-muted">—</span>
                                 }
                             </td>
-                            <td class="text-end fw-bold">@r.Amount.ToString("N0") Br</td>
+                            <td class="text-end fw-bold">@r.Amount.ToString("N0") <Byn /></td>
                             <td>
                                 <div class="@(isOverdue ? "text-danger" : "")">
                                     @r.Date.ToString("dd.MM.yyyy")

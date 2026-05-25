@@ -93,15 +93,15 @@
                 <div class="reports-tax-summary cols-4 mb-3">
                     <div class="reports-tax-kpi">
                         <span class="reports-tax-kpi-label">Доход (сводка)</span>
-                        <span class="reports-tax-kpi-value text-success">@_taxPeriodTotals.Income.ToString("N0") Br</span>
+                        <span class="reports-tax-kpi-value text-success">@_taxPeriodTotals.Income.ToString("N0") <Byn /></span>
                     </div>
                     <div class="reports-tax-kpi">
                         <span class="reports-tax-kpi-label">Расход (сводка)</span>
-                        <span class="reports-tax-kpi-value text-danger">@_taxPeriodTotals.Expenses.ToString("N0") Br</span>
+                        <span class="reports-tax-kpi-value text-danger">@_taxPeriodTotals.Expenses.ToString("N0") <Byn /></span>
                     </div>
                     <div class="reports-tax-kpi">
                         <span class="reports-tax-kpi-label">Прибыль</span>
-                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.Profit.ToString("N0") Br</span>
+                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.Profit.ToString("N0") <Byn /></span>
                     </div>
                     <div class="reports-tax-kpi">
                         <span class="reports-tax-kpi-label">Операций в учёте</span>
@@ -161,8 +161,8 @@
             @if (_snapshot.TaxReserve > 0)
             {
                 <div class="alert alert-warning small mb-3">
-                    <strong>Налоговый резерв:</strong> @_snapshot.TaxReserve.ToString("N0") Br
-                    · свободные деньги: <strong>@_snapshot.FreeCash.ToString("N0") Br</strong>
+                    <strong>Налоговый резерв:</strong> @_snapshot.TaxReserve.ToString("N0") <Byn />
+                    · свободные деньги: <strong>@_snapshot.FreeCash.ToString("N0") <Byn /></strong>
                 </div>
             }
 

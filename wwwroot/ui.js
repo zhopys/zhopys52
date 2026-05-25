@@ -1,11 +1,30 @@
 (function () {
     'use strict';
 
+    var BYN_SYMBOL = '\uE901';
+    var BYN_FONT = 'NBRB';
+    var bynFontPromise = null;
+
+    function ensureBynFont() {
+        if (!document.fonts || bynFontPromise) return bynFontPromise;
+        bynFontPromise = new FontFace(BYN_FONT, 'url(/fonts/nbrb/nbrb.woff2)')
+            .load()
+            .then(function (font) {
+                document.fonts.add(font);
+            })
+            .catch(function () { /* ignore */ });
+        return bynFontPromise;
+    }
+
+    function withBynSuffix(value) {
+        return value + ' ' + BYN_SYMBOL;
+    }
+
     var balanceHeaderPattern = /прибыл|остаток|баланс|нетто|profit|balance|net\s*flow|маржа/i;
 
     function parseAmount(text) {
         if (!text) return null;
-        var cleaned = text.replace(/\s/g, '').replace(/Br/gi, '').replace(/[^\d,.\-+]/g, '');
+        var cleaned = text.replace(/\s/g, '').replace(/Br/gi, '').replace(/\uE901/g, '').replace(/[^\d,.\-+]/g, '');
         if (!cleaned || cleaned === '-' || cleaned === '+') return null;
         var normalized = cleaned.indexOf(',') > -1 && cleaned.indexOf('.') === -1
             ? cleaned.replace(',', '.')
@@ -219,7 +238,7 @@
                                 label: function (ctx) {
                                     var v = ctx.parsed.y;
                                     var formatted = typeof v === 'number'
-                                        ? v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' Br'
+                                        ? withBynSuffix(v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }))
                                         : v;
                                     return ctx.dataset.label + ': ' + formatted;
                                 }
@@ -311,6 +330,12 @@
                 return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
             }
 
+            function formatByn(v) {
+                return withBynSuffix(formatBr(v));
+            }
+
+            ensureBynFont();
+
             var yMin = Math.min.apply(null, balances.concat([0, threshold]));
             var yMax = Math.max.apply(null, balances.concat([threshold, 0]));
             var pad = Math.max((yMax - yMin) * 0.08, 500);
@@ -361,7 +386,7 @@
                             callbacks: {
                                 label: function (ctx) {
                                     var v = ctx.parsed.y;
-                                    var s = formatBr(v) + ' Br';
+                                    var s = formatByn(v);
                                     if (v < 0) s += ' · разрыв';
                                     else if (threshold > 0 && v < threshold) s += ' · ниже порога';
                                     return s;
@@ -380,7 +405,8 @@
                             grid: { color: c.grid },
                             ticks: {
                                 color: c.text,
-                                callback: function (v) { return formatBr(v); }
+                                font: { family: "'" + BYN_FONT + "', Inter, sans-serif", size: 11 },
+                                callback: function (v) { return formatByn(v); }
                             }
                         }
                     }
@@ -424,16 +450,16 @@
                             ctx.stroke();
                             if (label) {
                                 ctx.fillStyle = color;
-                                ctx.font = '11px system-ui, sans-serif';
+                                ctx.font = '11px "' + BYN_FONT + '", system-ui, sans-serif';
                                 ctx.textAlign = 'right';
                                 ctx.fillText(label, area.right - 4, py - 4);
                             }
                             ctx.restore();
                         };
 
-                        drawHLine(0, 'rgba(239, 68, 68, 0.55)', [6, 4], '0 Br');
+                        drawHLine(0, 'rgba(239, 68, 68, 0.55)', [6, 4], formatByn(0));
                         if (threshold > 0) {
-                            drawHLine(threshold, 'rgba(245, 158, 11, 0.75)', [4, 4], 'Порог ' + formatBr(threshold));
+                            drawHLine(threshold, 'rgba(245, 158, 11, 0.75)', [4, 4], 'Порог ' + formatBr(threshold) + ' ' + BYN_SYMBOL);
                         }
                     }
                 }]

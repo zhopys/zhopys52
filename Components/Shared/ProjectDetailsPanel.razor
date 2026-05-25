@@ -10,7 +10,7 @@
         {
             <div class="entity-drawer-head">
                 <div class="entity-drawer-amount @(_stats.Profit >= 0 ? "is-income" : "is-expense")">
-                    @(_stats.Profit >= 0 ? "+" : "")@_stats.Profit.ToString("N2") <span class="entity-drawer-currency">Br</span>
+                    @(_stats.Profit >= 0 ? "+" : "")@_stats.Profit.ToString("N2") <Byn class="entity-drawer-currency" />
                 </div>
                 <div class="entity-drawer-head-text">
                     <h3 class="entity-drawer-title">@_project.Name</h3>
@@ -81,11 +81,11 @@
             <div class="reports-tax-summary entity-drawer-kpis">
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Доходы</span>
-                    <span class="reports-tax-kpi-value text-success">@_stats.TotalIncome.ToString("N0") Br</span>
+                    <span class="reports-tax-kpi-value text-success">@_stats.TotalIncome.ToString("N0") <Byn /></span>
                 </div>
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Расходы</span>
-                    <span class="reports-tax-kpi-value text-danger">@_stats.TotalExpense.ToString("N0") Br</span>
+                    <span class="reports-tax-kpi-value text-danger">@_stats.TotalExpense.ToString("N0") <Byn /></span>
                 </div>
                 <div class="reports-tax-kpi">
                     <span class="reports-tax-kpi-label">Операций</span>
@@ -112,8 +112,8 @@
                         <div class="entity-drawer-progress-fill @(_stats.BudgetUsedPercent > 100 ? "is-over" : "")" style="width:@(budgetPct)%"></div>
                     </div>
                     <div class="entity-drawer-progress-foot">
-                        <span>Расход <strong>@_stats.TotalExpense.ToString("N0") Br</strong></span>
-                        <span>из @_project.Budget.Value.ToString("N0") Br</span>
+                        <span>Расход <strong>@_stats.TotalExpense.ToString("N0") <Byn /></strong></span>
+                        <span>из @_project.Budget.Value.ToString("N0") <Byn /></span>
                     </div>
                 </div>
             }
@@ -145,7 +145,7 @@
                     </div>
                     <div class="entity-drawer-field">
                         <span class="entity-drawer-label">Бюджет</span>
-                        <span>@(_project.Budget.HasValue ? $"{_project.Budget.Value:N0} Br" : "—")</span>
+                        <span>@(_project.Budget.HasValue ? $"{_project.Budget.Value:N0} <Byn />" : "—")</span>
                     </div>
                     <div class="entity-drawer-field">
                         <span class="entity-drawer-label">Начало</span>
@@ -166,7 +166,7 @@
                     {
                         <div class="entity-drawer-field">
                             <span class="entity-drawer-label">Ср. прибыль / мес</span>
-                            <span>@_metrics.AvgMonthlyProfit.ToString("N0") Br</span>
+                            <span>@_metrics.AvgMonthlyProfit.ToString("N0") <Byn /></span>
                         </div>
                     }
                 </div>
@@ -221,7 +221,7 @@
                                     <span class="entity-drawer-muted"> · @cat.Count оп.</span>
                                 </span>
                                 <span class="fw-bold @(cat.Amount >= 0 ? "text-success" : "text-danger")">
-                                    @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") Br
+                                    @(cat.Amount >= 0 ? "+" : "")@cat.Amount.ToString("N0") <Byn />
                                 </span>
                             </li>
                         }
@@ -253,7 +253,7 @@
                                         <td class="text-muted">@t.Date.ToString("dd.MM.yyyy")</td>
                                         <td>@t.Description</td>
                                         <td class="text-end fw-bold @(t.Amount >= 0 ? "text-success" : "text-danger")">
-                                            @t.Amount.ToString("N2") Br
+                                            @t.Amount.ToString("N2") <Byn />
                                         </td>
                                     </tr>
                                 }

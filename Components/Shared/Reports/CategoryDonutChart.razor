@@ -34,7 +34,7 @@
                             title="@(SelectedCategory == label ? "Снять фильтр" : "Показать только эту категорию")">
                         <span class="donut-legend-dot" style="background:@Chart.Colors.ElementAtOrDefault(idx)"></span>
                         <span>@label</span>
-                        <span class="ms-auto text-muted">@Chart.Amounts.ElementAtOrDefault(idx).ToString("N0") Br</span>
+                        <span class="ms-auto text-muted">@Chart.Amounts.ElementAtOrDefault(idx).ToString("N0") <Byn /></span>
                     </button>
                 }
             </div>

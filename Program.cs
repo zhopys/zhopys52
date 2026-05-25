@@ -70,24 +70,23 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AuthorizationPolicies.AdministratorOnly,
-        p => p.RequireRole(AppRoles.Administrator));
+        p => p.RequireAssertion(ctx => AppRoles.HasAdminAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanManageUsers,
-        p => p.RequireRole(AppRoles.Administrator));
+        p => p.RequireAssertion(ctx => AppRoles.HasAdminAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanManageSettings,
-        p => p.RequireRole(AppRoles.Administrator));
+        p => p.RequireAssertion(ctx => AppRoles.HasAdminAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanAccessFinances,
-        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant));
+        p => p.RequireAssertion(ctx => AppRoles.HasFinanceAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanImport,
-        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant));
+        p => p.RequireAssertion(ctx => AppRoles.HasFinanceAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanViewReports,
-        p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant, AppRoles.TaxSpecialist));
+        p => p.RequireAssertion(ctx => AppRoles.HasReportsAccess(ctx.User)));
     options.AddPolicy(AuthorizationPolicies.CanManageTaxes,
-        p => p.RequireRole(AppRoles.Administrator, AppRoles.TaxSpecialist));
+        p => p.RequireAssertion(ctx => AppRoles.HasTaxAccess(ctx.User)));
 
-    // Совместимость со старыми атрибутами
-    options.AddPolicy("OwnerOnly", p => p.RequireRole(AppRoles.Administrator));
-    options.AddPolicy("CanManageSettings", p => p.RequireRole(AppRoles.Administrator));
-    options.AddPolicy("CanViewReports", p => p.RequireRole(AppRoles.Administrator, AppRoles.Accountant, AppRoles.TaxSpecialist));
+    options.AddPolicy("OwnerOnly", p => p.RequireAssertion(ctx => AppRoles.HasAdminAccess(ctx.User)));
+    options.AddPolicy("CanManageSettings", p => p.RequireAssertion(ctx => AppRoles.HasAdminAccess(ctx.User)));
+    options.AddPolicy("CanViewReports", p => p.RequireAssertion(ctx => AppRoles.HasReportsAccess(ctx.User)));
 });
 
 builder.Services.ConfigureApplicationCookie(options =>

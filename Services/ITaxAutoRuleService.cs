@@ -12,6 +12,8 @@ public sealed class TaxRulePreview
     public DateTime PeriodStart { get; init; }
     public DateTime PeriodEnd { get; init; }
     public DateTime DueDate { get; init; }
+    /// <summary>Имя записи в TaxPayments при создании из правила.</summary>
+    public string PlannedPaymentName { get; init; } = "";
     public string? Error { get; init; }
 }
 
@@ -19,6 +21,7 @@ public sealed class TaxRuleGenerateResult
 {
     public int CreatedCount { get; init; }
     public int SkippedCount { get; init; }
+    public int ErrorCount { get; init; }
     public List<string> Messages { get; init; } = new();
 }
 

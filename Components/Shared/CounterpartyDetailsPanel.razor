@@ -40,15 +40,15 @@
             <div class="detail-kpi-row mb-3">
                 <div class="detail-kpi">
                     <span class="detail-kpi-label">Доход</span>
-                    <span class="detail-kpi-value text-success">@_detail.TotalIncome.ToString("N2") Br</span>
+                    <span class="detail-kpi-value text-success">@_detail.TotalIncome.ToString("N2") <Byn /></span>
                 </div>
                 <div class="detail-kpi">
                     <span class="detail-kpi-label">Расход</span>
-                    <span class="detail-kpi-value text-danger">@_detail.TotalExpense.ToString("N2") Br</span>
+                    <span class="detail-kpi-value text-danger">@_detail.TotalExpense.ToString("N2") <Byn /></span>
                 </div>
                 <div class="detail-kpi">
                     <span class="detail-kpi-label">Сальдо</span>
-                    <span class="detail-kpi-value @(_detail.NetBalance >= 0 ? "text-success" : "text-danger")">@_detail.NetBalance.ToString("N2") Br</span>
+                    <span class="detail-kpi-value @(_detail.NetBalance >= 0 ? "text-success" : "text-danger")">@_detail.NetBalance.ToString("N2") <Byn /></span>
                 </div>
                 <div class="detail-kpi">
                     <span class="detail-kpi-label">Операций</span>
@@ -61,11 +61,11 @@
                 <div class="detail-kpi-row mb-3">
                     <div class="detail-kpi">
                         <span class="detail-kpi-label">Нам должны</span>
-                        <span class="detail-kpi-value text-success">@_detail.OpenReceivable.ToString("N2") Br</span>
+                        <span class="detail-kpi-value text-success">@_detail.OpenReceivable.ToString("N2") <Byn /></span>
                     </div>
                     <div class="detail-kpi">
                         <span class="detail-kpi-label">Мы должны</span>
-                        <span class="detail-kpi-value text-danger">@_detail.OpenPayable.ToString("N2") Br</span>
+                        <span class="detail-kpi-value text-danger">@_detail.OpenPayable.ToString("N2") <Byn /></span>
                     </div>
                 </div>
             }
@@ -89,7 +89,7 @@
                 <DetailField Label="УНП">@(_detail.Record.TaxId ?? "—")</DetailField>
                 <DetailField Label="Первая операция">@(_detail.FirstTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
                 <DetailField Label="Последняя операция">@(_detail.LastTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
-                <DetailField Label="Средний чек">@(_detail.TransactionCount > 0 ? $"{_detail.AvgTransactionAmount:N2} Br" : "—")</DetailField>
+                <DetailField Label="Средний чек">@(_detail.TransactionCount > 0 ? $"{_detail.AvgTransactionAmount:N2} <Byn />" : "—")</DetailField>
                 <DetailField Label="В справочнике с">@_detail.Record.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</DetailField>
             </DetailFields>
 
@@ -130,7 +130,7 @@
                             <tr>
                                 <td>@(d.Type == DebtType.Receivable ? "Нам должны" : "Мы должны")</td>
                                 <td class="small">@(d.Description ?? "—")</td>
-                                <td class="text-end">@((d.Amount - d.PaidAmount).ToString("N2")) Br</td>
+                                <td class="text-end">@((d.Amount - d.PaidAmount).ToString("N2")) <Byn /></td>
                                 <td>@(d.DueDate?.ToString("dd.MM.yyyy") ?? "—")</td>
                             </tr>
                         }

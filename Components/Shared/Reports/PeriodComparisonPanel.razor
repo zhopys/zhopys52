@@ -48,7 +48,7 @@
     [Parameter] public PeriodComparisonDetailDto Comparison { get; set; } = new();
 
     private static string FormatValue(string key, decimal v) =>
-        key == "tx" ? v.ToString("N0") : $"{v:N0} Br";
+        key == "tx" ? v.ToString("N0") : $"{v:N0} <Byn />";
 
     private string GetModeLabel() => Comparison.Mode.ToLowerInvariant() switch
     {

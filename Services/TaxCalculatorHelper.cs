@@ -62,7 +62,7 @@ public static class TaxCalculatorHelper
             EffectiveRate = 6m,
             SuggestedPaymentName = "УСН",
             Description =
-                $"УСН (РБ): {income:N0} Br выручки × 6% ≈ {amount:N2} Br. Расходы в расчёт не входят. Срок — квартальная декларация.",
+                $"УСН (РБ): {income:N0}{BynCurrency.Suffix} выручки × 6% ≈ {amount:N2}{BynCurrency.Suffix}. Расходы в расчёт не входят. Срок — квартальная декларация.",
             Lines = [new TaxCalcLine { Name = "УСН (6% от выручки)", Amount = amount }]
         };
     }
@@ -95,9 +95,9 @@ public static class TaxCalculatorHelper
             EffectiveRate = input.Income > 0 ? Math.Round(total / input.Income * 100, 1) : 0,
             SuggestedPaymentName = isIp ? "Подоходный" : "Налог на прибыль",
             Description =
-                $"ОСН: доход {input.Income:N0} − расход {input.Expenses:N0} = база {profit:N0} Br. " +
-                $"{taxName} {ratePct}% ≈ {incomeTax:N2} Br" +
-                (vat > 0 ? $", НДС (оценка) ≈ {vat:N2} Br" : "") + ".",
+                $"ОСН: доход {input.Income:N0} − расход {input.Expenses:N0} = база {profit:N0}{BynCurrency.Suffix}. " +
+                $"{taxName} {ratePct}% ≈ {incomeTax:N2}{BynCurrency.Suffix}" +
+                (vat > 0 ? $", НДС (оценка) ≈ {vat:N2}{BynCurrency.Suffix}" : "") + ".",
             Lines = lines
         };
     }
@@ -127,7 +127,7 @@ public static class TaxCalculatorHelper
             EffectiveRate = revenue > 0 ? Math.Round(total / revenue * 100, 1) : 0,
             SuggestedPaymentName = "НПД",
             Description =
-                $"НПД: {fromFl:N0} Br от физлиц × 4% + {fromYur:N0} Br от юрлиц × 8% ≈ {total:N2} Br. " +
+                $"НПД: {fromFl:N0}{BynCurrency.Suffix} от физлиц × 4% + {fromYur:N0}{BynCurrency.Suffix} от юрлиц × 8% ≈ {total:N2}{BynCurrency.Suffix}. " +
                 "Для отчётности используйте приложение «Профдоход».",
             Lines = lines
         };
@@ -143,7 +143,7 @@ public static class TaxCalculatorHelper
             TaxAmount = Math.Round(fixedAmount, 2),
             EffectiveRate = 0,
             SuggestedPaymentName = "Единый налог",
-            Description = $"Единый налог (фиксированная сумма): {fixedAmount:N2} Br за период. Ставка зависит от вида деятельности и населённого пункта.",
+            Description = $"Единый налог (фиксированная сумма): {fixedAmount:N2}{BynCurrency.Suffix} за период. Ставка зависит от вида деятельности и населённого пункта.",
             Lines = [new TaxCalcLine { Name = "Единый налог", Amount = Math.Round(fixedAmount, 2) }]
         };
     }

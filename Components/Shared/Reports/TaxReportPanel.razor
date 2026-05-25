@@ -6,15 +6,15 @@
         <div class="reports-tax-summary">
             <div class="reports-tax-kpi">
                 <span class="reports-tax-kpi-label">Начислено</span>
-                <span class="reports-tax-kpi-value">@Report.Accrued.ToString("N0") Br</span>
+                <span class="reports-tax-kpi-value">@Report.Accrued.ToString("N0") <Byn /></span>
             </div>
             <div class="reports-tax-kpi">
                 <span class="reports-tax-kpi-label">Уплачено</span>
-                <span class="reports-tax-kpi-value text-success">@Report.Paid.ToString("N0") Br</span>
+                <span class="reports-tax-kpi-value text-success">@Report.Paid.ToString("N0") <Byn /></span>
             </div>
             <div class="reports-tax-kpi">
                 <span class="reports-tax-kpi-label">Осталось</span>
-                <span class="reports-tax-kpi-value @(Report.Remaining > 0 ? "text-danger" : "")">@Report.Remaining.ToString("N0") Br</span>
+                <span class="reports-tax-kpi-value @(Report.Remaining > 0 ? "text-danger" : "")">@Report.Remaining.ToString("N0") <Byn /></span>
             </div>
         </div>
 

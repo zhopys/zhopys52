@@ -122,12 +122,12 @@
         <div class="nav-section">
             <div class="nav-section-label">Управление</div>
             <ul class="nav-list">
-                @if (_snapshot.IsAdministrator)
+                @if (_snapshot.CanManageUsers)
                 {
                     <li class="nav-item">
                         <NavLink href="/team">
                             <i class="bi bi-person-badge nav-icon" aria-hidden="true"></i>
-                            <span>Команда</span>
+                            <span>Команда и роли</span>
                         </NavLink>
                     </li>
                 }
@@ -158,7 +158,7 @@
                         <span>Профиль</span>
                     </NavLink>
                 </li>
-                @if (_snapshot.IsAdministrator)
+                @if (_snapshot.CanManageSettings)
                 {
                     <li class="nav-item">
                         <NavLink href="/settings">

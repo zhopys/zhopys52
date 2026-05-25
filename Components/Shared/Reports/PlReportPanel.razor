@@ -12,16 +12,16 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;padding:1rem;border-bottom:1px solid var(--border)">
                 <div>
                     <div class="metric-label">Доходы</div>
-                    <div class="metric-value text-success">@Report.TotalIncome.ToString("N0") Br</div>
+                    <div class="metric-value text-success">@Report.TotalIncome.ToString("N0") <Byn /></div>
                 </div>
                 <div>
                     <div class="metric-label">Расходы</div>
-                    <div class="metric-value text-danger">@Report.TotalExpense.ToString("N0") Br</div>
+                    <div class="metric-value text-danger">@Report.TotalExpense.ToString("N0") <Byn /></div>
                 </div>
                 <div>
                     <div class="metric-label">Чистая прибыль</div>
                     <div class="metric-value" style="color:@(Report.NetProfit >= 0 ? "var(--success)" : "var(--danger)")">
-                        @Report.NetProfit.ToString("N0") Br
+                        @Report.NetProfit.ToString("N0") <Byn />
                     </div>
                 </div>
                 <div>
@@ -40,7 +40,7 @@
                         <div style="margin-bottom:0.5rem">
                             <div style="display:flex;justify-content:space-between;margin-bottom:2px">
                                 <span>@cat.Category</span>
-                                <span class="text-danger">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
+                                <span class="text-danger">@cat.Amount.ToString("N0") <Byn /> (@cat.Percentage.ToString("F0")%)</span>
                             </div>
                             <div class="progress-bar-container" style="height:6px">
                                 <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--danger)"></div>
@@ -58,7 +58,7 @@
                         <div style="margin-bottom:0.5rem">
                             <div style="display:flex;justify-content:space-between;margin-bottom:2px">
                                 <span>@cat.Category</span>
-                                <span class="text-success">@cat.Amount.ToString("N0") Br (@cat.Percentage.ToString("F0")%)</span>
+                                <span class="text-success">@cat.Amount.ToString("N0") <Byn /> (@cat.Percentage.ToString("F0")%)</span>
                             </div>
                             <div class="progress-bar-container" style="height:6px">
                                 <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--success)"></div>

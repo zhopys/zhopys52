@@ -9,26 +9,26 @@
             <div class="reports-forecast-block">
                 <h4 class="reports-forecast-title">Прогноз дохода (в месяц)</h4>
                 <div class="reports-forecast-metrics">
-                    <div><span class="text-muted">Среднее</span><strong>@Data.Income.MeanMonthly.ToString("N0") Br</strong></div>
-                    <div><span class="text-muted">Медиана</span><strong>@Data.Income.MedianMonthly.ToString("N0") Br</strong></div>
-                    <div><span class="text-muted">Тренд</span><strong>@Data.Income.TrendMonthly.ToString("N0") Br</strong></div>
+                    <div><span class="text-muted">Среднее</span><strong>@Data.Income.MeanMonthly.ToString("N0") <Byn /></strong></div>
+                    <div><span class="text-muted">Медиана</span><strong>@Data.Income.MedianMonthly.ToString("N0") <Byn /></strong></div>
+                    <div><span class="text-muted">Тренд</span><strong>@Data.Income.TrendMonthly.ToString("N0") <Byn /></strong></div>
                     <div class="reports-forecast-rec">
                         <span class="text-muted">Рекомендация</span>
-                        <strong>@MethodLabel(Data.Income.RecommendedMethod): @Data.Income.RecommendedValue.ToString("N0") Br</strong>
+                        <strong>@MethodLabel(Data.Income.RecommendedMethod): @Data.Income.RecommendedValue.ToString("N0") <Byn /></strong>
                     </div>
                 </div>
             </div>
             <div class="reports-forecast-block">
                 <h4 class="reports-forecast-title">Прогноз расходов</h4>
                 <p class="small text-muted mb-2">Следующий месяц с учётом сезонности</p>
-                <div class="fw-bold fs-5 mb-2">@Data.Expense.NextMonthForecast.ToString("N0") Br</div>
+                <div class="fw-bold fs-5 mb-2">@Data.Expense.NextMonthForecast.ToString("N0") <Byn /></div>
                 @if (Data.Expense.SeasonalPattern.Any())
                 {
                     <div class="reports-seasonal-row">
                         @foreach (var s in Data.Expense.SeasonalPattern)
                         {
                             <span class="reports-seasonal-chip @(s.IndexPercent >= 110 ? "high" : s.IndexPercent <= 90 ? "low" : "")"
-                                  title="@s.MonthName: @s.AvgExpense.ToString("N0") Br">
+                                  title="@s.MonthName: @s.AvgExpense.ToString("N0") <Byn />">
                                 @s.MonthName.Substring(0, 3) @s.IndexPercent%
                             </span>
                         }
@@ -53,7 +53,7 @@
                         <td class="fw-bold">@s.Name</td>
                         <td class="text-muted small">@s.Description</td>
                         <td class="text-end fw-bold @(s.ProjectedBalance < 0 ? "text-danger" : "text-success")">
-                            @s.ProjectedBalance.ToString("N0") Br
+                            @s.ProjectedBalance.ToString("N0") <Byn />
                         </td>
                     </tr>
                 }

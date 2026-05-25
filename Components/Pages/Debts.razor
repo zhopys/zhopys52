@@ -30,15 +30,15 @@
     <div class="reports-tax-summary mb-3">
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Нам должны</span>
-            <span class="reports-tax-kpi-value text-success">@_summary.TotalReceivable.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value text-success">@_summary.TotalReceivable.ToString("N0") <Byn /></span>
         </div>
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Мы должны</span>
-            <span class="reports-tax-kpi-value text-danger">@_summary.TotalPayable.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value text-danger">@_summary.TotalPayable.ToString("N0") <Byn /></span>
         </div>
         <div class="reports-tax-kpi">
             <span class="reports-tax-kpi-label">Чистая позиция</span>
-            <span class="reports-tax-kpi-value">@_summary.NetPosition.ToString("N0") Br</span>
+            <span class="reports-tax-kpi-value">@_summary.NetPosition.ToString("N0") <Byn /></span>
         </div>
     </div>
 }
@@ -229,7 +229,7 @@
         var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
         {
             Title = "Погасить долг?",
-            Message = $"Списать {remaining:N0} Br по контрагенту «{d.CounterpartyName}».",
+            Message = $"Списать {remaining:N0} <Byn /> по контрагенту «{d.CounterpartyName}».",
             Detail = "Будет создана подтверждённая транзакция.",
             ConfirmText = "Погасить",
             IsDanger = false
@@ -239,7 +239,7 @@
         try
         {
             await DebtService.RecordPaymentAsync(d.Id, remaining, _userId);
-            _payMessage = $"Долг погашен: {d.CounterpartyName} — {remaining:N0} Br";
+            _payMessage = $"Долг погашен: {d.CounterpartyName} — {remaining:N0} <Byn />";
             _payError = false;
             await ReloadAsync();
         }

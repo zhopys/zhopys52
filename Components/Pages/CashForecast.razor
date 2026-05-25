@@ -56,7 +56,7 @@
                         <span style="font-size: 1.5rem; margin-right: 12px;">⚠️</span>
                         <div>
                             <div class="fw-bold">Обнаружен риск: @GetRiskLabel(forecast.RiskLevel)</div>
-                            <div class="small">Минимальный остаток составит @forecast.MinBalance.ToString("N0") Br.</div>
+                            <div class="small">Минимальный остаток составит @forecast.MinBalance.ToString("N0") <Byn />.</div>
                         </div>
                     </div>
                 }
@@ -64,7 +64,7 @@
                 <div class="kpi-grid mb-4">
                     <div class="kpi-card">
                         <div class="kpi-label">Текущий баланс</div>
-                        <div class="kpi-value">@forecast.CurrentBalance.ToString("N0") <span class="small muted">Br</span></div>
+                        <div class="kpi-value">@forecast.CurrentBalance.ToString("N0") <Byn class="small muted" /></div>
                     </div>
                     <div class="kpi-card">
                         <div class="kpi-label">Дней до разрыва</div>
@@ -90,7 +90,7 @@
                                     <span><span class="chart-legend-dot" style="background:rgba(239,68,68,.5)"></span> Разрыв</span>
                                     @if (minCashThreshold > 0)
                                     {
-                                        <span><span class="chart-legend-dot" style="background:rgba(245,158,11,.8)"></span> Порог @minCashThreshold.ToString("N0") Br</span>
+                                        <span><span class="chart-legend-dot" style="background:rgba(245,158,11,.8)"></span> Порог @minCashThreshold.ToString("N0") <Byn /></span>
                                     }
                                 </div>
                             </div>
@@ -125,7 +125,7 @@
                                             <tr>
                                                 <td class="fw-bold">@gap.StartDate.ToString("dd.MM") — @(gap.EndDate?.ToString("dd.MM") ?? "...")</td>
                                                 <td>@gap.Duration дн.</td>
-                                                <td class="text-danger fw-bold">@gap.MinBalance.ToString("N0") Br</td>
+                                                <td class="text-danger fw-bold">@gap.MinBalance.ToString("N0") <Byn /></td>
                                                 <td class="text-end">
                                                     <span class="severity-badge @GetSeverityClass(gap.Severity)">
                                                         @GetSeverityLabel(gap.Severity)
@@ -155,7 +155,7 @@
                                     <div class="mb-4">
                                         <div class="d-flex justify-content-between mb-1" style="font-size: 13px;">
                                             <span class="text-secondary">@s.Name</span>
-                                            <span class="fw-bold">@s.FinalBalance.ToString("N0") Br</span>
+                                            <span class="fw-bold">@s.FinalBalance.ToString("N0") <Byn /></span>
                                         </div>
                                         <div style="height: 6px; background: var(--bg); border-radius: 10px; overflow: hidden;">
                                             <div style="height: 100%; width: @GetScenarioPercent(s.FinalBalance)%; background: @GetScenarioColor(s.Name); transition: width 0.6s ease;"></div>

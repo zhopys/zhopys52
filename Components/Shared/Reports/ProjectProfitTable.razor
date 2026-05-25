@@ -34,7 +34,7 @@
                             <td class="text-end text-success">@row.Income.ToString("N0")</td>
                             <td class="text-end text-danger">@row.Expense.ToString("N0")</td>
                             <td class="text-end fw-bold @(row.IsProfitable ? "text-success" : "text-danger")">
-                                @row.Profit.ToString("N0") Br
+                                @row.Profit.ToString("N0") <Byn />
                             </td>
                             <td class="text-end">
                                 @if (row.ActualRoi.HasValue)

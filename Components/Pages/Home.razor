@@ -62,7 +62,7 @@
                                 <p class="capital-label">Доступный баланс</p>
                                 <div class="capital-value @(balance >= 0 ? "positive" : "text-danger")">
                                     @(balance >= 0 ? "" : "−")@Math.Abs(balance).ToString("N0")
-                                    <span class="capital-currency">Br</span>
+                                    <Byn class="capital-currency" />
                                 </div>
                                 <p class="small text-muted mt-1">Сумма всех подтверждённых операций</p>
                             </div>
@@ -70,16 +70,16 @@
                         <div class="capital-stats">
                             <div>
                                 <div class="capital-stat-label">Доход за месяц</div>
-                                <div class="capital-stat-value text-success">+@monthIncome.ToString("N0") <small class="text-muted">Br</small></div>
+                                <div class="capital-stat-value text-success">+@monthIncome.ToString("N0") <Byn class="text-muted" /></div>
                             </div>
                             <div>
                                 <div class="capital-stat-label">Расход за месяц</div>
-                                <div class="capital-stat-value text-danger">@monthExpense.ToString("N0") <small class="text-muted">Br</small></div>
+                                <div class="capital-stat-value text-danger">@monthExpense.ToString("N0") <Byn class="text-muted" /></div>
                             </div>
                             <div>
                                 <div class="capital-stat-label">Чистый поток месяца</div>
                                 <div class="capital-stat-value @(monthNet >= 0 ? "text-success" : "text-danger")">
-                                    @(monthNet >= 0 ? "+" : "")@monthNet.ToString("N0") <small class="text-muted">Br</small>
+                                    @(monthNet >= 0 ? "+" : "")@monthNet.ToString("N0") <Byn class="text-muted" />
                                 </div>
                             </div>
                         </div>
@@ -89,20 +89,20 @@
                 <div class="home-kpi-grid">
                     <a href="/debts" class="home-kpi-card">
                         <div class="home-kpi-label">Нам должны</div>
-                        <div class="home-kpi-value text-success">@debtReceivable.ToString("N0") Br</div>
+                        <div class="home-kpi-value text-success">@debtReceivable.ToString("N0") <Byn /></div>
                     </a>
                     <a href="/debts" class="home-kpi-card">
                         <div class="home-kpi-label">Мы должны</div>
-                        <div class="home-kpi-value text-danger">@debtPayable.ToString("N0") Br</div>
+                        <div class="home-kpi-value text-danger">@debtPayable.ToString("N0") <Byn /></div>
                     </a>
                     <a href="/taxes" class="home-kpi-card">
                         <div class="home-kpi-label">Налоги к оплате</div>
-                        <div class="home-kpi-value">@upcomingTaxTotal.ToString("N0") Br</div>
+                        <div class="home-kpi-value">@upcomingTaxTotal.ToString("N0") <Byn /></div>
                         <div class="small text-muted">@upcomingTaxes.Count шт.</div>
                     </a>
                     <a href="/reminders" class="home-kpi-card">
                         <div class="home-kpi-label">Платежи (30 дн.)</div>
-                        <div class="home-kpi-value">@upcomingRemindersTotal.ToString("N0") Br</div>
+                        <div class="home-kpi-value">@upcomingRemindersTotal.ToString("N0") <Byn /></div>
                         <div class="small text-muted">@upcomingReminders.Count шт.</div>
                     </a>
                     <a href="/cash-forecast" class="home-kpi-card">
@@ -149,7 +149,7 @@
                                                 {
                                                     <CategoryBadge Name="@cat.Name" />
                                                 }
-                                                <span class="fw-bold text-danger">@cat.Amount.ToString("N0") Br</span>
+                                                <span class="fw-bold text-danger">@cat.Amount.ToString("N0") <Byn /></span>
                                             </div>
                                             <div class="home-cat-bar">
                                                 <div class="home-cat-fill" style="width:@cat.Percent%"></div>
@@ -202,7 +202,7 @@
                                             <div class="small text-muted">@item.Subtitle · @item.Date.ToString("dd.MM")</div>
                                         </div>
                                         <div class="text-end">
-                                            <div class="fw-bold">@item.Amount.ToString("N0") Br</div>
+                                            <div class="fw-bold">@item.Amount.ToString("N0") <Byn /></div>
                                             <a href="@item.Link" class="small">Открыть</a>
                                         </div>
                                     </div>
@@ -261,12 +261,12 @@
         get
         {
             if (balance < 0)
-                return $"На счетах минус {Math.Abs(balance):N0} Br. Проверьте операции и план платежей.";
+                return $"На счетах минус {Math.Abs(balance):N0} <Byn />. Проверьте операции и план платежей.";
             if (cashGaps.Any())
                 return $"Прогноз показывает кассовый разрыв с {cashGaps.First().StartDate:dd.MM.yyyy}. Запланируйте поступления.";
             if (monthNet < 0)
-                return $"В этом месяце расходы превышают доходы на {Math.Abs(monthNet):N0} Br.";
-            return $"Баланс {balance:N0} Br, чистый поток месяца {(monthNet >= 0 ? "+" : "")}{monthNet:N0} Br.";
+                return $"В этом месяце расходы превышают доходы на {Math.Abs(monthNet):N0} <Byn />.";
+            return $"Баланс {balance:N0} <Byn />, чистый поток месяца {(monthNet >= 0 ? "+" : "")}{monthNet:N0} <Byn />.";
         }
     }
 

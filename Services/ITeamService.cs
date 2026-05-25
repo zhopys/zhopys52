@@ -8,6 +8,8 @@ public sealed class TeamMemberDto
     public string? LastName { get; init; }
     public string? Department { get; init; }
     public string Role { get; init; } = AppRoles.Accountant;
+    public bool IsWorkspaceOwner { get; init; }
+    public bool CanChangeRole { get; init; } = true;
     public DateTime? CreatedAt { get; init; }
 }
 

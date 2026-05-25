@@ -22,7 +22,7 @@
 <div class="page-header">
             <div class="title">
                 <h1>Транзакции</h1>
-                <div class="meta text-muted">@filteredCount операций · баланс @totalBalance.ToString("N2") Br</div>
+                <div class="meta text-muted">@filteredCount операций · баланс @totalBalance.ToString("N2") <Byn /></div>
             </div>
             <div class="page-actions">
                 <button class="btn btn-primary" @onclick="OpenAddModal">Добавить</button>
@@ -326,7 +326,7 @@
                                                 <span class="tx-cell-ellipsis-inner" title="@(t.Counterparty ?? "")">@(string.IsNullOrEmpty(t.Counterparty) ? "—" : t.Counterparty)</span>
                                             </td>
                                             <td class="text-end fw-bold amount @(t.Amount >= 0 ? "text-success" : "text-danger")">
-                                                @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") Br
+                                                @(t.Amount >= 0 ? "+" : "")@t.Amount.ToString("N2") <Byn />
                                             </td>
                                             <td class="tx-actions">
                                                 <div class="tx-row-actions">
@@ -563,7 +563,7 @@
     {
         var ok = await ConfirmDialog.ConfirmDeleteAsync(
             $"операцию от {t.Date:dd.MM.yyyy}",
-            $"{t.Description} · {t.Amount:N2} Br");
+            $"{t.Description} · {t.Amount:N2} <Byn />");
         if (!ok || _userId == null) return;
 
         try

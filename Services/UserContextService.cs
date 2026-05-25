@@ -60,9 +60,10 @@ public class UserContextService : IUserContextService
     private static void NormalizeLegacyRoles(List<string> roles)
     {
         for (var i = 0; i < roles.Count; i++)
-        {
-            if (AppRoles.LegacyRoleMap.TryGetValue(roles[i], out var mapped) && !roles.Contains(mapped))
-                roles[i] = mapped;
-        }
+            roles[i] = AppRoles.NormalizeRole(roles[i]);
+
+        var distinct = roles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        roles.Clear();
+        roles.AddRange(distinct);
     }
 }

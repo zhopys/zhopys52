@@ -29,7 +29,8 @@ public static class TaxFormHelper
             || text.Contains("соц", StringComparison.OrdinalIgnoreCase)) return "ФСЗН";
         if (text.Contains("Подоход", StringComparison.OrdinalIgnoreCase)
             || text.Contains("прибыл", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("НДФЛ", StringComparison.OrdinalIgnoreCase)) return "Подоходный";
+            || text.Contains("НДФЛ", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("налог на прибыль", StringComparison.OrdinalIgnoreCase)) return "Подоходный";
         if (text.Contains("НПД", StringComparison.OrdinalIgnoreCase)
             || text.Contains("профдоход", StringComparison.OrdinalIgnoreCase)) return "Другое";
         if (text.Contains("Един", StringComparison.OrdinalIgnoreCase)) return "Другое";

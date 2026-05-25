@@ -269,7 +269,9 @@ namespace MiniFinance.Services
 
         private static bool TryParseAmount(string value, out decimal amount)
         {
-            var normalized = value.Trim().Replace(" ", "").Replace("Br", "", StringComparison.OrdinalIgnoreCase);
+            var normalized = value.Trim().Replace(" ", "")
+                .Replace("Br", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(BynCurrency.SymbolString, "", StringComparison.Ordinal);
             if (normalized.Contains(',') && !normalized.Contains('.'))
                 normalized = normalized.Replace(',', '.');
 

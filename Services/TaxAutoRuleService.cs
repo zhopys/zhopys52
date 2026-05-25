@@ -87,6 +87,7 @@ public class TaxAutoRuleService : ITaxAutoRuleService
             var totals = await _financeSummary.GetPeriodTotalsAsync(userId, start, end);
             var eval = TaxFormulaEvaluator.TryEvaluate(rule.Formula, new TaxFormulaContext { Income = totals.Income, Expenses = totals.Expenses });
             var due = GetDueDate(end, rule);
+            var plannedName = TaxPlannedPaymentHelper.BuildName(rule, start);
 
             previews.Add(new TaxRulePreview
             {
@@ -98,6 +99,7 @@ public class TaxAutoRuleService : ITaxAutoRuleService
                 PeriodStart = start,
                 PeriodEnd = end,
                 DueDate = due,
+                PlannedPaymentName = plannedName,
                 Error = eval.Ok ? null : eval.Error
             });
         }
@@ -112,17 +114,25 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         var messages = new List<string>();
         var created = 0;
         var skipped = 0;
+        var errors = 0;
 
         foreach (var p in previews)
         {
             var one = await TryCreatePaymentCoreAsync(userId, p, skipExisting);
             if (one.Created) created++;
+            else if (one.IsError) errors++;
             else skipped++;
             if (!string.IsNullOrEmpty(one.Message))
                 messages.Add(one.Message);
         }
 
-        return new TaxRuleGenerateResult { CreatedCount = created, SkippedCount = skipped, Messages = messages };
+        return new TaxRuleGenerateResult
+        {
+            CreatedCount = created,
+            SkippedCount = skipped,
+            ErrorCount = errors,
+            Messages = messages
+        };
     }
 
     public async Task<TaxRuleGenerateResult> CreatePaymentFromPreviewAsync(string userId, TaxRulePreview preview)
@@ -132,24 +142,27 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         return new TaxRuleGenerateResult
         {
             CreatedCount = one.Created ? 1 : 0,
-            SkippedCount = one.Created ? 0 : 1,
+            SkippedCount = one.Created || one.IsError ? 0 : 1,
+            ErrorCount = one.IsError ? 1 : 0,
             Messages = string.IsNullOrEmpty(one.Message) ? new List<string>() : new List<string> { one.Message }
         };
     }
 
-    private async Task<(bool Created, string Message)> TryCreatePaymentCoreAsync(
+    private async Task<(bool Created, bool IsError, string Message)> TryCreatePaymentCoreAsync(
         string userId, TaxRulePreview p, bool skipExisting)
     {
         if (!string.IsNullOrEmpty(p.Error))
-            return (false, $"{p.Rule.Name}: {p.Error}");
+            return (false, true, $"{p.Rule.Name}: {p.Error}");
 
         if (p.CalculatedAmount <= 0)
-            return (false, $"{p.Rule.Name}: сумма 0 — укажите доход в сводке или измените формулу");
+            return (false, true, $"{p.Rule.Name}: сумма 0 — подставьте сводку за период или измените формулу");
 
-        var paymentName = BuildPaymentName(p.Rule, p.PeriodStart, p.PeriodEnd);
+        var paymentName = string.IsNullOrWhiteSpace(p.PlannedPaymentName)
+            ? TaxPlannedPaymentHelper.BuildName(p.Rule, p.PeriodStart)
+            : p.PlannedPaymentName;
 
-        if (skipExisting && await PaymentAlreadyExistsAsync(userId, paymentName, p.DueDate, p.CalculatedAmount))
-            return (false, $"{paymentName}: уже есть в плане на {p.DueDate:dd.MM.yyyy}");
+        if (skipExisting && await PaymentAlreadyExistsAsync(userId, paymentName, p.DueDate))
+            return (false, false, $"{paymentName}: уже в плане (срок {p.DueDate:dd.MM.yyyy})");
 
         await _taxService.AddTaxAsync(new TaxPayment
         {
@@ -158,20 +171,17 @@ public class TaxAutoRuleService : ITaxAutoRuleService
             Amount = p.CalculatedAmount,
             DueDate = p.DueDate
         });
-        return (true, $"Создан: {paymentName} — {p.CalculatedAmount:N2} Br до {p.DueDate:dd.MM.yyyy}");
+        return (true, false, $"Создан: {paymentName} — {p.CalculatedAmount:N2}{BynCurrency.Suffix}, срок {p.DueDate:dd.MM.yyyy}");
     }
 
-    private async Task<bool> PaymentAlreadyExistsAsync(string userId, string paymentName, DateTime dueDate, decimal amount)
+    private async Task<bool> PaymentAlreadyExistsAsync(string userId, string paymentName, DateTime dueDate)
     {
         var dueStart = dueDate.Date.AddDays(-3);
         var dueEnd = dueDate.Date.AddDays(4);
-        var amountMin = amount - 0.02m;
-        var amountMax = amount + 0.02m;
         return await _db.TaxPayments.AnyAsync(t =>
             t.UserId == userId && !t.IsPaid &&
             t.Name == paymentName &&
-            t.DueDate >= dueStart && t.DueDate < dueEnd &&
-            t.Amount >= amountMin && t.Amount <= amountMax);
+            t.DueDate >= dueStart && t.DueDate < dueEnd);
     }
 
     public async Task SyncRulesForTaxSystemAsync(string userId, TaxSystem taxSystem, bool replaceExisting = false)
@@ -209,12 +219,11 @@ public class TaxAutoRuleService : ITaxAutoRuleService
             ],
             TaxSystem.NPD =>
             [
-                ("НПД 4% (физлица)", "НПД", "income * 0.04", TaxRulePeriod.Monthly),
-                ("НПД 8% (юрлица)", "НПД", "income * 0.08", TaxRulePeriod.Monthly)
+                ("НПД (оценка 6% от выручки)", "НПД", "income * 0.06", TaxRulePeriod.Monthly)
             ],
             TaxSystem.UnifiedTax =>
             [
-                ("Единый налог (укажите сумму)", "Единый", "0", TaxRulePeriod.Monthly)
+                ("Единый налог (сумма вручную)", "Единый", "0", TaxRulePeriod.Monthly)
             ],
             TaxSystem.USN =>
             [
@@ -227,6 +236,7 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         var order = 1;
         foreach (var (name, payName, formula, period) in defaults)
         {
+            var enabled = formula != "0";
             _db.TaxAutoRules.Add(new TaxAutoRule
             {
                 UserId = userId,
@@ -236,7 +246,7 @@ public class TaxAutoRuleService : ITaxAutoRuleService
                 Period = period,
                 DueDayOfMonth = 25,
                 DueMonthOffset = 1,
-                IsEnabled = true,
+                IsEnabled = enabled,
                 SortOrder = order++
             });
         }
@@ -287,11 +297,4 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         return new DateTime(dueMonth.Year, dueMonth.Month, Math.Min(day, daysInMonth));
     }
 
-    private static string BuildPaymentName(TaxAutoRule rule, DateTime start, DateTime end) =>
-        rule.Period switch
-        {
-            TaxRulePeriod.Monthly => $"{rule.PaymentName} {start:MMM yyyy}",
-            TaxRulePeriod.Yearly => $"{rule.PaymentName} {start:yyyy}",
-            _ => $"{rule.PaymentName} Q{(start.Month - 1) / 3 + 1} {start:yyyy}"
-        };
 }
