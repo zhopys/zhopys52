@@ -105,7 +105,7 @@
 
         await EmailSender.SendConfirmationLinkAsync(user, Input.NewEmail, HtmlEncoder.Default.Encode(callbackUrl));
 
-        message = "Confirmation link to change email sent. Please check your email.";
+        message = "Письмо со ссылкой для смены email отправлено. Проверьте почту.";
     }
 
     private async Task OnSendEmailVerificationAsync()
@@ -130,7 +130,7 @@
 
         await EmailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(callbackUrl));
 
-        message = "Verification email sent. Please check your email.";
+        message = "Письмо с подтверждением отправлено. Проверьте почту.";
     }
 
     private sealed class InputModel

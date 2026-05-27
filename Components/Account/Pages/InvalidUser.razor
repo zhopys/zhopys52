@@ -1,7 +1,14 @@
 ﻿@page "/Account/InvalidUser"
+@attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
-<PageTitle>Invalid user</PageTitle>
+@using MiniFinance.Components.Account.Shared
 
-<h3>Invalid user</h3>
+<PageTitle>Ошибка учётной записи — MiniFinance</PageTitle>
 
-<StatusMessage />
+<div class="login-page">
+    <div class="login-container">
+        <h1 class="text-danger">Ошибка учётной записи</h1>
+        <StatusMessage />
+        <p class="login-footer mt-3"><a href="/login">Вернуться ко входу</a></p>
+    </div>
+</div>

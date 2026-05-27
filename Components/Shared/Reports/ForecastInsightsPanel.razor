@@ -28,7 +28,7 @@
                         @foreach (var s in Data.Expense.SeasonalPattern)
                         {
                             <span class="reports-seasonal-chip @(s.IndexPercent >= 110 ? "high" : s.IndexPercent <= 90 ? "low" : "")"
-                                  title="@s.MonthName: @s.AvgExpense.ToString("N0") <Byn />">
+                                  title="@($"{s.MonthName}: {s.AvgExpense:N0}{BynCurrency.PlainSuffix}")">
                                 @s.MonthName.Substring(0, 3) @s.IndexPercent%
                             </span>
                         }

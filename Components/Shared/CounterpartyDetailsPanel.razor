@@ -89,7 +89,16 @@
                 <DetailField Label="УНП">@(_detail.Record.TaxId ?? "—")</DetailField>
                 <DetailField Label="Первая операция">@(_detail.FirstTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
                 <DetailField Label="Последняя операция">@(_detail.LastTransactionDate?.ToString("dd.MM.yyyy") ?? "—")</DetailField>
-                <DetailField Label="Средний чек">@(_detail.TransactionCount > 0 ? $"{_detail.AvgTransactionAmount:N2} <Byn />" : "—")</DetailField>
+                <DetailField Label="Средний чек">
+                    @if (_detail.TransactionCount > 0)
+                    {
+                        @_detail.AvgTransactionAmount.ToString("N2") <Byn />
+                    }
+                    else
+                    {
+                        @:—
+                    }
+                </DetailField>
                 <DetailField Label="В справочнике с">@_detail.Record.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</DetailField>
             </DetailFields>
 

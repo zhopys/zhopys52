@@ -3173,7 +3173,7 @@ html:not([data-theme="dark"]) .payment-cal-day-header {
 .finance-health.health-caution .finance-health-icon { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
 .finance-health.health-warn .finance-health-icon { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
 .finance-health-title { font-weight: 700; font-size: 15px; }
-.finance-health-text { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
+.finance-health-text { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; font-family: var(--font-sans), "NBRB", sans-serif; }
 .home-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

@@ -47,7 +47,24 @@
                     <div class="finance-health-icon" aria-hidden="true">@HealthIcon</div>
                     <div class="finance-health-body">
                         <div class="finance-health-title">@HealthTitle</div>
-                        <div class="finance-health-text">@HealthSummary</div>
+                        <div class="finance-health-text">
+                            @if (balance < 0)
+                            {
+                                <span>На счетах минус @Math.Abs(balance).ToString("N0") <Byn />. Проверьте операции и план платежей.</span>
+                            }
+                            else if (cashGaps.Any())
+                            {
+                                <span>Прогноз показывает кассовый разрыв с @cashGaps.First().StartDate.ToString("dd.MM.yyyy"). Запланируйте поступления.</span>
+                            }
+                            else if (monthNet < 0)
+                            {
+                                <span>В этом месяце расходы превышают доходы на @Math.Abs(monthNet).ToString("N0") <Byn />.</span>
+                            }
+                            else
+                            {
+                                <span>Баланс @balance.ToString("N0") <Byn />, чистый поток месяца @(monthNet >= 0 ? "+" : "")@monthNet.ToString("N0") <Byn />.</span>
+                            }
+                        </div>
                     </div>
                     @if (cashGaps.Any())
                     {
@@ -256,20 +273,6 @@
     private string HealthClass => balance < 0 || cashGaps.Any() ? "health-warn" : monthNet < 0 ? "health-caution" : "health-ok";
     private string HealthIcon => balance < 0 ? "!" : cashGaps.Any() ? "⚠" : monthNet < 0 ? "↓" : "✓";
     private string HealthTitle => balance < 0 ? "Отрицательный баланс" : cashGaps.Any() ? "Риск нехватки денег" : monthNet < 0 ? "Месяц в минусе" : "Финансы под контролем";
-    private string HealthSummary
-    {
-        get
-        {
-            if (balance < 0)
-                return $"На счетах минус {Math.Abs(balance):N0} <Byn />. Проверьте операции и план платежей.";
-            if (cashGaps.Any())
-                return $"Прогноз показывает кассовый разрыв с {cashGaps.First().StartDate:dd.MM.yyyy}. Запланируйте поступления.";
-            if (monthNet < 0)
-                return $"В этом месяце расходы превышают доходы на {Math.Abs(monthNet):N0} <Byn />.";
-            return $"Баланс {balance:N0} <Byn />, чистый поток месяца {(monthNet >= 0 ? "+" : "")}{monthNet:N0} <Byn />.";
-        }
-    }
-
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();

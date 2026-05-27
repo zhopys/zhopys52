@@ -29,8 +29,12 @@
                     {
                         <tr>
                             <td>@m.Label</td>
-                            <td class="text-end fw-bold">@FormatValue(m.Key, m.Current)</td>
-                            <td class="text-end text-muted">@FormatValue(m.Key, m.Previous)</td>
+                            <td class="text-end fw-bold">
+                                @m.Current.ToString("N0")@if (m.Key != "tx") { <Byn /> }
+                            </td>
+                            <td class="text-end text-muted">
+                                @m.Previous.ToString("N0")@if (m.Key != "tx") { <Byn /> }
+                            </td>
                             <td class="text-end">
                                 <span class="reports-trend reports-trend-@m.Trend">
                                     @(m.ChangePercent >= 0 ? "+" : "")@m.ChangePercent.ToString("F1")%
@@ -46,9 +50,6 @@
 
 @code {
     [Parameter] public PeriodComparisonDetailDto Comparison { get; set; } = new();
-
-    private static string FormatValue(string key, decimal v) =>
-        key == "tx" ? v.ToString("N0") : $"{v:N0} <Byn />";
 
     private string GetModeLabel() => Comparison.Mode.ToLowerInvariant() switch
     {

@@ -10,11 +10,14 @@ internal sealed class IdentityNoOpEmailSender : IEmailSender<ApplicationUser>
     private readonly IEmailSender emailSender = new NoOpEmailSender();
 
     public Task SendConfirmationLinkAsync(ApplicationUser user, string email, string confirmationLink) =>
-        emailSender.SendEmailAsync(email, "Confirm your email", $"Please confirm your account by <a href='{confirmationLink}'>clicking here</a>.");
+        emailSender.SendEmailAsync(email, "Подтверждение email — MiniFinance",
+            $"Подтвердите учётную запись, перейдя по <a href='{confirmationLink}'>ссылке</a>.");
 
     public Task SendPasswordResetLinkAsync(ApplicationUser user, string email, string resetLink) =>
-        emailSender.SendEmailAsync(email, "Reset your password", $"Please reset your password by <a href='{resetLink}'>clicking here</a>.");
+        emailSender.SendEmailAsync(email, "Сброс пароля — MiniFinance",
+            $"Сбросьте пароль, перейдя по <a href='{resetLink}'>ссылке</a>.");
 
     public Task SendPasswordResetCodeAsync(ApplicationUser user, string email, string resetCode) =>
-        emailSender.SendEmailAsync(email, "Reset your password", $"Please reset your password using the following code: {resetCode}");
+        emailSender.SendEmailAsync(email, "Код сброса пароля — MiniFinance",
+            $"Код для сброса пароля: {resetCode}");
 }

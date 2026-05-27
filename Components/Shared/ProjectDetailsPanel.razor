@@ -145,7 +145,16 @@
                     </div>
                     <div class="entity-drawer-field">
                         <span class="entity-drawer-label">Бюджет</span>
-                        <span>@(_project.Budget.HasValue ? $"{_project.Budget.Value:N0} <Byn />" : "—")</span>
+                        <span>
+                            @if (_project.Budget.HasValue)
+                            {
+                                @_project.Budget.Value.ToString("N0") <Byn />
+                            }
+                            else
+                            {
+                                @:—
+                            }
+                        </span>
                     </div>
                     <div class="entity-drawer-field">
                         <span class="entity-drawer-label">Начало</span>

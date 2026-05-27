@@ -19,7 +19,7 @@
             <div class="reports-weekday-heatmap mb-3">
                 @foreach (var day in Data.Days.OrderBy(d => d.DayOfWeek == 0 ? 7 : d.DayOfWeek))
                 {
-                    <div class="reports-weekday-cell" title="@day.DayName: @day.TotalExpense.ToString("N0") <Byn /> (@day.TransactionCount оп.)">
+                    <div class="reports-weekday-cell" title="@($"{day.DayName}: {day.TotalExpense:N0}{BynCurrency.PlainSuffix} ({day.TransactionCount} оп.)")">
                         <div class="reports-weekday-bar" style="height:@(Math.Max(day.Intensity, 8))%"></div>
                         <span class="reports-weekday-label">@day.DayShort</span>
                         <span class="reports-weekday-amount">@day.TotalExpense.ToString("N0")</span>

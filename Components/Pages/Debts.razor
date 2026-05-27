@@ -229,7 +229,7 @@
         var ok = await ConfirmDialog.ShowAsync(new ConfirmDialogOptions
         {
             Title = "Погасить долг?",
-            Message = $"Списать {remaining:N0} <Byn /> по контрагенту «{d.CounterpartyName}».",
+            Message = $"Списать {remaining:N0}{BynCurrency.PlainSuffix} по контрагенту «{d.CounterpartyName}».",
             Detail = "Будет создана подтверждённая транзакция.",
             ConfirmText = "Погасить",
             IsDanger = false
@@ -239,7 +239,7 @@
         try
         {
             await DebtService.RecordPaymentAsync(d.Id, remaining, _userId);
-            _payMessage = $"Долг погашен: {d.CounterpartyName} — {remaining:N0} <Byn />";
+            _payMessage = $"Долг погашен: {d.CounterpartyName} — {remaining:N0}{BynCurrency.PlainSuffix}";
             _payError = false;
             await ReloadAsync();
         }

@@ -563,7 +563,7 @@
     {
         var ok = await ConfirmDialog.ConfirmDeleteAsync(
             $"операцию от {t.Date:dd.MM.yyyy}",
-            $"{t.Description} · {t.Amount:N2} <Byn />");
+            $"{t.Description} · {t.Amount:N2}{BynCurrency.PlainSuffix}");
         if (!ok || _userId == null) return;
 
         try

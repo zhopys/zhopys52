@@ -1328,7 +1328,7 @@ else
     private string? PreviewRuleFormula(string formula)
     {
         var r = TaxFormulaEvaluator.TryEvaluate(formula, new TaxFormulaContext { Income = 1000, Expenses = 200 });
-        return r.Ok ? $"{r.Value:N2} <Byn />" : r.Error;
+        return r.Ok ? $"{r.Value:N2}{BynCurrency.PlainSuffix}" : r.Error;
     }
 
     private async Task SaveAutoRule()
