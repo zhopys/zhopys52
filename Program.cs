@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.AspNetCore.Localization;
+using System.Globalization;
 using MiniFinance.Components.Account;
 
 if (args.Any(a => a.Equals("--probe-pdf", StringComparison.OrdinalIgnoreCase)))
@@ -42,6 +44,18 @@ var seedDiplomaDemo = args.Any(a =>
     a.Equals("--seed-demo", StringComparison.OrdinalIgnoreCase));
 var resetUsers = args.Any(a => a.Equals("--reset-users", StringComparison.OrdinalIgnoreCase));
 var builder = WebApplication.CreateBuilder(args);
+
+var ruCulture = CultureInfo.GetCultureInfo("ru-RU");
+CultureInfo.DefaultThreadCurrentCulture = ruCulture;
+CultureInfo.DefaultThreadCurrentUICulture = ruCulture;
+
+builder.Services.AddLocalization();
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture(ruCulture);
+    options.SupportedCultures = new[] { ruCulture };
+    options.SupportedUICultures = new[] { ruCulture };
+});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -145,6 +159,7 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Identity.IEmailSender<Applicatio
 // Email notification services
 builder.Services.Configure<MiniFinance.Services.SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
 builder.Services.Configure<MiniFinance.Services.NotificationSettings>(builder.Configuration.GetSection("NotificationSettings"));
+builder.Services.Configure<MiniFinance.Services.AppSettings>(builder.Configuration.GetSection("AppSettings"));
 builder.Services.AddScoped<MiniFinance.Services.INotificationEmailService, MiniFinance.Services.NotificationEmailService>();
 builder.Services.AddHostedService<MiniFinance.Services.NotificationBackgroundService>();
 
@@ -162,6 +177,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 app.UseStaticFiles();
+app.UseRequestLocalization();
 app.UseAntiforgery();
 
 app.UseAuthentication();

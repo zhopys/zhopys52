@@ -196,13 +196,24 @@
                 {
                     <div class="form-group">
                         <label class="form-label">Выручка / доход за период (<Byn />)</label>
-                        <input type="number" class="form-input" @bind="_calcIncome" step="100" min="0" />
+                        <input type="number" class="form-input @(_calcFieldErrors.Get("income") != null ? "input-invalid" : "")" @bind="_calcIncome" step="100" min="0" />
+                        @if (_calcFieldErrors.Get("income") is { } incomeErr)
+                        {
+                            <div class="validation-message">@incomeErr</div>
+                        }
                     </div>
                     @if (TaxSystemInfo.UsesExpenses(_taxSystem))
                     {
                         <div class="form-group">
                             <label class="form-label">Расходы (документально)</label>
                             <input type="number" class="form-input" @bind="_calcExpenses" step="100" min="0" />
+                        </div>
+                    }
+                    @if (_taxSystem is TaxSystem.USN or TaxSystem.OSN)
+                    {
+                        <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
+                            <input type="checkbox" id="calcFszn" @bind="_calcIncludeFszn" />
+                            <label for="calcFszn" class="form-label mb-0">Добавить оценку ФСЗН (~35% от выручки)</label>
                         </div>
                     }
                 }
@@ -220,7 +231,11 @@
                     (@_calcPeriodSummary.OperationCount операций в учёте, список скрыт).
                 </div>
             }
-            @if (_calcResult != null && _calcResult.TaxAmount > 0)
+            @if (!string.IsNullOrEmpty(_calcError))
+            {
+                <div class="alert alert-error mt-3 mb-0 small">@_calcError</div>
+            }
+            else if (_calcResult != null && _calcResult.TaxAmount > 0)
             {
                 <div class="alert alert-info mt-3 mb-0">
                     <strong>@_calcResult.TaxAmount.ToString("N2") <Byn /></strong>
@@ -340,21 +355,35 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Название правила</label>
-                            <input class="form-input" @bind="_editRule.Name" placeholder="УСН 6%" />
+                            <input class="form-input @(_ruleFieldErrors.Get("name") != null ? "input-invalid" : "")" @bind="_editRule.Name" placeholder="УСН 6%" />
+                            @if (_ruleFieldErrors.Get("name") is { } ruleNameErr)
+                            {
+                                <div class="validation-message">@ruleNameErr</div>
+                            }
                         </div>
                         <div class="form-group">
                             <label class="form-label">Вид платежа</label>
-                            <select class="form-input" @bind="_editRule.PaymentName">
+                            <select class="form-input @(_ruleFieldErrors.Get("paymentName") != null ? "input-invalid" : "")" @bind="_editRule.PaymentName">
                                 <option value="УСН">УСН</option>
                                 <option value="НДС">НДС</option>
                                 <option value="ФСЗН">ФСЗН</option>
                                 <option value="Подоходный">Подоходный</option>
+                                <option value="НПД">НПД</option>
+                                <option value="Единый">Единый налог</option>
                                 <option value="Другое">Другое</option>
                             </select>
+                            @if (_ruleFieldErrors.Get("paymentName") is { } payNameErr)
+                            {
+                                <div class="validation-message">@payNameErr</div>
+                            }
                         </div>
                         <div class="form-group" style="grid-column:1/-1">
                             <label class="form-label">Формула</label>
-                            <input class="form-input" @bind="_editRule.Formula" placeholder="income * 0.06" />
+                            <input class="form-input @(_ruleFieldErrors.Get("formula") != null ? "input-invalid" : "")" @bind="_editRule.Formula" placeholder="income * 0.06" />
+                            @if (_ruleFieldErrors.Get("formula") is { } formulaErr)
+                            {
+                                <div class="validation-message">@formulaErr</div>
+                            }
                         </div>
                         <div class="form-group">
                             <label class="form-label">Период расчёта</label>
@@ -366,11 +395,19 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Срок: день месяца</label>
-                            <input type="number" class="form-input" @bind="_editRule.DueDayOfMonth" min="1" max="28" />
+                            <input type="number" class="form-input @(_ruleFieldErrors.Get("dueDay") != null ? "input-invalid" : "")" @bind="_editRule.DueDayOfMonth" min="1" max="28" />
+                            @if (_ruleFieldErrors.Get("dueDay") is { } dueDayErr)
+                            {
+                                <div class="validation-message">@dueDayErr</div>
+                            }
                         </div>
                         <div class="form-group">
                             <label class="form-label">Срок: +месяцев после периода</label>
-                            <input type="number" class="form-input" @bind="_editRule.DueMonthOffset" min="0" max="3" />
+                            <input type="number" class="form-input @(_ruleFieldErrors.Get("dueOffset") != null ? "input-invalid" : "")" @bind="_editRule.DueMonthOffset" min="0" max="3" />
+                            @if (_ruleFieldErrors.Get("dueOffset") is { } dueOffsetErr)
+                            {
+                                <div class="validation-message">@dueOffsetErr</div>
+                            }
                         </div>
                         <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
                             <input type="checkbox" id="ruleEnabled" @bind="_editRule.IsEnabled" />
@@ -430,12 +467,20 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Сумма платежа</label>
-                        <input type="number" class="form-input" @bind="_partialAmount" step="0.01" min="0.01" />
+                        <input type="number" class="form-input @(_partialFieldErrors.Get("amount") != null ? "input-invalid" : "")" @bind="_partialAmount" step="0.01" min="0.01" />
+                        @if (_partialFieldErrors.Get("amount") is { } partialAmountErr)
+                        {
+                            <div class="validation-message">@partialAmountErr</div>
+                        }
                         <div class="small text-muted">Остаток: @((_partialTax.Amount - _partialTax.PaidAmount).ToString("N2")) <Byn /></div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Чек / документ</label>
-                        <input class="form-input" @bind="_partialReceipt" placeholder="Номер платёжки, ссылка на файл" />
+                        <input class="form-input @(_partialFieldErrors.Get("receipt") != null ? "input-invalid" : "")" @bind="_partialReceipt" placeholder="Номер платёжки, ссылка на файл" maxlength="@TaxFieldValidation.MaxReceiptLength" />
+                        @if (_partialFieldErrors.Get("receipt") is { } receiptErr)
+                        {
+                            <div class="validation-message">@receiptErr</div>
+                        }
                     </div>
                 </div>
                 <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
@@ -454,28 +499,53 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Вид налога</label>
-                        <select class="form-input" @bind="_taxTypeSelect" @bind:after="OnTaxTypeChanged">
+                        <select class="form-input @(_taxFieldErrors.Get("type") != null ? "input-invalid" : "")" @bind="_taxTypeSelect" @bind:after="OnTaxTypeChanged">
                             <option value="НДС">НДС</option>
                             <option value="УСН">УСН</option>
                             <option value="ФСЗН">ФСЗН / соц. взносы</option>
                             <option value="Подоходный">Подоходный / НДФЛ</option>
+                            <option value="НПД">НПД (профдоход)</option>
+                            <option value="Единый налог">Единый налог</option>
                             <option value="Другое">Другое</option>
                         </select>
+                        @if (_taxFieldErrors.Get("type") is { } typeErr)
+                        {
+                            <div class="validation-message">@typeErr</div>
+                        }
                     </div>
                     @if (_taxTypeSelect == "Другое")
                     {
                         <div class="form-group">
                             <label class="form-label">Название</label>
-                            <input class="form-input" @bind="_customTaxName" placeholder="Название платежа" />
+                            <input class="form-input @(_taxFieldErrors.Get("customName") != null ? "input-invalid" : "")" @bind="_customTaxName" placeholder="Название платежа" maxlength="@TaxFieldValidation.MaxTaxNameLength" />
+                            @if (_taxFieldErrors.Get("customName") is { } customNameErr)
+                            {
+                                <div class="validation-message">@customNameErr</div>
+                            }
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_taxPaymentFullName))
+                    {
+                        <div class="form-group" style="grid-column:1/-1">
+                            <label class="form-label">Плановое название</label>
+                            <div class="small text-muted">@_taxPaymentFullName</div>
                         </div>
                     }
                     <div class="form-group">
                         <label class="form-label">Сумма *</label>
-                        <input type="number" class="form-input" @bind="_taxAmount" step="0.01" min="0.01" />
+                        <input type="number" class="form-input @(_taxFieldErrors.Get("amount") != null ? "input-invalid" : "")" @bind="_taxAmount" step="0.01" min="0.01" />
+                        @if (_taxFieldErrors.Get("amount") is { } amountErr)
+                        {
+                            <div class="validation-message">@amountErr</div>
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Срок уплаты *</label>
-                        <input type="date" class="form-input" @bind="_taxDueDate" />
+                        <input type="date" class="form-input @(_taxFieldErrors.Get("dueDate") != null ? "input-invalid" : "")" @bind="_taxDueDate" />
+                        @if (_taxFieldErrors.Get("dueDate") is { } dueDateErr)
+                        {
+                            <div class="validation-message">@dueDateErr</div>
+                        }
                         <div class="small text-muted mt-1" style="display:flex;flex-wrap:wrap;gap:.35rem">
                             <button type="button" class="btn btn-sm btn-outline" @onclick="() => SetTaxDuePreset(0)">Сегодня</button>
                             <button type="button" class="btn btn-sm btn-outline" @onclick="() => SetTaxDuePreset(7)">+7 дн.</button>
@@ -630,11 +700,19 @@ else
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Название *</label>
-                        <input class="form-input" @bind="_billName" placeholder="Аренда, связь, поставщик..." />
+                        <input class="form-input @(_billFieldErrors.Get("name") != null ? "input-invalid" : "")" @bind="_billName" placeholder="Аренда, связь, поставщик..." maxlength="@TaxFieldValidation.MaxBillNameLength" />
+                        @if (_billFieldErrors.Get("name") is { } billNameErr)
+                        {
+                            <div class="validation-message">@billNameErr</div>
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Сумма *</label>
-                        <input type="number" class="form-input" @bind="_billAmount" step="0.01" min="0.01" />
+                        <input type="number" class="form-input @(_billFieldErrors.Get("amount") != null ? "input-invalid" : "")" @bind="_billAmount" step="0.01" min="0.01" />
+                        @if (_billFieldErrors.Get("amount") is { } billAmountErr)
+                        {
+                            <div class="validation-message">@billAmountErr</div>
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Категория</label>
@@ -645,7 +723,11 @@ else
                     </div>
                     <div class="form-group">
                         <label class="form-label">Срок оплаты *</label>
-                        <input type="date" class="form-input" @bind="_billDueDate" />
+                        <input type="date" class="form-input @(_billFieldErrors.Get("dueDate") != null ? "input-invalid" : "")" @bind="_billDueDate" />
+                        @if (_billFieldErrors.Get("dueDate") is { } billDueErr)
+                        {
+                            <div class="validation-message">@billDueErr</div>
+                        }
                     </div>
                 </div>
                 <div class="mt-3" style="display:flex;gap:.5rem;justify-content:flex-end">
@@ -757,8 +839,9 @@ else
     private bool _showTaxForm;
     private bool _taxFormHighlight;
     private int _editTaxId;
-    private string _taxTypeSelect = "НДС";
+    private string _taxTypeSelect = "УСН";
     private string _customTaxName = "";
+    private string _taxPaymentFullName = "";
     private decimal _taxAmount;
     private DateTime _taxDueDate = DateTime.Today.AddMonths(1);
 
@@ -767,8 +850,16 @@ else
     private decimal _calcIncomeFromFl;
     private decimal _calcIncomeFromYur;
     private decimal _unifiedTaxAmount;
+    private bool _calcIncludeFszn;
     private string _calcPeriod = "quarter";
+    private string? _calcError;
     private TaxCalculationResult? _calcResult;
+
+    private readonly TaxFieldValidation.FieldErrors _taxFieldErrors = new();
+    private readonly TaxFieldValidation.FieldErrors _partialFieldErrors = new();
+    private readonly TaxFieldValidation.FieldErrors _billFieldErrors = new();
+    private readonly TaxFieldValidation.FieldErrors _ruleFieldErrors = new();
+    private readonly TaxFieldValidation.FieldErrors _calcFieldErrors = new();
 
     private List<TaxRulePreview> _autoRulePreviews = new();
     private bool _showAutoRuleForm;
@@ -899,7 +990,7 @@ else
                 yield return new("НПД за месяц", "НПД", 0);
                 break;
             case TaxSystem.UnifiedTax:
-                yield return new("Единый налог", "Единый", 0);
+                yield return new("Единый налог", "Единый налог", 0);
                 break;
             case TaxSystem.OSN:
                 yield return new("Подоходный / прибыль", "Подоходный", 0);
@@ -917,7 +1008,10 @@ else
     {
         _editTaxId = 0;
         _taxAmount = 0;
-        _taxTypeSelect = hint.Name is "УСН" or "НДС" or "ФСЗН" or "Подоходный" ? hint.Name : "Другое";
+        _taxPaymentFullName = "";
+        _taxTypeSelect = hint.Name is "УСН" or "НДС" or "ФСЗН" or "Подоходный" or "НПД" or "Единый налог"
+            ? hint.Name
+            : "Другое";
         if (_taxTypeSelect == "Другое") _customTaxName = hint.Label;
         else _customTaxName = "";
         SetTaxDuePreset(hint.DuePresetDays);
@@ -925,6 +1019,24 @@ else
             _taxDueDate = TaxDueDateHelper.GetCalculatorDueDate(TaxSystem.USN, "quarter", DateTime.Today);
         else
             _taxDueDate = TaxDueDateHelper.DueAfterPeriodEnd(DateTime.Today, 1, 25);
+
+        if (_taxSystem.HasValue)
+        {
+            RunTaxCalculator();
+            if (_calcResult?.TaxAmount > 0)
+            {
+                var line = _calcResult.Lines.FirstOrDefault(l => l.Amount > 0);
+                if (line != null)
+                {
+                    _taxAmount = line.Amount;
+                    (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(line.Name, _calcResult.SuggestedPaymentName);
+                    var (periodStart, _) = GetCalcPeriodBounds();
+                    _taxPaymentFullName = TaxPlannedPaymentHelper.BuildCalculatorPaymentName(
+                        line.Name, _calcResult.SuggestedPaymentName, _calcPeriod, periodStart);
+                }
+            }
+        }
+
         await OpenTaxFormAsync(scroll: true);
     }
 
@@ -957,18 +1069,23 @@ else
 
     private void ResetTaxForm()
     {
-        _taxTypeSelect = GetDefaultTaxTypeSelect();
+        _taxTypeSelect = TaxFormHelper.GetDefaultTypeSelect(_taxSystem);
         _customTaxName = "";
+        _taxPaymentFullName = "";
         _taxAmount = 0;
         _taxDueDate = DateTime.Today.AddMonths(1);
+        _taxFieldErrors.Clear();
     }
 
-    private string GetDefaultTaxTypeSelect() => _taxSystem switch
+    private void OnTaxTypeChanged()
     {
-        TaxSystem.USN => "УСН",
-        TaxSystem.OSN => "НДС",
-        _ => "УСН"
-    };
+        if (_taxTypeSelect != "Другое")
+            _customTaxName = "";
+        _taxPaymentFullName = "";
+    }
+
+    private string ResolveTaxName() =>
+        TaxFormHelper.ResolvePaymentName(_taxTypeSelect, _customTaxName, _taxPaymentFullName);
 
     private void ResetBillForm()
     {
@@ -976,11 +1093,8 @@ else
         _billAmount = 0;
         _billCategory = "";
         _billDueDate = DateTime.Today.AddMonths(1);
+        _billFieldErrors.Clear();
     }
-
-    private void OnTaxTypeChanged() { }
-
-    private string ResolveTaxName() => TaxFormHelper.ResolvePaymentName(_taxTypeSelect, _customTaxName);
 
     private void SetTaxDuePreset(int days) => _taxDueDate = DateTime.Today.AddDays(days);
 
@@ -1001,6 +1115,7 @@ else
     private async Task EditTax(TaxPayment tax)
     {
         _editTaxId = tax.Id;
+        _taxPaymentFullName = "";
         if (TaxFormHelper.IsKnownTypeName(tax.Name))
         {
             _taxTypeSelect = tax.Name;
@@ -1011,6 +1126,7 @@ else
 
         _taxAmount = tax.Amount;
         _taxDueDate = tax.DueDate;
+        _taxFieldErrors.Clear();
         _showPartialForm = false;
         await OpenTaxFormAsync(scroll: true);
     }
@@ -1035,17 +1151,20 @@ else
     private async Task SaveTax()
     {
         ClearAlerts();
+        _taxFieldErrors.Clear();
+        var validation = TaxFieldValidation.ValidateTaxPayment(_taxTypeSelect, _customTaxName, _taxAmount, _taxDueDate, _taxPaymentFullName);
+        if (validation.HasErrors)
+        {
+            foreach (var field in new[] { "type", "customName", "amount", "dueDate" })
+            {
+                var err = validation.Get(field);
+                if (err != null) _taxFieldErrors.Set(field, err);
+            }
+            ShowError(validation.FirstError() ?? "Проверьте поля формы");
+            return;
+        }
+
         var name = ResolveTaxName();
-        if (_taxAmount <= 0)
-        {
-            ShowError("Укажите сумму больше нуля");
-            return;
-        }
-        if (_taxDueDate.Date < DateTime.Today.AddYears(-1))
-        {
-            ShowError("Проверьте срок уплаты");
-            return;
-        }
 
         try
         {
@@ -1089,14 +1208,16 @@ else
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            ShowError(TaxFieldValidation.TranslateError(ex));
         }
     }
 
     private void RunTaxCalculator()
     {
+        _calcError = null;
+        _calcFieldErrors.Clear();
         var system = _taxSystem ?? TaxSystem.USN;
-        _calcResult = TaxCalculatorHelper.Calculate(new TaxCalculatorInput
+        var input = new TaxCalculatorInput
         {
             System = system,
             TaxpayerKind = _taxpayerKind,
@@ -1104,8 +1225,21 @@ else
             Expenses = _calcExpenses,
             IncomeFromIndividuals = _calcIncomeFromFl,
             IncomeFromLegalEntities = _calcIncomeFromYur,
-            UnifiedTaxAmount = _unifiedTaxAmount
-        });
+            UnifiedTaxAmount = _unifiedTaxAmount,
+            IncludeFsznEstimate = _calcIncludeFszn
+        };
+
+        var validation = TaxFieldValidation.ValidateCalculatorInput(input, _taxSystem);
+        if (!validation.Ok)
+        {
+            _calcError = validation.Error;
+            _calcResult = null;
+            return;
+        }
+
+        _calcResult = TaxCalculatorHelper.Calculate(input);
+        if (_calcResult.TaxAmount <= 0)
+            _calcError = _calcResult.Description;
     }
 
     private async Task FillCalcFromPeriodSummary()
@@ -1181,7 +1315,7 @@ else
 
             await ReloadAsync();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(TaxFieldValidation.TranslateError(ex)); }
     }
 
     private async Task ApplyCalcLineToTaxForm(TaxCalcLine? line)
@@ -1195,6 +1329,10 @@ else
         _taxAmount = line.Amount;
         (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(line.Name, _calcResult.SuggestedPaymentName);
         _taxDueDate = GetCalcDueDate();
+        var (periodStart, _) = GetCalcPeriodBounds();
+        _taxPaymentFullName = TaxPlannedPaymentHelper.BuildCalculatorPaymentName(
+            line.Name, _calcResult.SuggestedPaymentName, _calcPeriod, periodStart);
+        _taxFieldErrors.Clear();
         _showPartialForm = false;
         await OpenTaxFormAsync(scroll: true);
         ShowSuccess("Проверьте сумму и срок в форме ниже, затем нажмите «Добавить»");
@@ -1209,13 +1347,14 @@ else
         }
 
         _editTaxId = 0;
-        var paymentName = string.IsNullOrWhiteSpace(preview.PlannedPaymentName)
+        _taxPaymentFullName = string.IsNullOrWhiteSpace(preview.PlannedPaymentName)
             ? TaxPlannedPaymentHelper.BuildName(preview.Rule, preview.PeriodStart)
             : preview.PlannedPaymentName;
 
-        (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(paymentName, preview.Rule.PaymentName);
+        (_taxTypeSelect, _customTaxName) = TaxFormHelper.MapToFormFields(_taxPaymentFullName, preview.Rule.PaymentName);
         _taxAmount = preview.CalculatedAmount;
         _taxDueDate = preview.DueDate;
+        _taxFieldErrors.Clear();
         _showPartialForm = false;
         await OpenTaxFormAsync(scroll: true);
     }
@@ -1232,7 +1371,7 @@ else
                 ShowError(result.Messages.FirstOrDefault() ?? "Платёж не создан — проверьте сумму и дубликаты");
             await ReloadAsync();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(TaxFieldValidation.TranslateError(ex)); }
     }
 
     private async Task OpenTaxFormAsync(bool scroll)
@@ -1334,7 +1473,20 @@ else
     private async Task SaveAutoRule()
     {
         ClearAlerts();
+        _ruleFieldErrors.Clear();
         _editRule.Period = (TaxRulePeriod)_editRulePeriodInt;
+        var validation = TaxFieldValidation.ValidateAutoRule(_editRule);
+        if (validation.HasErrors)
+        {
+            foreach (var field in new[] { "name", "paymentName", "formula", "dueDay", "dueOffset" })
+            {
+                var err = validation.Get(field);
+                if (err != null) _ruleFieldErrors.Set(field, err);
+            }
+            ShowError(validation.FirstError() ?? "Проверьте поля правила");
+            return;
+        }
+
         try
         {
             await TaxAutoRuleService.SaveAsync(_editRule, _userId);
@@ -1342,7 +1494,7 @@ else
             ShowSuccess("Правило сохранено");
             await ReloadAsync();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(TaxFieldValidation.TranslateError(ex)); }
     }
 
     private async Task DeleteAutoRule(int id)
@@ -1375,7 +1527,7 @@ else
                 ShowError("Нет активных правил с суммой — включите правила и подставьте сводку за период");
             await ReloadAsync();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(TaxFieldValidation.TranslateError(ex)); }
         finally
         {
             _autoRulesBusy = false;
@@ -1395,6 +1547,20 @@ else
     {
         if (_partialTax == null) return;
         ClearAlerts();
+        _partialFieldErrors.Clear();
+        var remaining = _partialTax.Amount - _partialTax.PaidAmount;
+        var validation = TaxFieldValidation.ValidatePartialPayment(_partialAmount, remaining, _partialReceipt);
+        if (validation.HasErrors)
+        {
+            foreach (var field in new[] { "amount", "receipt" })
+            {
+                var err = validation.Get(field);
+                if (err != null) _partialFieldErrors.Set(field, err);
+            }
+            ShowError(validation.FirstError() ?? "Проверьте сумму оплаты");
+            return;
+        }
+
         try
         {
             await TaxService.MarkPartialPaidAsync(_partialTax.Id, _partialAmount, _partialReceipt, _userId);
@@ -1402,7 +1568,7 @@ else
             ShowSuccess("Частичная оплата записана");
             await ReloadAsync();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(TaxFieldValidation.TranslateError(ex)); }
     }
 
     private async Task MarkPaid(int id)
@@ -1426,9 +1592,16 @@ else
     private async Task SaveBill()
     {
         ClearAlerts();
-        if (string.IsNullOrWhiteSpace(_billName) || _billAmount <= 0)
+        _billFieldErrors.Clear();
+        var validation = TaxFieldValidation.ValidateBill(_billName, _billAmount, _billDueDate);
+        if (validation.HasErrors)
         {
-            ShowError("Укажите название и сумму");
+            foreach (var field in new[] { "name", "amount", "dueDate" })
+            {
+                var err = validation.Get(field);
+                if (err != null) _billFieldErrors.Set(field, err);
+            }
+            ShowError(validation.FirstError() ?? "Проверьте поля счёта");
             return;
         }
 
@@ -1465,7 +1638,7 @@ else
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            ShowError(TaxFieldValidation.TranslateError(ex));
         }
     }
 

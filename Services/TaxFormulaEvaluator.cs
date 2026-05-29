@@ -29,9 +29,17 @@ public static class TaxFormulaEvaluator
         }
         catch (Exception ex)
         {
-            return (false, 0, ex.Message);
+            return (false, 0, TranslateFormulaError(ex));
         }
     }
+
+    private static string TranslateFormulaError(Exception ex) => ex switch
+    {
+        DivideByZeroException => "Деление на ноль в формуле",
+        OverflowException => "Число в формуле слишком большое",
+        InvalidOperationException op when !string.IsNullOrWhiteSpace(op.Message) => op.Message,
+        _ => "Ошибка в формуле — проверьте синтаксис и переменные income, expenses, profit"
+    };
 
     private static string PrepareFormula(string formula, TaxFormulaContext ctx)
     {

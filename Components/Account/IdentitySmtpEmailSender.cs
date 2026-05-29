@@ -1,4 +1,3 @@
-using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using MiniFinance.Data;
@@ -10,15 +9,18 @@ internal sealed class IdentitySmtpEmailSender : IEmailSender<ApplicationUser>
 {
     private readonly INotificationEmailService _email;
     private readonly SmtpSettings _smtp;
+    private readonly AppSettings _app;
     private readonly ILogger<IdentitySmtpEmailSender> _logger;
 
     public IdentitySmtpEmailSender(
         INotificationEmailService email,
         IOptions<SmtpSettings> smtp,
+        IOptions<AppSettings> app,
         ILogger<IdentitySmtpEmailSender> logger)
     {
         _email = email;
         _smtp = smtp.Value;
+        _app = app.Value;
         _logger = logger;
     }
 
@@ -38,20 +40,15 @@ internal sealed class IdentitySmtpEmailSender : IEmailSender<ApplicationUser>
 
     public Task SendPasswordResetCodeAsync(ApplicationUser user, string email, string resetCode) =>
         SendAsync(email, "Код сброса пароля — MiniFinance",
-            $"<p>Код для сброса пароля: <strong>{HtmlEncoder.Default.Encode(resetCode)}</strong></p>");
+            EmailTemplateBuilder.WrapSimpleCard(
+                "Код сброса пароля",
+                $"Код для сброса пароля: {resetCode}",
+                $"{_app.PublicUrl.TrimEnd('/')}/Account/Login",
+                "Перейти ко входу",
+                "MiniFinance"));
 
-    private static string WrapBody(string title, string text, string link, string buttonText)
-    {
-        var safeHref = HtmlEncoder.Default.Encode(link);
-        return $@"
-<p>Здравствуйте!</p>
-<p><strong>{HtmlEncoder.Default.Encode(title)}</strong></p>
-<p>{HtmlEncoder.Default.Encode(text)}</p>
-<p style=""margin:24px 0"">
-  <a href=""{safeHref}"" style=""display:inline-block;background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600"">{HtmlEncoder.Default.Encode(buttonText)}</a>
-</p>
-<p class=""text-muted"" style=""font-size:12px;color:#666"">Или скопируйте ссылку:<br/><span style=""word-break:break-all"">{safeHref}</span></p>";
-    }
+    private static string WrapBody(string title, string text, string link, string buttonText) =>
+        EmailTemplateBuilder.WrapIdentityContent(title, text, link, buttonText);
 
     private async Task SendAsync(string email, string subject, string htmlBody)
     {

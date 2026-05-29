@@ -48,21 +48,24 @@
                 <div class="card-header">Новая транзакция</div>
                 <div class="card-body">
                     <EditForm Model="@_newTransaction" OnValidSubmit="@AddTransaction" Context="addForm">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary />
+                        <RussianDataAnnotationsValidator />
+                        <RussianValidationSummary />
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
                             <div>
                                 <label class="label">Дата *</label>
-                                <InputDate class="input" @bind-Value="_newTransaction.Date" />
+                                <RussianInputDate class="input" @bind-Value="_newTransaction.Date" />
+                                <RussianValidationMessage For="() => _newTransaction.Date" />
                             </div>
                             <div>
                                 <label class="label">Сумма *</label>
-                                <InputNumber class="input" @bind-Value="_newTransaction.Amount" @bind-Value:after="OnNewFieldChanged" />
+                                <RussianInputNumber class="input" @bind-Value="_newTransaction.Amount" @bind-Value:after="OnNewFieldChanged" />
+                                <RussianValidationMessage For="() => _newTransaction.Amount" />
                                 <div class="small text-muted">− расход, + доход</div>
                             </div>
                             <div>
                                 <label class="label">Описание *</label>
                                 <InputText class="input" @bind-Value="_newTransaction.Description" @bind-Value:after="OnNewFieldChanged" />
+                                <RussianValidationMessage For="() => _newTransaction.Description" />
                             </div>
                             <div>
                                 <label class="label">Категория</label>
@@ -125,20 +128,23 @@
                 <div class="card-header">Редактирование транзакции</div>
                 <div class="card-body">
                     <EditForm Model="@_editTransaction" OnValidSubmit="@SaveEdit" Context="editForm">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary />
+                        <RussianDataAnnotationsValidator />
+                        <RussianValidationSummary />
                         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
                             <div>
                                 <label class="label">Дата *</label>
-                                <InputDate class="input" @bind-Value="_editTransaction.Date" />
+                                <RussianInputDate class="input" @bind-Value="_editTransaction.Date" />
+                                <RussianValidationMessage For="() => _editTransaction.Date" />
                             </div>
                             <div>
                                 <label class="label">Сумма *</label>
-                                <InputNumber class="input" @bind-Value="_editTransaction.Amount" />
+                                <RussianInputNumber class="input" @bind-Value="_editTransaction.Amount" />
+                                <RussianValidationMessage For="() => _editTransaction.Amount" />
                             </div>
                             <div>
                                 <label class="label">Описание *</label>
                                 <InputText class="input" @bind-Value="_editTransaction.Description" />
+                                <RussianValidationMessage For="() => _editTransaction.Description" />
                             </div>
                             <div>
                                 <label class="label">Категория</label>

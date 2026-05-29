@@ -107,12 +107,15 @@ public class TaxService : ITaxService
     {
         await EnsureTaxAccessAsync(userId);
         userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
-        if (amount <= 0) throw new ArgumentException("Сумма должна быть больше нуля");
 
         var tax = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == taxId && t.UserId == userId);
         if (tax == null || tax.IsPaid) return;
 
         var remaining = tax.Amount - tax.PaidAmount;
+        var validation = TaxFieldValidation.ValidatePartialPayment(amount, remaining, receiptNote);
+        if (validation.HasErrors)
+            throw new ArgumentException(validation.FirstError());
+
         var pay = Math.Min(amount, remaining);
         tax.PaidAmount += pay;
         if (!string.IsNullOrWhiteSpace(receiptNote))
@@ -145,8 +148,7 @@ public class TaxService : ITaxService
     {
         tax.UserId = await ServiceDataScope.ResolveAsync(_dataScope, tax.UserId);
         tax.Name = tax.Name.Trim();
-        if (tax.Amount <= 0)
-            throw new ArgumentException("Сумма должна быть больше нуля");
+        ValidateTaxEntity(tax);
         tax.CreatedAt = DateTime.UtcNow;
         _db.TaxPayments.Add(tax);
         await _db.SaveChangesAsync();
@@ -159,10 +161,26 @@ public class TaxService : ITaxService
         var existing = await _db.TaxPayments.FirstOrDefaultAsync(t => t.Id == tax.Id && t.UserId == userId);
         if (existing == null || existing.IsPaid) return;
 
-        existing.Name = tax.Name.Trim();
+        tax.Name = tax.Name.Trim();
+        ValidateTaxEntity(tax);
+        existing.Name = tax.Name;
         existing.Amount = tax.Amount;
         existing.DueDate = tax.DueDate;
         await _db.SaveChangesAsync();
+    }
+
+    private static void ValidateTaxEntity(TaxPayment tax)
+    {
+        if (string.IsNullOrWhiteSpace(tax.Name))
+            throw new ArgumentException("Укажите название налогового платежа");
+        if (tax.Name.Length > TaxFieldValidation.MaxTaxNameLength)
+            throw new ArgumentException($"Название не длиннее {TaxFieldValidation.MaxTaxNameLength} символов");
+        if (tax.Amount <= 0)
+            throw new ArgumentException("Сумма должна быть больше нуля");
+        if (tax.Amount > TaxFieldValidation.MaxAmount)
+            throw new ArgumentException($"Сумма не может быть больше {TaxFieldValidation.MaxAmount:N0} BYN");
+        if (tax.DueDate.Year < 2000 || tax.DueDate.Year > 2100)
+            throw new ArgumentException("Укажите корректную дату срока уплаты");
     }
 
     public async Task DeleteTaxAsync(int taxId, string userId)

@@ -37,9 +37,9 @@ public class TaxAutoRuleService : ITaxAutoRuleService
         rule.PaymentName = rule.PaymentName.Trim();
         rule.Formula = rule.Formula.Trim();
 
-        var test = TaxFormulaEvaluator.TryEvaluate(rule.Formula, new TaxFormulaContext { Income = 1000, Expenses = 200 });
-        if (!test.Ok)
-            throw new InvalidOperationException(test.Error ?? "Неверная формула");
+        var validation = TaxFieldValidation.ValidateAutoRule(rule);
+        if (validation.HasErrors)
+            throw new InvalidOperationException(validation.FirstError());
 
         if (rule.Id == 0)
         {

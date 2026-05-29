@@ -176,6 +176,14 @@
         showError = false;
         try
         {
+            var orgValidation = TaxFieldValidation.ValidateOrganizationSettings(companyName, unp, minCashBalance);
+            if (orgValidation.HasErrors)
+            {
+                _errorMessage = orgValidation.FirstError() ?? "Проверьте поля настроек";
+                showError = true;
+                return;
+            }
+
             if (!Enum.TryParse<TaxSystem>(taxSystem, out var parsedTax))
                 parsedTax = TaxSystem.USN;
             if (!Enum.TryParse<TaxpayerKind>(taxpayerKind, out var parsedKind))
@@ -206,7 +214,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = TaxFieldValidation.TranslateError(ex);
             showError = true;
         }
         finally

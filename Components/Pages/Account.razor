@@ -62,28 +62,28 @@
                             <div class="card-header">Личная информация</div>
                             <div class="card-body">
                                 <EditForm Model="@profileModel" OnValidSubmit="SaveProfile" Context="profileForm">
-                                    <DataAnnotationsValidator />
-                                    <ValidationSummary class="text-danger mb-2" />
+                                    <RussianDataAnnotationsValidator />
+                                    <RussianValidationSummary class="text-danger mb-2" />
                                     <div class="form-grid">
                                         <div class="form-group">
                                             <label class="form-label">Имя</label>
                                             <InputText class="form-input" @bind-Value="profileModel.FirstName" maxlength="@AuthFieldValidation.MaxNameLength" />
-                                            <ValidationMessage For="() => profileModel.FirstName" />
+                                            <RussianValidationMessage For="() => profileModel.FirstName" />
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label">Фамилия</label>
                                             <InputText class="form-input" @bind-Value="profileModel.LastName" maxlength="@AuthFieldValidation.MaxNameLength" />
-                                            <ValidationMessage For="() => profileModel.LastName" />
+                                            <RussianValidationMessage For="() => profileModel.LastName" />
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label">Email</label>
                                             <InputText type="email" class="form-input" @bind-Value="profileModel.Email" maxlength="@AuthFieldValidation.MaxEmailLength" />
-                                            <ValidationMessage For="() => profileModel.Email" />
+                                            <RussianValidationMessage For="() => profileModel.Email" />
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label">Телефон</label>
                                             <InputText class="form-input" @bind-Value="profileModel.Phone" placeholder="+375..." maxlength="@AuthFieldValidation.MaxPhoneLength" />
-                                            <ValidationMessage For="() => profileModel.Phone" />
+                                            <RussianValidationMessage For="() => profileModel.Phone" />
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label">Логин</label>
@@ -149,24 +149,24 @@
                                 else
                                 {
                                     <EditForm Model="@passwordModel" OnValidSubmit="ChangePassword" Context="passwordForm">
-                                        <DataAnnotationsValidator />
-                                        <ValidationSummary class="text-danger mb-2" />
+                                        <RussianDataAnnotationsValidator />
+                                        <RussianValidationSummary class="text-danger mb-2" />
                                         <div class="form-grid">
                                             <div class="form-group">
                                                 <label class="form-label">Текущий пароль</label>
                                                 <InputText type="password" class="form-input" @bind-Value="passwordModel.OldPassword" maxlength="@AuthFieldValidation.MaxPasswordLength" />
-                                                <ValidationMessage For="() => passwordModel.OldPassword" />
+                                                <RussianValidationMessage For="() => passwordModel.OldPassword" />
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Новый пароль</label>
                                                 <InputText type="password" class="form-input" @bind-Value="passwordModel.NewPassword" maxlength="@AuthFieldValidation.MaxPasswordLength" />
                                                 <div class="small text-muted">Минимум @AuthFieldValidation.MinPasswordLength символов, хотя бы одна цифра</div>
-                                                <ValidationMessage For="() => passwordModel.NewPassword" />
+                                                <RussianValidationMessage For="() => passwordModel.NewPassword" />
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Подтверждение</label>
                                                 <InputText type="password" class="form-input" @bind-Value="passwordModel.ConfirmPassword" maxlength="@AuthFieldValidation.MaxPasswordLength" />
-                                                <ValidationMessage For="() => passwordModel.ConfirmPassword" />
+                                                <RussianValidationMessage For="() => passwordModel.ConfirmPassword" />
                                             </div>
                                         </div>
                                         <div class="mt-3" style="display:flex;gap:8px">

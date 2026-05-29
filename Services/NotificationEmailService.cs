@@ -25,15 +25,26 @@ public class NotificationSettings
 public class NotificationEmailService : INotificationEmailService
 {
     private readonly SmtpSettings _smtp;
+    private readonly AppSettings _app;
     private readonly ILogger<NotificationEmailService> _logger;
 
-    public NotificationEmailService(IOptions<SmtpSettings> smtp, ILogger<NotificationEmailService> logger)
+    public NotificationEmailService(
+        IOptions<SmtpSettings> smtp,
+        IOptions<AppSettings> app,
+        ILogger<NotificationEmailService> logger)
     {
         _smtp = smtp.Value;
+        _app = app.Value;
         _logger = logger;
     }
 
-    public async Task SendUpcomingPaymentNotificationAsync(string userEmail, string paymentName, decimal amount, DateTime dueDate, string paymentType, int daysUntilDue)
+    public async Task SendUpcomingPaymentNotificationAsync(
+        string userEmail,
+        string paymentName,
+        decimal amount,
+        DateTime dueDate,
+        string paymentType,
+        int daysUntilDue)
     {
         try
         {
@@ -43,44 +54,15 @@ public class NotificationEmailService : INotificationEmailService
                 return;
             }
 
-            var typeLabel = paymentType == "reminder" ? "платёж" : "налог";
-            var body = $@"
-<!DOCTYPE html>
-<html>
-<head><meta charset='utf-8'></head>
-<body style='margin:0;padding:0;background:#f5f0ff;font-family:system-ui,sans-serif'>
-<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center' style='padding:40px 0'>
-<table width='500' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:12px;overflow:shadow 0 2px 8px rgba(0,0,0,0.1)'>
-<tr><td style='background:#7c3aed;padding:24px;text-align:center'>
-<h1 style='color:#fff;margin:0;font-size:22px'>MiniFinance</h1>
-</td></tr>
-<tr><td style='padding:32px 24px'>
-<h2 style='margin:0 0 16px;color:#1a1a1a;font-size:18px'>Напоминание о платеже</h2>
-<p style='color:#555;font-size:15px;line-height:1.6'>
-До срока оплаты <strong>{typeLabel}</strong> осталось <strong style='color:#7c3aed'>{daysUntilDue} дн.</strong>
-</p>
-<table style='width:100%;border-collapse:collapse;margin-top:16px'>
-<tr><td style='padding:8px 0;color:#888'>Название</td><td style='padding:8px 0;color:#1a1a1a;font-weight:600'>{paymentName}</td></tr>
-<tr><td style='padding:8px 0;color:#888'>Сумма</td><td style='padding:8px 0;color:#1a1a1a;font-weight:600'>{amount:N2}</td></tr>
-<tr><td style='padding:8px 0;color:#888'>Срок</td><td style='padding:8px 0;color:#1a1a1a;font-weight:600'>{dueDate:dd.MM.yyyy}</td></tr>
-</table>
-</td></tr>
-<tr><td style='padding:0 24px 24px;text-align:center'>
-<a href='https://localhost:7275' style='display:inline-block;background:#7c3aed;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600'>Открыть MiniFinance</a>
-</td></tr>
-</table>
-</td></tr></table>
-</body>
-</html>";
+            var template = EmailTemplateBuilder.BuildPaymentReminder(new EmailTemplateBuilder.PaymentReminderModel(
+                paymentName,
+                amount,
+                dueDate,
+                paymentType,
+                daysUntilDue,
+                _app.PublicUrl));
 
-            var message = new MimeMessage();
-            message.From.Add(new MailboxAddress(_smtp.FromName, _smtp.FromEmail));
-            message.To.Add(new MailboxAddress("", userEmail));
-            message.Subject = $"MiniFinance: {typeLabel} «{paymentName}» — {daysUntilDue} дн. до срока";
-
-            var bodyBuilder = new BodyBuilder { HtmlBody = body };
-            message.Body = bodyBuilder.ToMessageBody();
-
+            var message = CreateMessage(userEmail, template.Subject, template.HtmlBody, template.TextBody);
             await SendMessageAsync(message);
 
             _logger.LogInformation("Notification email sent to {Email}: {PaymentName}", userEmail, paymentName);
@@ -101,34 +83,8 @@ public class NotificationEmailService : INotificationEmailService
                 return;
             }
 
-            var message = new MimeMessage();
-            message.From.Add(new MailboxAddress(_smtp.FromName, _smtp.FromEmail));
-            message.To.Add(new MailboxAddress("", userEmail));
-            message.Subject = "MiniFinance — Тестовое письмо";
-
-            var bodyBuilder = new BodyBuilder
-            {
-                HtmlBody = @"
-<!DOCTYPE html>
-<html>
-<head><meta charset='utf-8'></head>
-<body style='margin:0;padding:0;background:#f5f0ff;font-family:system-ui,sans-serif'>
-<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center' style='padding:40px 0'>
-<table width='400' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:12px;overflow:shadow 0 2px 8px rgba(0,0,0,0.1)'>
-<tr><td style='background:#7c3aed;padding:24px;text-align:center'>
-<h1 style='color:#fff;margin:0;font-size:22px'>MiniFinance</h1>
-</td></tr>
-<tr><td style='padding:32px 24px;text-align:center'>
-<h2 style='margin:0 0 8px;color:#1a1a1a'>Тестовое письмо</h2>
-<p style='color:#555'>Email-уведомления настроены корректно!</p>
-</td></tr>
-</table>
-</td></tr></table>
-</body>
-</html>"
-            };
-            message.Body = bodyBuilder.ToMessageBody();
-
+            var template = EmailTemplateBuilder.BuildTestEmail(_app.PublicUrl);
+            var message = CreateMessage(userEmail, template.Subject, template.HtmlBody, template.TextBody);
             await SendMessageAsync(message);
 
             _logger.LogInformation("Test email sent to {Email}", userEmail);
@@ -148,13 +104,43 @@ public class NotificationEmailService : INotificationEmailService
             return;
         }
 
+        var message = CreateMessage(userEmail, subject, htmlBody, null);
+        await SendMessageAsync(message);
+    }
+
+    public async Task<int> SendAllUpcomingNotificationsAsync(
+        IEnumerable<(string Email, string Name, decimal Amount, DateTime DueDate, string Type, int DaysUntil)> items)
+    {
+        var sent = 0;
+        foreach (var item in items)
+        {
+            try
+            {
+                await SendUpcomingPaymentNotificationAsync(
+                    item.Email, item.Name, item.Amount, item.DueDate, item.Type, item.DaysUntil);
+                sent++;
+            }
+            catch
+            {
+                // already logged
+            }
+        }
+
+        return sent;
+    }
+
+    private MimeMessage CreateMessage(string userEmail, string subject, string htmlBody, string? textBody)
+    {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(_smtp.FromName, _smtp.FromEmail));
         message.To.Add(new MailboxAddress("", userEmail));
         message.Subject = subject;
-        message.Body = new BodyBuilder { HtmlBody = htmlBody }.ToMessageBody();
 
-        await SendMessageAsync(message);
+        var builder = new BodyBuilder { HtmlBody = htmlBody };
+        if (!string.IsNullOrWhiteSpace(textBody))
+            builder.TextBody = textBody;
+        message.Body = builder.ToMessageBody();
+        return message;
     }
 
     private async Task SendMessageAsync(MimeMessage message)
@@ -174,19 +160,4 @@ public class NotificationEmailService : INotificationEmailService
             587 => SecureSocketOptions.StartTls,
             _ => _smtp.EnableSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None
         };
-
-    public async Task<int> SendAllUpcomingNotificationsAsync(IEnumerable<(string Email, string Name, decimal Amount, DateTime DueDate, string Type, int DaysUntil)> items)
-    {
-        var sent = 0;
-        foreach (var item in items)
-        {
-            try
-            {
-                await SendUpcomingPaymentNotificationAsync(item.Email, item.Name, item.Amount, item.DueDate, item.Type, item.DaysUntil);
-                sent++;
-            }
-            catch { /* already logged */ }
-        }
-        return sent;
-    }
 }

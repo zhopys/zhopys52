@@ -26,6 +26,7 @@ public sealed class TaxCalculatorInput
     public decimal IncomeFromIndividuals { get; init; }
     public decimal IncomeFromLegalEntities { get; init; }
     public decimal UnifiedTaxAmount { get; init; }
+    public bool IncludeFsznEstimate { get; init; }
 }
 
 public static class TaxCalculatorHelper
@@ -43,27 +44,38 @@ public static class TaxCalculatorHelper
 
         return input.System switch
         {
-            TaxSystem.USN => CalculateUsnRb(input.Income),
+            TaxSystem.USN => CalculateUsnRb(input),
             TaxSystem.OSN => CalculateOsnRb(input),
-            _ => CalculateUsnRb(input.Income)
+            _ => CalculateUsnRb(input)
         };
     }
 
     public static TaxCalculationResult Calculate(TaxSystem system, decimal income, decimal expenses = 0) =>
         Calculate(new TaxCalculatorInput { System = system, Income = income, Expenses = expenses });
 
-    private static TaxCalculationResult CalculateUsnRb(decimal income)
+    private static TaxCalculationResult CalculateUsnRb(TaxCalculatorInput input)
     {
         const decimal rate = 0.06m;
+        var income = input.Income;
         var amount = Math.Round(income * rate, 2);
+        var lines = new List<TaxCalcLine>
+        {
+            new() { Name = "УСН (6% от выручки)", Amount = amount }
+        };
+
+        var fszn = AppendFsznEstimate(input, lines);
+        var total = amount + fszn;
+
         return new TaxCalculationResult
         {
-            TaxAmount = amount,
-            EffectiveRate = 6m,
+            TaxAmount = total,
+            EffectiveRate = income > 0 ? Math.Round(total / income * 100, 1) : 0,
             SuggestedPaymentName = "УСН",
             Description =
-                $"УСН (РБ): {income:N0}{BynCurrency.Suffix} выручки × 6% ≈ {amount:N2}{BynCurrency.Suffix}. Расходы в расчёт не входят. Срок — квартальная декларация.",
-            Lines = [new TaxCalcLine { Name = "УСН (6% от выручки)", Amount = amount }]
+                $"УСН (РБ): {income:N0}{BynCurrency.Suffix} выручки × 6% ≈ {amount:N2}{BynCurrency.Suffix}." +
+                (fszn > 0 ? $" ФСЗН (оценка) ≈ {fszn:N2}{BynCurrency.Suffix}." : " Расходы в расчёт не входят.") +
+                " Срок — квартальная декларация.",
+            Lines = lines
         };
     }
 
@@ -89,17 +101,38 @@ public static class TaxCalculatorHelper
         }
 
         var total = incomeTax + vat;
+        var fszn = AppendFsznEstimate(input, lines);
+        total += fszn;
+
+        var profitNote = input.Expenses > input.Income
+            ? " Расходы превышают доход — налоговая база принята как 0."
+            : "";
+
         return new TaxCalculationResult
         {
             TaxAmount = total,
             EffectiveRate = input.Income > 0 ? Math.Round(total / input.Income * 100, 1) : 0,
             SuggestedPaymentName = isIp ? "Подоходный" : "Налог на прибыль",
             Description =
-                $"ОСН: доход {input.Income:N0} − расход {input.Expenses:N0} = база {profit:N0}{BynCurrency.Suffix}. " +
+                $"ОСН: доход {input.Income:N0} − расход {input.Expenses:N0} = база {profit:N0}{BynCurrency.Suffix}.{profitNote} " +
                 $"{taxName} {ratePct}% ≈ {incomeTax:N2}{BynCurrency.Suffix}" +
-                (vat > 0 ? $", НДС (оценка) ≈ {vat:N2}{BynCurrency.Suffix}" : "") + ".",
+                (vat > 0 ? $", НДС (оценка) ≈ {vat:N2}{BynCurrency.Suffix}" : "") +
+                (fszn > 0 ? $", ФСЗН (оценка) ≈ {fszn:N2}{BynCurrency.Suffix}" : "") + ".",
             Lines = lines
         };
+    }
+
+    private static decimal AppendFsznEstimate(TaxCalculatorInput input, List<TaxCalcLine> lines)
+    {
+        if (!input.IncludeFsznEstimate || input.Income <= 0)
+            return 0;
+
+        var fszn = Math.Round(input.Income * 0.35m, 2);
+        if (fszn <= 0)
+            return 0;
+
+        lines.Add(new TaxCalcLine { Name = "ФСЗН (оценка)", Amount = fszn });
+        return fszn;
     }
 
     private static TaxCalculationResult CalculateNpd(TaxCalculatorInput input)

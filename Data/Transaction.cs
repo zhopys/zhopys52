@@ -21,10 +21,12 @@ namespace MiniFinance.Data.Models
 
         [Required(ErrorMessage = "Укажите дату")]
         [DataType(DataType.Date)]
+        [Display(Name = "Дата")]
         public DateTime Date { get; set; } = DateTime.Today;
 
         [Required(ErrorMessage = "Укажите сумму")]
         [Range(-1000000000, 1000000000, ErrorMessage = "Сумма вне допустимого диапазона")]
+        [Display(Name = "Сумма")]
         public decimal Amount { get; set; }
 
         [NotMapped]
@@ -32,6 +34,7 @@ namespace MiniFinance.Data.Models
 
         [Required(ErrorMessage = "Укажите описание")]
         [StringLength(200, MinimumLength = 1, ErrorMessage = "Описание до 200 символов")]
+        [Display(Name = "Описание")]
         public string Description { get; set; } = string.Empty;
 
         [StringLength(50)]

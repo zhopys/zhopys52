@@ -34,19 +34,19 @@
         }
 
         <EditForm EditContext="_editContext" method="post" OnSubmit="RegisterUser" FormName="register">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
+            <RussianDataAnnotationsValidator />
+            <RussianValidationSummary class="text-danger" role="alert" />
 
             <div class="form-group">
                 <label class="label">Email</label>
                 <InputText @bind-Value="Input.Email" class="input" autocomplete="username" placeholder="name@example.com" />
-                <ValidationMessage For="() => Input.Email" />
+                <RussianValidationMessage For="() => Input.Email" />
             </div>
 
             <div class="form-group">
                 <label class="label">Пароль</label>
                 <InputText type="password" @bind-Value="Input.Password" class="input" autocomplete="new-password" placeholder="Мин. 8 символов" />
-                <ValidationMessage For="() => Input.Password" />
+                <RussianValidationMessage For="() => Input.Password" />
                 <ul class="small text-muted" style="margin:6px 0 0;padding-left:1.1rem;line-height:1.5">
                     <li>Не менее @AuthFieldValidation.MinPasswordLength символов</li>
                     <li>Цифра, заглавная и строчная буква</li>
@@ -57,7 +57,7 @@
             <div class="form-group">
                 <label class="label">Подтверждение пароля</label>
                 <InputText type="password" @bind-Value="Input.ConfirmPassword" class="input" autocomplete="new-password" placeholder="Повторите пароль" />
-                <ValidationMessage For="() => Input.ConfirmPassword" />
+                <RussianValidationMessage For="() => Input.ConfirmPassword" />
             </div>
 
             <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem" disabled="@_submitting">

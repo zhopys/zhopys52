@@ -1,0 +1,58 @@
+@using System.Linq.Expressions
+@using MiniFinance.Services
+@implements IDisposable
+
+@if (_messages.Count > 0)
+{
+    @foreach (var message in _messages)
+    {
+        <div class="validation-message @CssClass">@message</div>
+    }
+}
+
+@code {
+    private readonly List<string> _messages = new();
+
+    [CascadingParameter]
+    private EditContext? EditContext { get; set; }
+
+    [Parameter]
+    public Expression<Func<object>>? For { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string? CssClass => AdditionalAttributes?.TryGetValue("class", out var cls) == true ? cls?.ToString() : null;
+
+    protected override void OnInitialized()
+    {
+        if (EditContext != null)
+            EditContext.OnValidationStateChanged += HandleValidationStateChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        RefreshMessages();
+    }
+
+    private void HandleValidationStateChanged(object? sender, ValidationStateChangedEventArgs e) => RefreshMessages();
+
+    private void RefreshMessages()
+    {
+        _messages.Clear();
+        if (EditContext == null || For == null)
+            return;
+
+        var field = FieldIdentifier.Create(For);
+        foreach (var message in EditContext.GetValidationMessages(field))
+            _messages.Add(RussianValidationMessages.Translate(message, field));
+
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        if (EditContext != null)
+            EditContext.OnValidationStateChanged -= HandleValidationStateChanged;
+    }
+}

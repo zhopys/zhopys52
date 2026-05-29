@@ -1452,6 +1452,13 @@ textarea.input {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-weak);
 }
+.form-input.input-invalid {
+  border-color: var(--danger);
+}
+.form-input.input-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent);
+}
 .form-select {
   padding: 5px 12px;
   font-size: 14px;

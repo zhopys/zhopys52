@@ -25,12 +25,12 @@
         }
 
         <EditForm EditContext="_editContext" FormName="resend-email-confirmation" OnSubmit="OnSubmitAsync" method="post">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
+            <RussianDataAnnotationsValidator />
+            <RussianValidationSummary class="text-danger" role="alert" />
             <div class="form-group">
                 <label class="label">Email</label>
                 <InputText @bind-Value="Input.Email" class="input" placeholder="name@example.com" />
-                <ValidationMessage For="() => Input.Email" />
+                <RussianValidationMessage For="() => Input.Email" />
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem" disabled="@_submitting">
                 @if (_submitting) { <span class="spinner" style="width:14px;height:14px;border-width:2px"></span> }

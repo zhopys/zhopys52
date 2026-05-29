@@ -1,8 +1,10 @@
+using MiniFinance.Data.Models;
+
 namespace MiniFinance.Services;
 
 public static class TaxFormHelper
 {
-    private static readonly string[] KnownTypes = ["НДС", "УСН", "ФСЗН", "Подоходный"];
+    private static readonly string[] KnownTypes = ["НДС", "УСН", "ФСЗН", "Подоходный", "НПД", "Единый налог"];
 
     public static (string TypeSelect, string CustomName) MapToFormFields(string lineName, string? suggestedPaymentName = null)
     {
@@ -12,13 +14,27 @@ public static class TaxFormHelper
         return ("Другое", string.IsNullOrWhiteSpace(lineName) ? "Налог" : lineName.Trim());
     }
 
-    public static string ResolvePaymentName(string typeSelect, string customName) =>
-        typeSelect == "Другое"
+    public static string ResolvePaymentName(string typeSelect, string customName, string? fullNameOverride = null)
+    {
+        if (!string.IsNullOrWhiteSpace(fullNameOverride))
+            return fullNameOverride.Trim();
+
+        return typeSelect == "Другое"
             ? (string.IsNullOrWhiteSpace(customName) ? "Налог" : customName.Trim())
             : typeSelect;
+    }
 
     public static bool IsKnownTypeName(string name) =>
         KnownTypes.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    public static string GetDefaultTypeSelect(TaxSystem? taxSystem) => taxSystem switch
+    {
+        TaxSystem.USN => "УСН",
+        TaxSystem.OSN => "НДС",
+        TaxSystem.NPD => "НПД",
+        TaxSystem.UnifiedTax => "Единый налог",
+        _ => "УСН"
+    };
 
     private static string? InferType(string text)
     {
@@ -32,8 +48,8 @@ public static class TaxFormHelper
             || text.Contains("НДФЛ", StringComparison.OrdinalIgnoreCase)
             || text.Contains("налог на прибыль", StringComparison.OrdinalIgnoreCase)) return "Подоходный";
         if (text.Contains("НПД", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("профдоход", StringComparison.OrdinalIgnoreCase)) return "Другое";
-        if (text.Contains("Един", StringComparison.OrdinalIgnoreCase)) return "Другое";
+            || text.Contains("профдоход", StringComparison.OrdinalIgnoreCase)) return "НПД";
+        if (text.Contains("Един", StringComparison.OrdinalIgnoreCase)) return "Единый налог";
         if (KnownTypes.Any(k => text.Equals(k, StringComparison.OrdinalIgnoreCase))) return text;
         return null;
     }
