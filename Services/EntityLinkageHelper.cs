@@ -35,16 +35,17 @@ public static class EntityLinkageHelper
             return;
         }
 
-        var name = transaction.Counterparty.Trim();
-        var existing = await db.Counterparties
-            .FirstOrDefaultAsync(c => c.UserId == userId && c.Name == name);
+        var canonical = CounterpartyNameMatcher.CanonicalDisplayName(transaction.Counterparty);
+        var all = await db.Counterparties.Where(c => c.UserId == userId).ToListAsync();
+        var existing = CounterpartyNameMatcher.FindBestMatch(canonical, all)
+                       ?? all.FirstOrDefault(c => string.Equals(c.Name, canonical, StringComparison.OrdinalIgnoreCase));
 
         if (existing == null)
         {
             existing = new CounterpartyRecord
             {
                 UserId = userId,
-                Name = name,
+                Name = canonical,
                 Type = transaction.Amount >= 0 ? CounterpartyType.Client : CounterpartyType.Supplier,
                 CreatedAt = DateTime.UtcNow
             };
@@ -78,16 +79,17 @@ public static class EntityLinkageHelper
         if (string.IsNullOrWhiteSpace(debt.CounterpartyName))
             throw new InvalidOperationException("Укажите контрагента.");
 
-        var name = debt.CounterpartyName.Trim();
-        var existing = await db.Counterparties
-            .FirstOrDefaultAsync(c => c.UserId == userId && c.Name == name);
+        var canonical = CounterpartyNameMatcher.CanonicalDisplayName(debt.CounterpartyName);
+        var all = await db.Counterparties.Where(c => c.UserId == userId).ToListAsync();
+        var existing = CounterpartyNameMatcher.FindBestMatch(canonical, all)
+                       ?? all.FirstOrDefault(c => string.Equals(c.Name, canonical, StringComparison.OrdinalIgnoreCase));
 
         if (existing == null)
         {
             existing = new CounterpartyRecord
             {
                 UserId = userId,
-                Name = name,
+                Name = canonical,
                 Type = debt.Type == DebtType.Receivable ? CounterpartyType.Client : CounterpartyType.Supplier,
                 CreatedAt = DateTime.UtcNow
             };

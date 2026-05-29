@@ -194,6 +194,8 @@ namespace MiniFinance.Services
             var result = new TransactionImportResult();
             await _categorizationService.EnsureDefaultCategoriesAsync();
 
+            var counterpartyCache = await CounterpartyImportCache.LoadAsync(_db, ownerId);
+
             TransactionImportBatch? batch = null;
             if (batchMeta != null)
             {
@@ -222,7 +224,10 @@ namespace MiniFinance.Services
                     if (string.IsNullOrWhiteSpace(t.Category))
                         t.Category = _categorizationService.CategorizeTransaction(t.Description, t.Amount);
 
-                    await ValidateTransactionAsync(t, ownerId, isNew: true);
+                    if (!string.IsNullOrWhiteSpace(t.Counterparty))
+                        counterpartyCache.ApplyToTransaction(_db, t);
+
+                    await ValidateTransactionAsync(t, ownerId, isNew: true, skipCounterpartyLink: true);
                     _db.Transactions.Add(t);
                     result.SuccessCount++;
                 }
@@ -352,7 +357,7 @@ namespace MiniFinance.Services
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        private async Task ValidateTransactionAsync(Transaction transaction, string userId, bool isNew)
+        private async Task ValidateTransactionAsync(Transaction transaction, string userId, bool isNew, bool skipCounterpartyLink = false)
         {
             if (transaction == null)
                 throw new ArgumentNullException(nameof(transaction));
@@ -384,7 +389,8 @@ namespace MiniFinance.Services
             transaction.Category = cat.Name;
 
             await EntityLinkageHelper.ValidateProjectAsync(_db, transaction.ProjectId, userId);
-            await EntityLinkageHelper.ApplyCounterpartyToTransactionAsync(_db, transaction, userId);
+            if (!skipCounterpartyLink)
+                await EntityLinkageHelper.ApplyCounterpartyToTransactionAsync(_db, transaction, userId);
         }
 
     }

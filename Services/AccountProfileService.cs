@@ -12,15 +12,18 @@ public class AccountProfileService : IAccountProfileService
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<AccountProfileService> _logger;
 
     public AccountProfileService(
         ApplicationDbContext db,
         UserManager<ApplicationUser> userManager,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        ILogger<AccountProfileService> logger)
     {
         _db = db;
         _userManager = userManager;
         _env = env;
+        _logger = logger;
     }
 
     public async Task<AccountDataSummaryDto> GetDataSummaryAsync(string userId)
@@ -134,6 +137,9 @@ public class AccountProfileService : IAccountProfileService
 
     public async Task<(bool Success, string? Error)> DeleteAccountAsync(string userId, string password)
     {
+        if (string.IsNullOrWhiteSpace(userId))
+            return (false, "Пользователь не найден");
+
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
             return (false, "Пользователь не найден");
@@ -141,77 +147,108 @@ public class AccountProfileService : IAccountProfileService
         if (!await _userManager.CheckPasswordAsync(user, password))
             return (false, "Неверный пароль");
 
-        await using var transaction = await _db.Database.BeginTransactionAsync();
         try
         {
-            var txIds = await _db.Transactions.Where(t => t.UserId == userId).Select(t => t.Id).ToListAsync();
-            if (txIds.Count > 0)
-            {
-                var attachmentPaths = await _db.TransactionAttachments
-                    .Where(a => txIds.Contains(a.TransactionId))
-                    .Select(a => a.StoredPath)
-                    .ToListAsync();
-                foreach (var path in attachmentPaths)
-                    DeletePhysicalFile(path);
-
-                await _db.TransactionComments.Where(c => txIds.Contains(c.TransactionId)).ExecuteDeleteAsync();
-                await _db.TransactionAttachments.Where(a => txIds.Contains(a.TransactionId)).ExecuteDeleteAsync();
-                await _db.TransactionTags.Where(tt => txIds.Contains(tt.TransactionId)).ExecuteDeleteAsync();
-            }
-
-            await _db.Transactions.Where(t => t.UserId == userId).ExecuteDeleteAsync();
-            await _db.TransactionImportBatches.Where(b => b.UserId == userId).ExecuteDeleteAsync();
-            await _db.Reminders.Where(r => r.UserId == userId).ExecuteDeleteAsync();
-            await _db.TaxPayments.Where(t => t.UserId == userId).ExecuteDeleteAsync();
-            await _db.TaxAutoRules.Where(r => r.UserId == userId).ExecuteDeleteAsync();
-            await _db.Debts.Where(d => d.UserId == userId).ExecuteDeleteAsync();
-            await _db.Counterparties.Where(c => c.UserId == userId).ExecuteDeleteAsync();
-            await _db.Projects.Where(p => p.UserId == userId).ExecuteDeleteAsync();
-            await _db.Tags.Where(t => t.UserId == userId).ExecuteDeleteAsync();
-            await _db.OrganizationSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync();
-
-            await _db.Users
-                .Where(u => u.WorkspaceOwnerUserId == userId)
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.WorkspaceOwnerUserId, (string?)null));
-
-            _db.ChangeTracker.Clear();
-
-            var freshUser = await _userManager.FindByIdAsync(userId);
-            if (freshUser == null)
-            {
-                await transaction.RollbackAsync();
-                return (false, "Пользователь не найден");
-            }
-
-            var deleteResult = await _userManager.DeleteAsync(freshUser);
-            if (!deleteResult.Succeeded)
-            {
-                await transaction.RollbackAsync();
-                return (false, IdentityErrorTranslator.Join(deleteResult.Errors));
-            }
-
-            await transaction.CommitAsync();
-
-            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads", userId);
-            if (Directory.Exists(uploadsDir))
-            {
-                try { Directory.Delete(uploadsDir, recursive: true); } catch { /* ignore */ }
-            }
-
+            await DeleteUserDataAsync(userId);
+            await DeleteIdentityUserAsync(userId);
+            DeleteUploadsFolder(userId);
+            _logger.LogInformation("Account {UserId} deleted", userId);
             return (true, null);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            await transaction.RollbackAsync();
-            _db.ChangeTracker.Clear();
-            return (false, "Не удалось удалить аккаунт из‑за конфликта данных. Обновите страницу и повторите.");
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
-            return (false, ex.Message);
+            _logger.LogError(ex, "Account deletion failed for {UserId}", userId);
+            return (false, MapDeleteError(ex));
         }
     }
+
+    private async Task DeleteUserDataAsync(string userId)
+    {
+        var txIds = await _db.Transactions
+            .Where(t => t.UserId == userId)
+            .Select(t => t.Id)
+            .ToListAsync();
+
+        if (txIds.Count > 0)
+        {
+            var attachmentPaths = await _db.TransactionAttachments
+                .Where(a => txIds.Contains(a.TransactionId))
+                .Select(a => a.StoredPath)
+                .ToListAsync();
+            foreach (var path in attachmentPaths)
+                DeletePhysicalFile(path);
+
+            await _db.TransactionComments.Where(c => txIds.Contains(c.TransactionId)).ExecuteDeleteAsync();
+            await _db.TransactionAttachments.Where(a => txIds.Contains(a.TransactionId)).ExecuteDeleteAsync();
+            await _db.TransactionTags.Where(tt => txIds.Contains(tt.TransactionId)).ExecuteDeleteAsync();
+        }
+
+        await _db.Transactions.Where(t => t.UserId == userId).ExecuteDeleteAsync();
+        await _db.TransactionImportBatches.Where(b => b.UserId == userId).ExecuteDeleteAsync();
+        await _db.Reminders.Where(r => r.UserId == userId).ExecuteDeleteAsync();
+        await _db.TaxPayments.Where(t => t.UserId == userId).ExecuteDeleteAsync();
+        await _db.TaxAutoRules.Where(r => r.UserId == userId).ExecuteDeleteAsync();
+        await _db.Debts.Where(d => d.UserId == userId).ExecuteDeleteAsync();
+        await _db.Counterparties.Where(c => c.UserId == userId).ExecuteDeleteAsync();
+        await _db.Projects.Where(p => p.UserId == userId).ExecuteDeleteAsync();
+        await _db.Tags.Where(t => t.UserId == userId).ExecuteDeleteAsync();
+        await _db.OrganizationSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync();
+
+        await TryDeleteLegacyRowsAsync("BankStatements", userId);
+        await TryDeleteLegacyRowsAsync("Employees", userId);
+
+        await _db.Users
+            .Where(u => u.WorkspaceOwnerUserId == userId && u.Id != userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.WorkspaceOwnerUserId, (string?)null));
+
+        _db.ChangeTracker.Clear();
+    }
+
+    private async Task DeleteIdentityUserAsync(string userId)
+    {
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM AspNetUserTokens WHERE UserId = {0}", userId);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM AspNetUserLogins WHERE UserId = {0}", userId);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM AspNetUserClaims WHERE UserId = {0}", userId);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM AspNetUserRoles WHERE UserId = {0}", userId);
+
+        var rows = await _db.Database.ExecuteSqlRawAsync("DELETE FROM AspNetUsers WHERE Id = {0}", userId);
+        if (rows == 0)
+            throw new InvalidOperationException("Пользователь уже удалён");
+    }
+
+    private async Task TryDeleteLegacyRowsAsync(string table, string userId)
+    {
+        try
+        {
+            await _db.Database.ExecuteSqlRawAsync($"DELETE FROM {table} WHERE UserId = {{0}}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Skip legacy table {Table} cleanup for {UserId}", table, userId);
+        }
+    }
+
+    private void DeleteUploadsFolder(string userId)
+    {
+        var uploadsDir = Path.Combine(_env.WebRootPath, "uploads", userId);
+        if (!Directory.Exists(uploadsDir))
+            return;
+        try
+        {
+            Directory.Delete(uploadsDir, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not delete uploads folder for {UserId}", userId);
+        }
+    }
+
+    private static string MapDeleteError(Exception ex) => ex switch
+    {
+        DbUpdateException => "Не удалось удалить связанные данные. Повторите позже.",
+        InvalidOperationException ioe => ioe.Message,
+        _ => "Не удалось удалить аккаунт. Повторите позже."
+    };
 
     private void DeletePhysicalFile(string storedPath)
     {

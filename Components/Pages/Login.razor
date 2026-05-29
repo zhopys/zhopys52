@@ -129,6 +129,9 @@
     [SupplyParameterFromQuery(Name = "error")]
     private string? ErrorFromQuery { get; set; }
 
+    [SupplyParameterFromQuery(Name = "deleted")]
+    private string? DeletedQuery { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         _email = EmailFromQuery?.Trim().ToLowerInvariant() ?? "";
@@ -168,6 +171,9 @@
     {
         if (Confirmed == "1")
             _successMessage = "Email подтверждён. Войдите с паролем.";
+
+        if (DeletedQuery == "1")
+            _successMessage = "Учётная запись удалена.";
 
         _unconfirmedError = ErrorFromQuery == "unconfirmed";
         _errorMessage = ErrorFromQuery switch

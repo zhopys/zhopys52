@@ -2566,21 +2566,45 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
 
 .reports-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: 14px;
 }
 .reports-kpi {
-  min-height: 108px;
+  position: relative;
+  min-height: 118px;
   display: flex;
   flex-direction: column;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
 }
+.reports-kpi .kpi-card-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--kpi-accent, var(--accent));
+  opacity: 0.9;
+}
+.reports-kpi.kpi-key-revenue { --kpi-accent: #10b981; }
+.reports-kpi.kpi-key-opex { --kpi-accent: #f59e0b; }
+.reports-kpi.kpi-key-capex { --kpi-accent: #8b5cf6; }
+.reports-kpi.kpi-key-netProfit { --kpi-accent: #3b82f6; }
+.reports-kpi.kpi-key-ebitda { --kpi-accent: #06b6d4; }
+.reports-kpi.kpi-key-roi { --kpi-accent: #64748b; }
+.reports-kpi.kpi-key-freeCash { --kpi-accent: #00d4aa; }
 .reports-kpi .kpi-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   line-height: 1.35;
   word-wrap: break-word;
   overflow-wrap: anywhere;
+  padding-top: 4px;
 }
 .reports-kpi .kpi-hint {
   font-size: 11px;
@@ -2591,23 +2615,48 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
   overflow-wrap: anywhere;
 }
 .reports-kpi .kpi-value {
-  font-size: clamp(18px, 2.5vw, 22px);
-  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
   margin-top: auto;
-  padding-top: 8px;
-  line-height: 1.2;
+  padding-top: 10px;
+  line-height: 1.1;
 }
-.reports-kpi .kpi-delta {
+.reports-kpi .kpi-amount {
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.reports-kpi .kpi-unit {
+  display: inline-flex;
+  align-items: baseline;
+  margin-left: 2px;
+}
+.reports-kpi .kpi-byn.byn-symbol,
+.reports-kpi .kpi-unit .kpi-byn {
+  font-size: clamp(20px, 2.6vw, 26px);
+  line-height: 1;
+  color: var(--text-secondary);
+  opacity: 0.92;
+  transform: translateY(1px);
+}
+.reports-kpi .kpi-footer {
   font-size: 12px;
-  margin-top: 6px;
+  margin-top: 8px;
   line-height: 1.35;
-  word-wrap: break-word;
+  font-weight: 500;
 }
+.reports-kpi .kpi-footer.kpi-good { color: var(--success, #10b981); }
+.reports-kpi .kpi-footer.kpi-bad { color: var(--danger, #ef4444); }
+.reports-kpi .kpi-footer.kpi-flat { color: var(--text-secondary); }
 .kpi-card-interactive {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   border: 1px solid var(--border);
   outline: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 .kpi-card-interactive:hover,
 .kpi-card-interactive:focus-visible {
@@ -2619,26 +2668,6 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
   border-color: var(--accent);
   box-shadow: 0 8px 28px rgba(0, 212, 170, 0.12);
 }
-.kpi-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-.kpi-info-btn {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface-elevated, var(--surface));
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-.kpi-info-btn:hover { color: var(--accent); border-color: var(--accent); }
 .kpi-hint-visible {
   margin-top: 6px;
   padding: 8px 10px;
@@ -2646,21 +2675,12 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
   background: rgba(0, 212, 170, 0.06);
   border: 1px solid rgba(0, 212, 170, 0.15);
 }
-.kpi-share-bar {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border);
-  margin-top: 8px;
-  overflow: hidden;
+.kpi-empty-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
 }
-.kpi-share-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), #3b82f6);
-  border-radius: 2px;
-  transition: width 0.35s ease;
-}
-.kpi-prev { margin-top: 4px; }
-.kpi-empty-hint { margin-top: 6px; font-style: italic; }
 .kpi-card-actions {
   display: flex;
   flex-wrap: wrap;

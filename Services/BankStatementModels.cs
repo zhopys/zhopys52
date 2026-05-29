@@ -40,33 +40,12 @@ public sealed class ParsedBankTransaction
     public int? LinkedTransactionIndex { get; set; }
     public decimal? ExchangeRate { get; set; }
 
-    public string BuildDescription()
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(OperationType))
-            parts.Add(OperationType.Trim());
-        if (!string.IsNullOrWhiteSpace(MerchantPlace))
-            parts.Add(MerchantPlace.Trim());
-        if (OperationCurrency != "BYN" && OperationAmount > 0)
-            parts.Add($"{OperationAmount:N2} {OperationCurrency}");
-        if (Mcc.HasValue)
-            parts.Add($"MCC {Mcc}");
-        return string.Join(" · ", parts);
-    }
+    public string BuildDescription() =>
+        BankImportTextHelper.BuildImportDescription(OperationType, MerchantPlace);
 
-    public string BuildNotes()
-    {
-        var notes = new List<string>();
-        if (!string.IsNullOrWhiteSpace(CardNumber) && CardNumber != "-")
-            notes.Add($"Карта: {CardNumber}");
-        if (PostedDateTime.HasValue)
-            notes.Add($"Отражено: {PostedDateTime:dd.MM.yyyy HH:mm}");
-        if (ExchangeRate.HasValue)
-            notes.Add($"Курс: {ExchangeRate:N4}");
-        if (IsFee && LinkedTransactionIndex.HasValue)
-            notes.Add($"Комиссия к операции #{LinkedTransactionIndex}");
-        return string.Join("; ", notes);
-    }
+    public string BuildNotes() =>
+        BankImportTextHelper.BuildImportNotes(
+            CardNumber, PostedDateTime, ExchangeRate, IsFee, LinkedTransactionIndex);
 }
 
 public sealed class AccountStatement

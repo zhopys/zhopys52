@@ -41,6 +41,14 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         @"^(?<card>[\d\s*\-]+|-)\s+",
         RegexOptions.Compiled);
 
+    private static readonly Regex TimeOnlyRx = new(
+        @"^\d{2}:\d{2}(\s+\d{2}:\d{2})*\s*$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex MerchantSlugRx = new(
+        @"[A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9a-zа-яё0-9\-]*(?:/\s*[A-ZА-ЯЁA-Z0-9][\w\-]*)?",
+        RegexOptions.Compiled);
+
     private readonly ICategorizationService _categorization;
     private readonly ILogger<BankPdfStatementParser> _logger;
 
@@ -75,12 +83,27 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
         foreach (var pt in result.Statement.Transactions)
         {
+            if (pt.AccountAmount <= 0)
+            {
+                result.SkippedInvalid++;
+                continue;
+            }
+
             var signed = pt.IsIncome ? Math.Abs(pt.AccountAmount) : -Math.Abs(pt.AccountAmount);
+            if (Math.Abs(signed) < 0.01m)
+            {
+                result.SkippedInvalid++;
+                continue;
+            }
+
             var desc = pt.BuildDescription();
             pt.Category = MccCategoryMapper.ResolveCategory(
                 pt.Mcc, pt.OperationType, pt.MerchantPlace, pt.IsIncome, _categorization, desc, signed);
 
-            var hash = TransactionHash.Compute(pt.OperationDateTime.Date, signed, desc);
+            var hash = TransactionHash.Compute(
+                pt.OperationDateTime.Date,
+                signed,
+                $"{BankImportTextHelper.SimplifyOperationType(pt.OperationType)}|{pt.MerchantPlace}|{pt.Mcc}");
             if (!seenHashes.Add(hash))
             {
                 result.SkippedDuplicates++;
@@ -156,12 +179,6 @@ public class BankPdfStatementParser : IBankPdfStatementParser
             line = NormalizeSpaces(line);
             if (ShouldSkipLine(line)) continue;
             lines.Add(line);
-
-            foreach (var split in SplitMergedTransactionLines(line))
-            {
-                if (!string.Equals(split, line, StringComparison.Ordinal) && !ShouldSkipLine(split))
-                    lines.Add(split);
-            }
         }
 
         return lines;
@@ -178,31 +195,6 @@ public class BankPdfStatementParser : IBankPdfStatementParser
             sb.Append(words[i].Text);
         }
         return sb.ToString();
-    }
-
-    /// <summary>Разбивает строки, где PdfPig склеил несколько операций в одну линию.</summary>
-    private static IEnumerable<string> SplitMergedTransactionLines(string line)
-    {
-        if (!DateTimeRx.IsMatch(line))
-            yield break;
-
-        var matches = DateTimeRx.Matches(line).ToList();
-        if (matches.Count < 2)
-            yield break;
-
-        var tailHits = TransactionTailAnywhereRx.Matches(line).ToList();
-        if (tailHits.Count < 2)
-            yield break;
-
-        for (var i = 1; i < matches.Count && i < tailHits.Count; i++)
-        {
-            var start = matches[i].Index;
-            var end = i + 1 < tailHits.Count ? tailHits[i + 1].Index : line.Length;
-            if (end <= start) continue;
-            var segment = line[start..end].Trim();
-            if (segment.Length > 20 && LooksLikeTransactionLine(segment))
-                yield return segment;
-        }
     }
 
     private readonly struct WordPosition(double y, double x, double right, double height, string text)
@@ -273,15 +265,17 @@ public class BankPdfStatementParser : IBankPdfStatementParser
             if (IsTableHeaderRepeat(line))
                 continue;
 
-            if (TryParseTransactionLine(line, lineIndex, out var tx))
+            var parsed = ParseTransactionsFromLine(line, lineIndex);
+            if (parsed.Count > 0)
             {
                 if (pendingContinuation != null)
                     list.Add(pendingContinuation);
-                pendingContinuation = tx;
+                list.AddRange(parsed);
+                pendingContinuation = null;
                 continue;
             }
 
-            if (pendingContinuation != null && !LooksLikeTransactionLine(line))
+            if (pendingContinuation != null && IsMerchantContinuation(line))
             {
                 pendingContinuation.MerchantPlace = JoinMerchant(pendingContinuation.MerchantPlace, line);
                 continue;
@@ -293,31 +287,81 @@ public class BankPdfStatementParser : IBankPdfStatementParser
                 {
                     LineNumber = lineIndex,
                     Message = "Не удалось разобрать строку операции.",
-                    RawLine = line
+                    RawLine = Truncate(line, 200)
                 });
             }
         }
 
-        if (pendingContinuation != null)
+        if (pendingContinuation != null && pendingContinuation.AccountAmount > 0)
             list.Add(pendingContinuation);
+
+        return DeduplicateParsedTransactions(list);
+    }
+
+    internal static List<ParsedBankTransaction> ParseTransactionsFromLine(string line, int lineIndex)
+    {
+        var tails = TransactionTailAnywhereRx.Matches(line).ToList();
+        if (tails.Count == 0)
+            return [];
+
+        if (tails.Count == 1)
+        {
+            return TryParseTransactionLine(line, lineIndex, out var single) && IsValidParsedTransaction(single)
+                ? [single]
+                : [];
+        }
+
+        var list = new List<ParsedBankTransaction>();
+        string? sharedCard = null;
+        var cardMatch = CardPrefixRx.Match(line);
+        if (cardMatch.Success)
+        {
+            var rawCard = cardMatch.Groups["card"].Value.Trim();
+            if (BankImportTextHelper.IsPlausibleCardField(rawCard))
+                sharedCard = BankImportTextHelper.NormalizeCardNumber(rawCard);
+        }
+
+        for (var i = 0; i < tails.Count; i++)
+        {
+            var segmentStart = i == 0 ? 0 : tails[i - 1].Index + tails[i - 1].Length;
+            var segment = line[segmentStart..(tails[i].Index + tails[i].Length)].Trim();
+            if (!TryParseTransactionSegment(segment, lineIndex, sharedCard, out var tx))
+                continue;
+            if (!IsValidParsedTransaction(tx))
+                continue;
+            list.Add(tx);
+        }
 
         return list;
     }
 
-    internal static bool TryParseTransactionLine(string line, int lineIndex, out ParsedBankTransaction tx)
+    internal static bool TryParseTransactionLine(string line, int lineIndex, out ParsedBankTransaction tx) =>
+        TryParseTransactionSegment(line, lineIndex, null, out tx);
+
+    private static bool TryParseTransactionSegment(
+        string segment,
+        int lineIndex,
+        string? inheritedCard,
+        out ParsedBankTransaction tx)
     {
         tx = new ParsedBankTransaction { LineIndex = lineIndex };
 
-        if (line.Contains("00.00.0000", StringComparison.Ordinal))
+        if (segment.Contains("00.00.0000", StringComparison.Ordinal))
             return false;
 
-        var work = line;
-        string? card = null;
+        var work = segment;
+        string? card = inheritedCard;
         var cardMatch = CardPrefixRx.Match(work);
         if (cardMatch.Success)
         {
-            card = cardMatch.Groups["card"].Value.Trim();
+            var rawCard = cardMatch.Groups["card"].Value.Trim();
+            if (BankImportTextHelper.IsPlausibleCardField(rawCard))
+                card = BankImportTextHelper.NormalizeCardNumber(rawCard) ?? rawCard;
             work = work[cardMatch.Length..].Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(inheritedCard))
+        {
+            card = inheritedCard;
         }
 
         var dates = DateTimeRx.Matches(work).ToList();
@@ -344,14 +388,13 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         if (!tailMatch.Success)
             tailMatch = TransactionTailAnywhereRx.Match(afterDates);
         if (!tailMatch.Success)
-            tailMatch = TransactionTailAnywhereRx.Match(work);
-        if (!tailMatch.Success)
             return false;
 
         var middle = afterDates[..tailMatch.Index].Trim();
         var (opType, merchant) = SplitOperationTypeAndMerchant(middle);
+        merchant = SanitizeMerchant(merchant);
 
-        tx.CardNumber = card;
+        tx.CardNumber = BankImportTextHelper.NormalizeCardNumber(card);
         tx.OperationDateTime = opDt;
         tx.PostedDateTime = posted;
         tx.OperationType = opType;
@@ -373,6 +416,23 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
         tx.IsFee = MccCategoryMapper.IsFeeOperationType(opType);
         return true;
+    }
+
+    private static bool IsValidParsedTransaction(ParsedBankTransaction tx) =>
+        tx.AccountAmount > 0 && tx.OperationDateTime.Year >= 2000;
+
+    private static List<ParsedBankTransaction> DeduplicateParsedTransactions(List<ParsedBankTransaction> source)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<ParsedBankTransaction>();
+        foreach (var t in source)
+        {
+            var key = $"{t.OperationDateTime:yyyyMMddHHmm}|{t.AccountAmount:F2}|{t.IsIncome}|{SanitizeMerchant(t.MerchantPlace)}|{t.OperationType}";
+            if (!seen.Add(key))
+                continue;
+            result.Add(t);
+        }
+        return result;
     }
 
     internal static void LinkFeesToTransfers(List<ParsedBankTransaction> transactions)
@@ -398,22 +458,85 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
     private static (string OperationType, string? Merchant) SplitOperationTypeAndMerchant(string middle)
     {
+        var work = StripNoiseFromMiddle(middle);
+        if (string.IsNullOrWhiteSpace(work))
+            return ("", null);
+
         foreach (var known in KnownOperationTypes.OrderByDescending(s => s.Length))
         {
-            if (!middle.StartsWith(known, StringComparison.OrdinalIgnoreCase))
+            if (!work.StartsWith(known, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var merchant = middle.Length > known.Length
-                ? middle[known.Length..].Trim()
+            var merchant = work.Length > known.Length
+                ? work[known.Length..].Trim()
                 : null;
-            return (known, string.IsNullOrWhiteSpace(merchant) ? null : merchant);
+            return (known, SanitizeMerchant(merchant));
         }
 
-        var firstSpace = middle.IndexOf(' ');
-        if (firstSpace > 0)
-            return (middle[..firstSpace].Trim(), middle[(firstSpace + 1)..].Trim());
+        foreach (var known in KnownOperationTypes.OrderByDescending(s => s.Length))
+        {
+            var idx = work.IndexOf(known, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+            var merchant = work[(idx + known.Length)..].Trim();
+            return (known, SanitizeMerchant(merchant));
+        }
 
-        return (middle, null);
+        var firstSpace = work.IndexOf(' ');
+        if (firstSpace > 0)
+            return (work[..firstSpace].Trim(), SanitizeMerchant(work[(firstSpace + 1)..].Trim()));
+
+        return (work, null);
+    }
+
+    private static string StripNoiseFromMiddle(string middle)
+    {
+        var s = middle.Trim();
+        s = Regex.Replace(s, @"\b\d{2}:\d{2}\b", " ");
+        s = Regex.Replace(s, @"\b(карты|карта|на\s+КС)\b", " ", RegexOptions.IgnoreCase);
+        return NormalizeSpaces(s);
+    }
+
+    internal static string? SanitizeMerchant(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var s = raw.Trim();
+        s = Regex.Replace(s, @"\b\d{2}\.\d{2}\.\d{4}\b", " ");
+        s = Regex.Replace(s, @"\b\d{2}:\d{2}\b", " ");
+        s = Regex.Replace(s, @"\b(карты|карта|на\s+КС|КС)\b", " ", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\b(BLR|BYN|USD|EUR|RUB|BY)\b", " ", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\b(MINSKIY)\b", " ", RegexOptions.IgnoreCase);
+
+        foreach (var known in KnownOperationTypes.OrderByDescending(x => x.Length))
+            s = Regex.Replace(s, $@"({Regex.Escape(known)}\s*)+", "$1 ", RegexOptions.IgnoreCase);
+
+        s = NormalizeSpaces(s);
+        if (string.IsNullOrWhiteSpace(s) || s.Length < 2)
+            return null;
+        if (TimeOnlyRx.IsMatch(s))
+            return null;
+        if (s.All(c => char.IsDigit(c) || c is ' ' or '.' or ':' or '/'))
+            return null;
+
+        return s;
+    }
+
+    private static bool IsMerchantContinuation(string line)
+    {
+        if (LooksLikeTransactionLine(line))
+            return false;
+        if (TransactionTailAnywhereRx.IsMatch(line))
+            return false;
+        if (TimeOnlyRx.IsMatch(line.Trim()))
+            return false;
+        if (DateTimeRx.Matches(line).Count >= 2)
+            return false;
+        if (line.Contains("Приход", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Расход", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return line.Any(char.IsLetter);
     }
 
     private static bool LooksLikeTransactionLine(string line) =>
@@ -475,12 +598,21 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
     private static string? ExtractCounterpartyName(string? merchant, string operationType)
     {
+        merchant = SanitizeMerchant(merchant);
         if (!string.IsNullOrWhiteSpace(merchant))
         {
-            var m = merchant.Trim();
-            var cut = m.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(cut) && cut.Length <= 150)
-                return cut;
+            var slug = MerchantSlugRx.Matches(merchant)
+                .Select(m => m.Value.Trim())
+                .Where(v => v.Length >= 3 && !v.Equals("BY", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.Length)
+                .FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(slug))
+                return CounterpartyNameMatcher.CanonicalDisplayName(slug);
+
+            var cut = merchant.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(cut))
+                return CounterpartyNameMatcher.CanonicalDisplayName(cut);
         }
 
         if (operationType.Contains("перевод", StringComparison.OrdinalIgnoreCase))
@@ -491,7 +623,11 @@ public class BankPdfStatementParser : IBankPdfStatementParser
 
     private static string JoinMerchant(string? existing, string line)
     {
-        var combined = string.IsNullOrWhiteSpace(existing) ? line : $"{existing} {line}";
+        var extra = SanitizeMerchant(line) ?? line.Trim();
+        if (string.IsNullOrWhiteSpace(extra))
+            return existing ?? "";
+        var combined = string.IsNullOrWhiteSpace(existing) ? extra : $"{existing} {extra}";
+        combined = SanitizeMerchant(combined) ?? combined;
         return combined.Length > 300 ? combined[..300] : combined;
     }
 

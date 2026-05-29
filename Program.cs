@@ -311,6 +311,7 @@ app.MapGet("/do-logout", async (HttpContext ctx, SignInManager<ApplicationUser> 
 
 ConfirmEmailEndpoint.MapConfirmEmailEndpoint(app);
 LoginEndpoint.MapLoginEndpoint(app);
+AccountDeleteEndpoint.MapAccountDeleteEndpoint(app);
 
 app.MapRazorComponents<MiniFinance.Components.App>()
     .AddInteractiveServerRenderMode()

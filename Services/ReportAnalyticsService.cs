@@ -175,7 +175,7 @@ public class ReportAnalyticsService : IReportAnalyticsService
     private static KpiMetricDto Metric(string key, decimal value, decimal prev, string format = "currency")
     {
         var (label, hint) = ReportKpiLabels.Get(key);
-        var change = prev == 0 ? (value == 0 ? 0 : 100) : ((value - prev) / Math.Abs(prev)) * 100;
+        var change = ComputeChangePercent(value, prev);
         var trend = change > 0.5m ? "up" : change < -0.5m ? "down" : "flat";
         if (key is "opex" or "capex") trend = change > 0.5m ? "down" : change < -0.5m ? "up" : "flat";
         return new KpiMetricDto
@@ -185,10 +185,18 @@ public class ReportAnalyticsService : IReportAnalyticsService
             Hint = hint,
             Value = value,
             PreviousValue = prev,
-            ChangePercent = Math.Round(change, 1),
+            ChangePercent = change,
             Trend = trend,
             Format = format
         };
+    }
+
+    private static decimal ComputeChangePercent(decimal value, decimal prev)
+    {
+        if (prev == 0)
+            return value == 0 ? 0 : 100;
+        var change = ((value - prev) / Math.Abs(prev)) * 100;
+        return Math.Round(Math.Clamp(change, -999, 999), 1);
     }
 
     private static CategoryBreakdownChartDto BuildExpenseChart(CategoryReport report, string? highlight)

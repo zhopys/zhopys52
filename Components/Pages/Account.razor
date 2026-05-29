@@ -1,6 +1,7 @@
 @page "/account"
 @page "/profile"
 @rendermode InteractiveServer
+@using Microsoft.AspNetCore.Antiforgery
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -15,6 +16,8 @@
 @inject ApplicationDbContext DbContext
 @inject IAccountProfileService AccountProfile
 @inject ITwoFactorService TwoFactorService
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAntiforgery Antiforgery
 @attribute [Authorize]
 @implements IDisposable
 
@@ -286,14 +289,20 @@
                                 }
                                 else
                                 {
-                                    <div class="form-group mb-2">
-                                        <label class="form-label">Подтвердите паролем</label>
-                                        <input type="password" class="form-input" @bind="_deletePassword" />
-                                    </div>
-                                    <div style="display:flex;gap:8px">
-                                        <button class="btn btn-danger" @onclick="DeleteAccount" disabled="@_deleting">Удалить навсегда</button>
-                                        <button class="btn btn-outline" @onclick="() => _showDeleteConfirm = false">Отмена</button>
-                                    </div>
+                                    <form method="post" action="/Account/Delete">
+                                        @if (_deleteAfTokens is not null)
+                                        {
+                                            <input type="hidden" name="@_deleteAfTokens.FormFieldName" value="@_deleteAfTokens.RequestToken" />
+                                        }
+                                        <div class="form-group mb-2">
+                                            <label class="form-label" for="delete-password">Подтвердите паролем</label>
+                                            <input id="delete-password" type="password" name="password" class="form-input" autocomplete="current-password" required />
+                                        </div>
+                                        <div style="display:flex;gap:8px">
+                                            <button type="submit" class="btn btn-danger">Удалить навсегда</button>
+                                            <button type="button" class="btn btn-outline" @onclick="() => _showDeleteConfirm = false">Отмена</button>
+                                        </div>
+                                    </form>
                                 }
                             </div>
                         </div>
@@ -340,8 +349,13 @@
     private int notificationDaysBefore = 3;
 
     private bool _showDeleteConfirm;
-    private string _deletePassword = "";
-    private bool _deleting;
+    private AntiforgeryTokenSet? _deleteAfTokens;
+
+    [SupplyParameterFromQuery(Name = "deleteError")]
+    public string? DeleteErrorQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "deleteDetail")]
+    public string? DeleteDetailQuery { get; set; }
 
     private decimal _balance;
     private int totalTransactions;
@@ -361,13 +375,45 @@
         if (!string.IsNullOrWhiteSpace(TabQuery) && TabQuery is "personal" or "security" or "notifications" or "data")
             _tab = TabQuery;
 
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+            _deleteAfTokens = Antiforgery.GetAndStoreTokens(httpContext);
+
+        ApplyDeleteQueryErrors();
         await LoadProfileAsync();
+    }
+
+    private void ApplyDeleteQueryErrors()
+    {
+        if (string.IsNullOrWhiteSpace(DeleteErrorQuery))
+            return;
+
+        _tab = "data";
+        _showDeleteConfirm = true;
+        showError = true;
+        errorMessage = DeleteErrorQuery switch
+        {
+            "password" => "Введите пароль для подтверждения удаления.",
+            "session" => "Сессия истекла. Обновите страницу (F5) и повторите.",
+            "empty" => "Заполните пароль.",
+            "failed" => string.IsNullOrWhiteSpace(DeleteDetailQuery)
+                ? "Не удалось удалить аккаунт."
+                : DeleteDetailQuery,
+            _ => "Не удалось удалить аккаунт."
+        };
     }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> _)
     {
-        await LoadProfileAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadProfileAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Схема может завершаться при выходе / удалении аккаунта
+        }
     }
 
     private async Task LoadProfileAsync()
@@ -570,38 +616,6 @@
         {
             errorMessage = IdentityErrorTranslator.Join(result.Errors);
             showError = true;
-        }
-    }
-
-    private async Task DeleteAccount()
-    {
-        if (currentUser == null) return;
-        if (string.IsNullOrWhiteSpace(_deletePassword))
-        {
-            errorMessage = "Введите пароль для подтверждения удаления";
-            showError = true;
-            return;
-        }
-
-        _deleting = true;
-        showError = false;
-        try
-        {
-            var (success, error) = await AccountProfile.DeleteAccountAsync(currentUser.Id, _deletePassword);
-            if (success)
-            {
-                await SignInManager.SignOutAsync();
-                NavigationManager.NavigateTo("/login", forceLoad: true);
-            }
-            else
-            {
-                errorMessage = error ?? "Не удалось удалить аккаунт";
-                showError = true;
-            }
-        }
-        finally
-        {
-            _deleting = false;
         }
     }
 
