@@ -131,7 +131,11 @@
             </div>
         }
 
-        <ReportsKpiGrid Metrics="@(_snapshot?.Kpi ?? Array.Empty<KpiMetricDto>())" Loading="@(_loading && _snapshot == null)" />
+        <ReportsKpiGrid Metrics="@(_snapshot?.Kpi ?? Array.Empty<KpiMetricDto>())"
+                        Loading="@(_loading && _snapshot == null)"
+                        PeriodStart="@(_snapshot?.Filters.Start)"
+                        PeriodEnd="@(_snapshot?.Filters.End)"
+                        CompareMode="@_compareMode" />
 
         @if (_loading && _snapshot == null && !(_taxOnlyMode && _extended != null))
         {

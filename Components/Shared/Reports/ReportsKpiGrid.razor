@@ -1,4 +1,5 @@
 @using MiniFinance.Services
+@inject NavigationManager Navigation
 
 <div class="reports-kpi-grid mb-3">
     @if (Loading)
@@ -16,13 +17,28 @@
     {
         @foreach (var k in Metrics)
         {
-            <div class="kpi-card reports-kpi" title="@k.Hint" data-animate>
-                <div class="kpi-label">@k.Label</div>
-                @if (!string.IsNullOrWhiteSpace(k.Hint))
+            var expanded = _expandedKey == k.Key;
+            var share = GetSharePercent(k);
+            var drillUrl = BuildDrillUrl(k);
+            <div class="kpi-card reports-kpi kpi-card-interactive @(expanded ? "kpi-card-expanded" : "")"
+                 role="button"
+                 tabindex="0"
+                 @onclick="() => ToggleExpand(k.Key)"
+                 @onkeydown="e => OnCardKey(e, k.Key)">
+                <div class="kpi-card-top">
+                    <div class="kpi-label">@k.Label</div>
+                    <button type="button"
+                            class="kpi-info-btn"
+                            title="Подсказка"
+                            aria-label="Подсказка"
+                            @onclick:stopPropagation="true"
+                            @onclick="() => ToggleExpand(k.Key)">?</button>
+                </div>
+                @if (expanded && !string.IsNullOrWhiteSpace(k.Hint))
                 {
-                    <div class="kpi-hint" title="@k.Hint">@k.Hint</div>
+                    <div class="kpi-hint kpi-hint-visible">@k.Hint</div>
                 }
-                <div class="kpi-value">
+                <div class="kpi-value @GetValueClass(k)">
                     @if (k.Format == "percent")
                     {
                         @k.Value.ToString("F1")<small>%</small>
@@ -32,11 +48,44 @@
                         @k.Value.ToString("N0")<small class="text-muted"> <Byn /></small>
                     }
                 </div>
-                @if (Math.Abs(k.ChangePercent) > 0.05m)
+                @if (share.HasValue && k.Format != "percent")
+                {
+                    <div class="kpi-share-bar" title="Доля от выручки за период">
+                        <div class="kpi-share-fill" style="width:@(Math.Min(100, share.Value).ToString("F0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                    </div>
+                }
+                @if (CompareMode != "none" && k.PreviousValue != 0)
+                {
+                    <div class="kpi-prev text-muted small">
+                        Пред. период: @(k.Format == "percent" ? $"{k.PreviousValue:F1}%" : $"{k.PreviousValue:N0} BYN")
+                    </div>
+                }
+                @if (Math.Abs(k.ChangePercent) > 0.05m && CompareMode != "none")
                 {
                     <div class="kpi-delta @GetDeltaClass(k)">
                         @(k.ChangePercent >= 0 ? "+" : "")@k.ChangePercent.ToString("F1")%
                         <span class="text-muted small"> к пред. периоду</span>
+                    </div>
+                }
+                @if (PeriodHasNoActivity && k.Format == "currency" && k.Value == 0 && k.Key != "freeCash")
+                {
+                    <div class="kpi-empty-hint small text-muted">Нет операций в выбранном периоде</div>
+                }
+                @if (expanded)
+                {
+                    <div class="kpi-card-actions" @onclick:stopPropagation="true">
+                        @if (!string.IsNullOrEmpty(drillUrl))
+                        {
+                            <a class="btn btn-sm btn-outline" href="@drillUrl">Открыть детали →</a>
+                        }
+                        @if (k.Key == "freeCash")
+                        {
+                            <a class="btn btn-sm btn-outline" href="/cash-forecast">Прогноз кассы</a>
+                        }
+                        @if (k.Key == "roi")
+                        {
+                            <a class="btn btn-sm btn-outline" href="/projects">Проекты</a>
+                        }
                     </div>
                 }
             </div>
@@ -47,6 +96,46 @@
 @code {
     [Parameter] public IReadOnlyList<KpiMetricDto> Metrics { get; set; } = Array.Empty<KpiMetricDto>();
     [Parameter] public bool Loading { get; set; }
+    [Parameter] public DateTime? PeriodStart { get; set; }
+    [Parameter] public DateTime? PeriodEnd { get; set; }
+    [Parameter] public string CompareMode { get; set; } = "mom";
+    [Parameter] public bool PeriodHasNoActivity { get; set; }
+
+    private string? _expandedKey;
+
+    private void ToggleExpand(string key) =>
+        _expandedKey = _expandedKey == key ? null : key;
+
+    private void OnCardKey(KeyboardEventArgs e, string key)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            ToggleExpand(key);
+        }
+    }
+
+    private decimal? GetSharePercent(KpiMetricDto k)
+    {
+        if (k.Key is "revenue" or "roi" or "freeCash") return null;
+        var revenue = Metrics.FirstOrDefault(m => m.Key == "revenue")?.Value ?? 0;
+        if (revenue <= 0 || k.Value <= 0 || k.Format == "percent") return null;
+        return Math.Round(k.Value / revenue * 100, 1);
+    }
+
+    private string? BuildDrillUrl(KpiMetricDto k)
+    {
+        if (!PeriodStart.HasValue || !PeriodEnd.HasValue) return null;
+        var from = PeriodStart.Value.ToString("yyyy-MM-dd");
+        var to = PeriodEnd.Value.ToString("yyyy-MM-dd");
+
+        return k.Key switch
+        {
+            "revenue" => $"/transactions?from={from}&to={to}&type=income",
+            "opex" or "capex" => $"/transactions?from={from}&to={to}&type=expense",
+            "netProfit" or "ebitda" => $"/transactions?from={from}&to={to}",
+            _ => null
+        };
+    }
 
     private static string GetDeltaClass(KpiMetricDto k) => k.Trend switch
     {
@@ -55,4 +144,15 @@
         _ => "text-muted"
     };
 
+    private static string GetValueClass(KpiMetricDto k)
+    {
+        if (k.Format == "percent") return "";
+        return k.Key switch
+        {
+            "revenue" or "netProfit" or "ebitda" => k.Value >= 0 ? "text-success" : "text-danger",
+            "freeCash" => k.Value >= 0 ? "text-success" : "text-danger",
+            "opex" or "capex" => "text-danger",
+            _ => ""
+        };
+    }
 }

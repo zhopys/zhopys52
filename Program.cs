@@ -55,11 +55,11 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
         options.SignIn.RequireConfirmedAccount = requireConfirmedEmail;
         options.User.RequireUniqueEmail = true;
-        options.Password.RequiredLength = 8;
+        options.Password.RequiredLength = AuthFieldValidation.MinPasswordLength;
         options.Password.RequireDigit = true;
         options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequireUppercase = false;
-        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })

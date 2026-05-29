@@ -40,11 +40,42 @@ public static class AuthFieldValidation
             return (false, $"Пароль должен быть не менее {MinPasswordLength} символов");
         if (password.Length > MaxPasswordLength)
             return (false, $"Пароль не длиннее {MaxPasswordLength} символов");
+        if (password.Any(char.IsWhiteSpace))
+            return (false, "Пароль не должен содержать пробелы");
         if (!password.Any(char.IsDigit))
             return (false, "Пароль должен содержать хотя бы одну цифру");
+        if (!password.Any(char.IsLetter))
+            return (false, "Пароль должен содержать хотя бы одну букву");
+        if (!password.Any(char.IsUpper) || !password.Any(char.IsLower))
+            return (false, "Пароль должен содержать заглавные и строчные буквы");
+        if (password.Any(char.IsControl))
+            return (false, "Пароль содержит недопустимые символы");
+        if (IsCommonWeakPassword(password))
+            return (false, "Слишком простой пароль — выберите более уникальный");
+        return (true, null);
+    }
+
+    /// <summary>Проверка при входе: длина и недопустимые символы, без требований сложности (старые пароли).</summary>
+    public static (bool Ok, string? Error) ValidatePasswordForLogin(string? password)
+    {
+        if (string.IsNullOrEmpty(password))
+            return (false, "Пароль обязателен");
+        if (password.Length > MaxPasswordLength)
+            return (false, $"Пароль не длиннее {MaxPasswordLength} символов");
         if (password.Any(char.IsControl))
             return (false, "Пароль содержит недопустимые символы");
         return (true, null);
+    }
+
+    private static bool IsCommonWeakPassword(string password)
+    {
+        var p = password.ToLowerInvariant();
+        string[] weak =
+        [
+            "password", "password1", "12345678", "qwerty12", "admin123",
+            "пароль123", "пароль12", "mini1234", "finance1"
+        ];
+        return weak.Any(w => p == w || p.Contains(w, StringComparison.Ordinal));
     }
 
     public static (bool Ok, string? Error) ValidateTwoFactorCode(string? code)

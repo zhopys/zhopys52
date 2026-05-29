@@ -401,6 +401,15 @@
     [SupplyParameterFromQuery(Name = "project")]
     public int? QueryProjectId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "type")]
+    public string? QueryType { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? QueryFrom { get; set; }
+
+    [SupplyParameterFromQuery(Name = "to")]
+    public string? QueryTo { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -412,6 +421,14 @@
 
         if (QueryProjectId.HasValue)
             _filterProjectId = QueryProjectId.Value.ToString();
+
+        if (QueryType is "income" or "expense")
+            _filterType = QueryType;
+
+        if (DateTime.TryParse(QueryFrom, out var from))
+            _filterDateFrom = from.Date;
+        if (DateTime.TryParse(QueryTo, out var to))
+            _filterDateTo = to.Date;
 
         _userId = user.Id;
         _authorName = user.Email;

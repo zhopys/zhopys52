@@ -18,11 +18,22 @@ public class AuthFieldValidationTests
 
     [Theory]
     [InlineData("short1", false)]
-    [InlineData("longenough1", true)]
+    [InlineData("Longenough1", true)]
     [InlineData("nodigits", false)]
+    [InlineData("ALLUPPER1", false)]
+    [InlineData("password1", false)]
     public void ValidatePassword_cases(string pwd, bool expected)
     {
         var (ok, _) = AuthFieldValidation.ValidatePassword(pwd);
+        Assert.Equal(expected, ok);
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("anyOldPass1", true)]
+    public void ValidatePasswordForLogin_cases(string pwd, bool expected)
+    {
+        var (ok, _) = AuthFieldValidation.ValidatePasswordForLogin(pwd);
         Assert.Equal(expected, ok);
     }
 

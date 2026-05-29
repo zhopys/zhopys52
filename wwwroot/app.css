@@ -2603,6 +2603,72 @@ tr.profit-negative td { background: rgba(239, 68, 68, 0.04); }
   line-height: 1.35;
   word-wrap: break-word;
 }
+.kpi-card-interactive {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  border: 1px solid var(--border);
+  outline: none;
+}
+.kpi-card-interactive:hover,
+.kpi-card-interactive:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(17, 12, 45, 0.08);
+  border-color: var(--accent);
+}
+.kpi-card-expanded {
+  border-color: var(--accent);
+  box-shadow: 0 8px 28px rgba(0, 212, 170, 0.12);
+}
+.kpi-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kpi-info-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated, var(--surface));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+.kpi-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+.kpi-hint-visible {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 212, 170, 0.06);
+  border: 1px solid rgba(0, 212, 170, 0.15);
+}
+.kpi-share-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.kpi-share-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #3b82f6);
+  border-radius: 2px;
+  transition: width 0.35s ease;
+}
+.kpi-prev { margin-top: 4px; }
+.kpi-empty-hint { margin-top: 6px; font-style: italic; }
+.kpi-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
 .reports-period-banner {
   display: flex;
   flex-wrap: wrap;

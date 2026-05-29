@@ -85,7 +85,7 @@
                        name="password"
                        class="input"
                        autocomplete="current-password"
-                       placeholder="Минимум 8 символов, цифра"
+                       placeholder="Ваш пароль"
                        minlength="@AuthFieldValidation.MinPasswordLength"
                        maxlength="@AuthFieldValidation.MaxPasswordLength"
                        required />
@@ -174,7 +174,7 @@
         {
             "empty" => "Введите email и пароль.",
             "invalid_email" => "Укажите корректный email (например name@example.com).",
-            "password_invalid" => $"Пароль: не менее {AuthFieldValidation.MinPasswordLength} символов и хотя бы одна цифра.",
+            "password_invalid" => "Введите пароль.",
             "password_too_long" => $"Пароль не длиннее {AuthFieldValidation.MaxPasswordLength} символов.",
             "invalid" => "Неверный email или пароль.",
             "unconfirmed" => null,

@@ -57,10 +57,10 @@ internal static class LoginEndpoint
         if (!emailCheck.Ok)
             return Results.Redirect(AccountUrls.Login(error: "invalid_email", email: email));
 
-        var passwordCheck = AuthFieldValidation.ValidatePassword(password);
+        var passwordCheck = AuthFieldValidation.ValidatePasswordForLogin(password);
         if (!passwordCheck.Ok)
         {
-            var err = password.Contains('\0') || password.Length > AuthFieldValidation.MaxPasswordLength
+            var err = password.Length > AuthFieldValidation.MaxPasswordLength
                 ? "password_too_long"
                 : "password_invalid";
             return Results.Redirect(AccountUrls.Login(error: err, email: email));

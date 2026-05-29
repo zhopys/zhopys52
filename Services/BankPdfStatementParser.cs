@@ -109,7 +109,7 @@ public class BankPdfStatementParser : IBankPdfStatementParser
     internal static List<string> ExtractLinesFromPdf(byte[] pdfBytes)
     {
         using var doc = PdfDocument.Open(pdfBytes);
-        var raw = new List<(double Y, double X, string Text)>();
+        var raw = new List<WordPosition>();
 
         foreach (var page in doc.GetPages())
         {
@@ -117,17 +117,21 @@ public class BankPdfStatementParser : IBankPdfStatementParser
             {
                 var t = word.Text.Trim();
                 if (t.Length == 0) continue;
-                raw.Add((word.BoundingBox.Bottom, word.BoundingBox.Left, t));
+                var box = word.BoundingBox;
+                raw.Add(new WordPosition(box.Bottom, box.Left, box.Right, box.Top - box.Bottom, t));
             }
         }
 
         if (raw.Count == 0)
             return [];
 
-        const double rowTolerance = 4.0;
-        var sorted = raw.OrderByDescending(x => x.Y).ToList();
-        var rows = new List<List<(double Y, double X, string Text)>>();
-        var current = new List<(double Y, double X, string Text)> { sorted[0] };
+        var heights = raw.Select(w => w.Height).Where(h => h > 0.5).OrderBy(h => h).ToList();
+        var medianHeight = heights.Count > 0 ? heights[heights.Count / 2] : 10.0;
+        var rowTolerance = Math.Clamp(medianHeight * 0.42, 2.0, 6.0);
+
+        var sorted = raw.OrderByDescending(x => x.Y).ThenBy(x => x.X).ToList();
+        var rows = new List<List<WordPosition>>();
+        var current = new List<WordPosition> { sorted[0] };
         var anchorY = sorted[0].Y;
 
         for (var i = 1; i < sorted.Count; i++)
@@ -144,16 +148,70 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         }
         rows.Add(current);
 
+        var columnGap = Math.Max(18.0, medianHeight * 1.8);
         var lines = new List<string>();
-        foreach (var row in rows)
+        foreach (var row in rows.OrderByDescending(r => r[0].Y))
         {
-            var line = string.Join(" ", row.OrderBy(w => w.X).Select(w => w.Text));
+            var line = JoinRowWords(row.OrderBy(w => w.X).ToList(), columnGap);
             line = NormalizeSpaces(line);
             if (ShouldSkipLine(line)) continue;
             lines.Add(line);
+
+            foreach (var split in SplitMergedTransactionLines(line))
+            {
+                if (!string.Equals(split, line, StringComparison.Ordinal) && !ShouldSkipLine(split))
+                    lines.Add(split);
+            }
         }
 
         return lines;
+    }
+
+    private static string JoinRowWords(IReadOnlyList<WordPosition> words, double columnGap)
+    {
+        if (words.Count == 0) return "";
+        var sb = new StringBuilder(words[0].Text);
+        for (var i = 1; i < words.Count; i++)
+        {
+            var gap = words[i].X - words[i - 1].Right;
+            sb.Append(gap > columnGap ? " \t " : ' ');
+            sb.Append(words[i].Text);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Разбивает строки, где PdfPig склеил несколько операций в одну линию.</summary>
+    private static IEnumerable<string> SplitMergedTransactionLines(string line)
+    {
+        if (!DateTimeRx.IsMatch(line))
+            yield break;
+
+        var matches = DateTimeRx.Matches(line).ToList();
+        if (matches.Count < 2)
+            yield break;
+
+        var tailHits = TransactionTailAnywhereRx.Matches(line).ToList();
+        if (tailHits.Count < 2)
+            yield break;
+
+        for (var i = 1; i < matches.Count && i < tailHits.Count; i++)
+        {
+            var start = matches[i].Index;
+            var end = i + 1 < tailHits.Count ? tailHits[i + 1].Index : line.Length;
+            if (end <= start) continue;
+            var segment = line[start..end].Trim();
+            if (segment.Length > 20 && LooksLikeTransactionLine(segment))
+                yield return segment;
+        }
+    }
+
+    private readonly struct WordPosition(double y, double x, double right, double height, string text)
+    {
+        public double Y { get; } = y;
+        public double X { get; } = x;
+        public double Right { get; } = right;
+        public double Height { get; } = height;
+        public string Text { get; } = text;
     }
 
     internal static AccountStatementHeader ParseHeader(IReadOnlyList<string> lines)
@@ -177,8 +235,10 @@ public class BankPdfStatementParser : IBankPdfStatementParser
         h.OverdraftLimit = ParseDecimal(MatchGroup(text, @"Лимит овердрафта:\s*([\d\s,.]+)"));
         h.OpeningBalance = ParseDecimal(MatchGroup(text, @"Остаток на начало периода:\s*([\d\s,.]+)"));
         h.ClosingBalance = ParseDecimal(MatchGroup(text, @"Остаток на конец периода:\s*([\d\s,.]+)"));
-        h.TotalCredits = ParseDecimal(MatchGroup(text, @"Зачислено за период:\s*([\d\s,.]+)"));
-        h.TotalDebits = ParseDecimal(MatchGroup(text, @"Сумма расходных операций за период:\s*([\d\s,.]+)"));
+        h.TotalCredits = ParseDecimal(MatchGroup(text, @"Зачислено за период:\s*([\d\s,.]+)"))
+            ?? ParseDecimal(MatchGroup(text, @"Зачислено[^\d]{0,40}([\d\s,.]+)"));
+        h.TotalDebits = ParseDecimal(MatchGroup(text, @"Сумма расходных операций за период:\s*([\d\s,.]+)"))
+            ?? ParseDecimal(MatchGroup(text, @"расходных операций[^\d]{0,40}([\d\s,.]+)"));
         h.LastOperationDate = ParseDateOnly(MatchGroup(text, @"Дата последней операции:\s*(\d{2}\.\d{2}\.\d{4})"));
 
         return h;

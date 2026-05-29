@@ -160,6 +160,7 @@ public class AccountProfileService : IAccountProfileService
             }
 
             await _db.Transactions.Where(t => t.UserId == userId).ExecuteDeleteAsync();
+            await _db.TransactionImportBatches.Where(b => b.UserId == userId).ExecuteDeleteAsync();
             await _db.Reminders.Where(r => r.UserId == userId).ExecuteDeleteAsync();
             await _db.TaxPayments.Where(t => t.UserId == userId).ExecuteDeleteAsync();
             await _db.TaxAutoRules.Where(r => r.UserId == userId).ExecuteDeleteAsync();
@@ -169,13 +170,20 @@ public class AccountProfileService : IAccountProfileService
             await _db.Tags.Where(t => t.UserId == userId).ExecuteDeleteAsync();
             await _db.OrganizationSettings.Where(o => o.UserId == userId).ExecuteDeleteAsync();
 
-            var orgMembers = await _db.Users.Where(u => u.WorkspaceOwnerUserId == userId).ToListAsync();
-            foreach (var m in orgMembers)
-                m.WorkspaceOwnerUserId = null;
+            await _db.Users
+                .Where(u => u.WorkspaceOwnerUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.WorkspaceOwnerUserId, (string?)null));
 
-            await _db.SaveChangesAsync();
+            _db.ChangeTracker.Clear();
 
-            var deleteResult = await _userManager.DeleteAsync(user);
+            var freshUser = await _userManager.FindByIdAsync(userId);
+            if (freshUser == null)
+            {
+                await transaction.RollbackAsync();
+                return (false, "Пользователь не найден");
+            }
+
+            var deleteResult = await _userManager.DeleteAsync(freshUser);
             if (!deleteResult.Succeeded)
             {
                 await transaction.RollbackAsync();
@@ -191,6 +199,12 @@ public class AccountProfileService : IAccountProfileService
             }
 
             return (true, null);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return (false, "Не удалось удалить аккаунт из‑за конфликта данных. Обновите страницу и повторите.");
         }
         catch (Exception ex)
         {

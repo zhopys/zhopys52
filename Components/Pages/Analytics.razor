@@ -12,6 +12,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IReportAnalyticsService AnalyticsService
 @inject IExtendedReportService ExtendedReportService
+@inject ITransactionService TransactionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 @attribute [Authorize(Policy = AuthorizationPolicies.CanViewReports)]
@@ -77,7 +78,19 @@ else if (_snapshot != null)
         </span>
     </div>
 
-    <ReportsKpiGrid Metrics="@_snapshot.Kpi" Loading="@_refreshing" />
+    <ReportsKpiGrid Metrics="@_snapshot.Kpi"
+                    Loading="@_refreshing"
+                    PeriodStart="@_snapshot.Filters.Start"
+                    PeriodEnd="@_snapshot.Filters.End"
+                    CompareMode="@_compareMode"
+                    PeriodHasNoActivity="@_periodHasNoActivity" />
+    @if (_periodHasNoActivity && _hasAnyTransactions)
+    {
+        <div class="alert alert-info mb-3">
+            В выбранном периоде нет операций, но в базе есть данные.
+            <button type="button" class="btn btn-sm btn-outline ms-2" @onclick="JumpToLatestPeriodAsync">Показать последний месяц с операциями</button>
+        </div>
+    }
 
     <div class="hub-layout mt-3">
         <nav class="hub-nav card">
@@ -183,6 +196,9 @@ else if (_snapshot != null)
     private DateTime _customStart;
     private DateTime _customEnd;
     private string? _selectedCategory;
+    private bool _periodHasNoActivity;
+    private bool _hasAnyTransactions;
+    private List<DateTime> _availableMonths = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -190,8 +206,35 @@ else if (_snapshot != null)
         var user = await UserManager.GetUserAsync(auth.User);
         if (user == null) return;
         _userId = user.Id;
-        var m = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        await LoadAvailableMonthsAsync();
+        var m = _availableMonths.FirstOrDefault();
+        if (m == default)
+            m = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         _selectedMonthKey = $"{m:yyyy-MM}";
+        _customStart = m;
+        _customEnd = m.AddMonths(1).AddDays(-1);
+        await ReloadAsync();
+    }
+
+    private async Task LoadAvailableMonthsAsync()
+    {
+        var txs = await TransactionService.ListAsync(_userId);
+        _hasAnyTransactions = txs.Count > 0;
+        _availableMonths = txs
+            .GroupBy(t => new { t.Date.Year, t.Date.Month })
+            .Select(g => new DateTime(g.Key.Year, g.Key.Month, 1))
+            .OrderByDescending(d => d)
+            .ToList();
+        if (_availableMonths.Count == 0)
+            _availableMonths.Add(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+    }
+
+    private async Task JumpToLatestPeriodAsync()
+    {
+        if (_availableMonths.Count == 0) return;
+        var m = _availableMonths[0];
+        _selectedMonthKey = $"{m:yyyy-MM}";
+        _periodType = "Month";
         _customStart = m;
         _customEnd = m.AddMonths(1).AddDays(-1);
         await ReloadAsync();
@@ -250,6 +293,9 @@ else if (_snapshot != null)
             var filters = BuildFilters();
             _snapshot = await AnalyticsService.BuildSnapshotAsync(_userId, filters);
             _extended = await ExtendedReportService.BuildAsync(_userId, filters, null);
+            _periodHasNoActivity = _snapshot.Kpi
+                .Where(k => k.Key is "revenue" or "opex" or "capex")
+                .All(k => k.Value == 0);
         }
         catch (Exception ex)
         {
