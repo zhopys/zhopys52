@@ -1,12 +1,12 @@
 @using MiniFinance.Services
 @inject NavigationManager Navigation
 
-<div class="reports-kpi-grid mb-3">
+<div class="kpi-grid mb-3">
     @if (Loading)
     {
         @for (var i = 0; i < 7; i++)
         {
-            <div class="kpi-card skeleton-card reports-kpi">
+            <div class="kpi-card skeleton-card">
                 <div class="skeleton-line" style="width:60%"></div>
                 <div class="skeleton-line" style="width:80%;height:28px;margin-top:8px"></div>
                 <div class="skeleton-line" style="width:40%;margin-top:8px"></div>
@@ -19,36 +19,34 @@
         {
             var expanded = _expandedKey == k.Key;
             var drillUrl = BuildDrillUrl(k);
-            <div class="kpi-card reports-kpi kpi-card-interactive kpi-key-@k.Key @(expanded ? "kpi-card-expanded" : "")"
+            <div class="kpi-card kpi-card-expandable @(expanded ? "kpi-card-expanded" : "")"
                  role="button"
                  tabindex="0"
                  title="@k.Hint"
                  @onclick="() => ToggleExpand(k.Key)"
                  @onkeydown="e => OnCardKey(e, k.Key)">
-                <div class="kpi-card-accent" aria-hidden="true"></div>
                 <div class="kpi-label">@k.Label</div>
                 @if (expanded && !string.IsNullOrWhiteSpace(k.Hint))
                 {
-                    <div class="kpi-hint kpi-hint-visible">@k.Hint</div>
+                    <div class="small text-muted mb-2">@k.Hint</div>
                 }
-                <div class="kpi-value @GetValueClass(k)">
+                <div class="kpi-value">
                     @if (k.Format == "percent")
                     {
-                        <span class="kpi-amount">@k.Value.ToString("F1")</span><span class="kpi-unit">%</span>
+                        @k.Value.ToString("F1")<span class="text-muted">%</span>
                     }
                     else
                     {
-                        <span class="kpi-amount">@FormatMoney(k.Value)</span>
-                        <span class="kpi-unit"><Byn Class="kpi-byn" /></span>
+                        @FormatMoney(k.Value) <Byn class="text-muted" />
                     }
                 </div>
                 @if (ShowComparison(k))
                 {
-                    <div class="kpi-footer @GetDeltaClass(k)">@FormatComparison(k)</div>
+                    <div class="small @GetDeltaClass(k)" style="margin-top:6px">@FormatComparison(k)</div>
                 }
                 @if (PeriodHasNoActivity && k.Format == "currency" && k.Value == 0 && k.Key != "freeCash")
                 {
-                    <div class="kpi-empty-hint">Нет операций в периоде</div>
+                    <div class="small text-muted" style="margin-top:4px;font-style:italic">Нет операций в периоде</div>
                 }
                 @if (expanded)
                 {
@@ -131,23 +129,12 @@
 
     private static string GetDeltaClass(KpiMetricDto k)
     {
-        if (k.Value == k.PreviousValue) return "kpi-flat";
+        if (k.Value == k.PreviousValue) return "text-muted";
         return k.Trend switch
         {
-            "up" => k.Key is "opex" or "capex" ? "kpi-bad" : "kpi-good",
-            "down" => k.Key is "opex" or "capex" ? "kpi-good" : "kpi-bad",
-            _ => "kpi-flat"
-        };
-    }
-
-    private static string GetValueClass(KpiMetricDto k)
-    {
-        if (k.Format == "percent") return "";
-        return k.Key switch
-        {
-            "revenue" or "netProfit" or "ebitda" => k.Value >= 0 ? "text-success" : "text-danger",
-            "freeCash" => k.Value >= 0 ? "text-success" : "text-danger",
-            _ => ""
+            "up" => k.Key is "opex" or "capex" ? "text-danger" : "text-success",
+            "down" => k.Key is "opex" or "capex" ? "text-success" : "text-danger",
+            _ => "text-muted"
         };
     }
 }

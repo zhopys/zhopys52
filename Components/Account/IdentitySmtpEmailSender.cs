@@ -52,7 +52,7 @@ internal sealed class IdentitySmtpEmailSender : IEmailSender<ApplicationUser>
 
     private async Task SendAsync(string email, string subject, string htmlBody)
     {
-        if (string.IsNullOrWhiteSpace(_smtp.Host) || string.IsNullOrWhiteSpace(_smtp.FromEmail))
+        if (!_smtp.IsConfigured)
         {
             _logger.LogWarning("SMTP not configured, email to {Email} not sent", email);
             throw new InvalidOperationException("Почта не настроена. Обратитесь к администратору.");

@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
+using MiniFinance.Services;
 
 namespace MiniFinance.Components.Account;
 
@@ -25,6 +26,17 @@ internal static class IdentityEmailLinks
         return QueryHelpers.AddQueryString(
             NormalizePath(baseUri, "/Account/ResetPassword"),
             new Dictionary<string, string?> { ["code"] = code });
+    }
+
+    public static string GetAppBaseUri(AppSettings app, string? requestBaseUri = null)
+    {
+        if (!string.IsNullOrWhiteSpace(app.PublicUrl))
+            return app.PublicUrl.TrimEnd('/');
+
+        if (!string.IsNullOrWhiteSpace(requestBaseUri))
+            return requestBaseUri.TrimEnd('/');
+
+        return "http://localhost:5210";
     }
 
     private static string NormalizePath(string baseUri, string path)

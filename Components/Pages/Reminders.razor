@@ -1,5 +1,6 @@
 @page "/reminders"
 @rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
 @using Microsoft.EntityFrameworkCore
 @using MiniFinance.Data
 @using Microsoft.AspNetCore.Authorization
@@ -89,69 +90,78 @@
     <div class="card mb-3">
         <div class="card-header">@(_editId == 0 ? "Новое напоминание" : "Редактирование")</div>
         <div class="card-body">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label class="form-label">Название <span class="required">*</span></label>
-                    <input type="text" class="form-input" @bind="_newName" placeholder="Например: Аренда офиса" />
+            <EditForm Model="_form" OnValidSubmit="SaveReminderAsync">
+                <RussianDataAnnotationsValidator />
+                <RussianValidationSummary class="text-danger mb-2" />
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Название <span class="required">*</span></label>
+                        <InputText class="form-input" @bind-Value="_form.Name" placeholder="Например: Аренда офиса" maxlength="@ReminderFieldValidation.MaxNameLength" />
+                        <RussianValidationMessage For="() => _form.Name" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Сумма <span class="required">*</span></label>
+                        <InputNumber class="form-input" @bind-Value="_form.Amount" placeholder="0" step="0.01" />
+                        <RussianValidationMessage For="() => _form.Amount" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Категория</label>
+                        <InputSelect class="form-select form-input" @bind-Value="_form.Category">
+                            <option value="">Выберите категорию</option>
+                            @foreach (var c in _categories) { <option value="@c">@c</option> }
+                        </InputSelect>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Тип</label>
+                        <InputSelect class="form-select form-input" @bind-Value="_form.ReminderType">
+                            <option value="@ReminderType.Tax">Налоги</option>
+                            <option value="@ReminderType.Bill">Счета</option>
+                            <option value="@ReminderType.Salary">Зарплата</option>
+                            <option value="@ReminderType.Rent">Аренда</option>
+                            <option value="@ReminderType.Subscription">Подписки</option>
+                            <option value="@ReminderType.Other">Другое</option>
+                        </InputSelect>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Периодичность</label>
+                        <InputSelect class="form-select form-input" @bind-Value="_form.Frequency">
+                            <option value="@ReminderFrequency.OneTime">Разово</option>
+                            <option value="@ReminderFrequency.Daily">Ежедневно</option>
+                            <option value="@ReminderFrequency.Weekly">Еженедельно</option>
+                            <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
+                            <option value="@ReminderFrequency.Quarterly">Ежеквартально</option>
+                            <option value="@ReminderFrequency.Yearly">Ежегодно</option>
+                        </InputSelect>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Напомнить за (дней)</label>
+                        <InputNumber class="form-input" @bind-Value="_form.NotifyDaysBefore" />
+                        <RussianValidationMessage For="() => _form.NotifyDaysBefore" />
+                        <span class="small text-muted">За сколько дней до даты платежа отправлять email (0 — в день платежа)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Дата <span class="required">*</span></label>
+                        <RussianInputDate class="form-input" @bind-Value="_form.Date" />
+                        <RussianValidationMessage For="() => _form.Date" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Проект</label>
+                        <InputSelect class="form-select form-input" @bind-Value="_form.ProjectId">
+                            <option value="">Без проекта</option>
+                            @foreach (var p in _projects) { <option value="@p.Id">@p.Name</option> }
+                        </InputSelect>
+                    </div>
+                    <div class="form-group full-width">
+                        <label class="form-label">Заметки</label>
+                        <InputTextArea class="form-input" @bind-Value="_form.Notes" placeholder="Дополнительная информация" rows="2" maxlength="@ReminderFieldValidation.MaxNotesLength" />
+                        <RussianValidationMessage For="() => _form.Notes" />
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Сумма <span class="required">*</span></label>
-                    <input type="number" class="form-input" @bind="_newAmount" placeholder="0" step="100" />
+                <div class="mt-3" style="display:flex;gap:0.5rem;justify-content:flex-end">
+                    <button type="submit" class="btn btn-primary">@(_editId == 0 ? "Создать" : "Сохранить")</button>
+                    <button type="button" class="btn btn-outline" @onclick="CancelForm">Отмена</button>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Категория</label>
-                    <select class="form-select form-input" @bind="_newCategory">
-                        <option value="">Выберите категорию</option>
-                        @foreach (var c in _categories) { <option value="@c">@c</option> }
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Тип</label>
-                    <select class="form-select form-input" @bind="_newReminderType">
-                        <option value="@ReminderType.Tax">Налоги</option>
-                        <option value="@ReminderType.Bill">Счета</option>
-                        <option value="@ReminderType.Salary">Зарплата</option>
-                        <option value="@ReminderType.Rent">Аренда</option>
-                        <option value="@ReminderType.Subscription">Подписки</option>
-                        <option value="@ReminderType.Other">Другое</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Периодичность</label>
-                    <select class="form-select form-input" @bind="_newFrequency">
-                        <option value="@ReminderFrequency.OneTime">Разово</option>
-                        <option value="@ReminderFrequency.Daily">Ежедневно</option>
-                        <option value="@ReminderFrequency.Weekly">Еженедельно</option>
-                        <option value="@ReminderFrequency.Monthly">Ежемесячно</option>
-                        <option value="@ReminderFrequency.Quarterly">Ежеквартально</option>
-                        <option value="@ReminderFrequency.Yearly">Ежегодно</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Напомнить за (дней)</label>
-                    <input type="number" class="form-input" @bind="_newNotifyDays" min="0" max="90" step="1" />
-                    <span class="small text-muted">За сколько дней до даты платежа отправлять email (0 — в день платежа)</span>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Дата</label>
-                    <input type="date" class="form-input" @bind="_newDate" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Проект</label>
-                    <select class="form-select form-input" @bind="_newProjectId">
-                        <option value="">Без проекта</option>
-                        @foreach (var p in _projects) { <option value="@p.Id">@p.Name</option> }
-                    </select>
-                </div>
-                <div class="form-group full-width">
-                    <label class="form-label">Заметки</label>
-                    <textarea class="form-input" @bind="_newNotes" placeholder="Дополнительная информация" rows="2"></textarea>
-                </div>
-            </div>
-            <div class="mt-3" style="display:flex;gap:0.5rem;justify-content:flex-end">
-                <button class="btn btn-primary" @onclick="SaveReminder">@(_editId == 0 ? "Создать" : "Сохранить")</button>
-                <button class="btn btn-outline" @onclick="CancelForm">Отмена</button>
-            </div>
+            </EditForm>
         </div>
     </div>
 }
@@ -354,15 +364,7 @@
     private string _dataUserId = "";
 
     private int _editId;
-    private string _newName = string.Empty;
-    private decimal _newAmount;
-    private string _newCategory = string.Empty;
-    private ReminderFrequency _newFrequency = ReminderFrequency.OneTime;
-    private DateTime _newDate = DateTime.Today;
-    private int? _newProjectId;
-    private string _newNotes = string.Empty;
-    private ReminderType _newReminderType = ReminderType.Other;
-    private int _newNotifyDays = 3;
+    private ReminderFormModel _form = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -433,64 +435,54 @@
     private void CancelForm()
     {
         _editId = 0;
-        _newName = string.Empty;
-        _newAmount = 0;
-        _newCategory = string.Empty;
-        _newReminderType = ReminderType.Other;
-        _newFrequency = ReminderFrequency.OneTime;
-        _newNotifyDays = 3;
-        _newDate = DateTime.Today;
-        _newProjectId = null;
-        _newNotes = string.Empty;
+        _form = new ReminderFormModel();
         _showCreateForm = false;
+        _showError = false;
     }
 
-    private async Task SaveReminder()
+    private async Task SaveReminderAsync()
     {
-        if (string.IsNullOrWhiteSpace(_newName))
-        {
-            _errorMessage = "Укажите название";
-            _showError = true;
-            return;
-        }
-
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = await UserManager.GetUserAsync(authState.User);
         if (user == null) return;
 
+        var wasCreate = _editId == 0;
+        var name = _form.Name.Trim();
+        var category = _form.Category?.Trim() ?? "";
+        var notes = string.IsNullOrWhiteSpace(_form.Notes) ? null : _form.Notes.Trim();
+
         if (_editId == 0)
         {
             var ownerId = await DataScope.GetDataOwnerUserIdAsync(user.Id);
-            var r = new Reminder
+            DbContext.Reminders.Add(new Reminder
             {
-                Name = _newName,
-                Amount = _newAmount,
-                Category = _newCategory,
-                ReminderType = _newReminderType,
-                Frequency = _newFrequency,
-                NotifyDaysBefore = _newNotifyDays,
-                Date = _newDate,
-                ProjectId = _newProjectId,
-                Notes = _newNotes,
+                Name = name,
+                Amount = _form.Amount,
+                Category = category,
+                ReminderType = _form.ReminderType,
+                Frequency = _form.Frequency,
+                NotifyDaysBefore = _form.NotifyDaysBefore,
+                Date = _form.Date,
+                ProjectId = _form.ProjectId,
+                Notes = notes,
                 UserId = ownerId,
                 IsPaid = false
-            };
-            DbContext.Reminders.Add(r);
+            });
         }
         else
         {
             var r = await DbContext.Reminders.FindAsync(_editId);
             if (r != null)
             {
-                r.Name = _newName;
-                r.Amount = _newAmount;
-                r.Category = _newCategory;
-                r.ReminderType = _newReminderType;
-                r.Frequency = _newFrequency;
-                r.NotifyDaysBefore = _newNotifyDays;
-                r.Date = _newDate;
-                r.ProjectId = _newProjectId;
-                r.Notes = _newNotes;
+                r.Name = name;
+                r.Amount = _form.Amount;
+                r.Category = category;
+                r.ReminderType = _form.ReminderType;
+                r.Frequency = _form.Frequency;
+                r.NotifyDaysBefore = _form.NotifyDaysBefore;
+                r.Date = _form.Date;
+                r.ProjectId = _form.ProjectId;
+                r.Notes = notes;
                 r.SnoozedUntil = null;
                 r.IsArchived = false;
             }
@@ -499,7 +491,8 @@
         await DbContext.SaveChangesAsync();
         CancelForm();
         await LoadReminders();
-        _message = _editId == 0 ? "Напоминание создано" : "Напоминание обновлено";
+        _showError = false;
+        _message = wasCreate ? "Напоминание создано" : "Напоминание обновлено";
         _showMessage = true;
         await InvokeAsync(StateHasChanged);
         await Task.Delay(3000);
@@ -510,16 +503,49 @@
     private void EditReminder(Reminder r)
     {
         _editId = r.Id;
-        _newName = r.Name;
-        _newAmount = r.Amount;
-        _newCategory = r.Category;
-        _newReminderType = r.ReminderType;
-        _newFrequency = r.Frequency;
-        _newNotifyDays = r.NotifyDaysBefore;
-        _newDate = r.Date;
-        _newProjectId = r.ProjectId;
-        _newNotes = r.Notes ?? string.Empty;
+        _form = new ReminderFormModel
+        {
+            Name = r.Name,
+            Amount = r.Amount,
+            Category = r.Category ?? "",
+            ReminderType = r.ReminderType,
+            Frequency = r.Frequency,
+            NotifyDaysBefore = r.NotifyDaysBefore,
+            Date = r.Date,
+            ProjectId = r.ProjectId,
+            Notes = r.Notes ?? ""
+        };
         _showCreateForm = true;
+        _showError = false;
+    }
+
+    private sealed class ReminderFormModel
+    {
+        [Required(ErrorMessage = "Укажите название")]
+        [ValidReminderName]
+        [StringLength(ReminderFieldValidation.MaxNameLength)]
+        public string Name { get; set; } = "";
+
+        [ValidReminderAmount]
+        public decimal Amount { get; set; }
+
+        [StringLength(ReminderFieldValidation.MaxCategoryLength)]
+        public string Category { get; set; } = "";
+
+        public ReminderType ReminderType { get; set; } = ReminderType.Other;
+
+        public ReminderFrequency Frequency { get; set; } = ReminderFrequency.OneTime;
+
+        [ValidReminderNotifyDays]
+        public int NotifyDaysBefore { get; set; } = 3;
+
+        [ValidReminderDate]
+        public DateTime Date { get; set; } = DateTime.Today;
+
+        public int? ProjectId { get; set; }
+
+        [StringLength(ReminderFieldValidation.MaxNotesLength, ErrorMessage = "Слишком длинные заметки")]
+        public string? Notes { get; set; }
     }
 
     private async Task Postpone(Reminder r, int days)

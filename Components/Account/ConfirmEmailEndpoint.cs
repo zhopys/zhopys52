@@ -64,11 +64,6 @@ internal static class ConfirmEmailEndpoint
         await signInManager.SignInAsync(user, isPersistent: false);
         logger.LogInformation("User {Email} confirmed email and signed in.", email);
 
-        if (!string.IsNullOrWhiteSpace(returnUrl) && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative))
-        {
-            return Results.Redirect(returnUrl);
-        }
-
-        return Results.Redirect("/");
+        return Results.Redirect(AccountUrls.SanitizeReturnUrl(returnUrl) ?? "/");
     }
 }

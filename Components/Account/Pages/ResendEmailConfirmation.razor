@@ -4,13 +4,16 @@
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using MiniFinance.Data
 @using MiniFinance.Components.Account
+@using MiniFinance.Services
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IEmailSender<ApplicationUser> EmailSender
 @inject NavigationManager NavigationManager
 @inject ILogger<ResendEmailConfirmation> Logger
+@inject IOptions<AppSettings> AppOptions
 
 <PageTitle>Повторная отправка — MiniFinance</PageTitle>
 
@@ -91,8 +94,9 @@
 
             var userId = await UserManager.GetUserIdAsync(user);
             var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            var appBase = IdentityEmailLinks.GetAppBaseUri(AppOptions.Value, NavigationManager.BaseUri);
             var confirmUrl = IdentityEmailLinks.BuildConfirmEmailUrl(
-                NavigationManager.BaseUri,
+                appBase,
                 userId!,
                 token);
 
@@ -103,7 +107,9 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Resend confirmation failed");
-            _message = "Не удалось отправить письмо. Попробуйте позже.";
+            _message = ex.Message.Contains("Почта не настроена", StringComparison.OrdinalIgnoreCase)
+                ? "Почта не настроена. Обратитесь к администратору."
+                : "Не удалось отправить письмо. Проверьте SMTP или попробуйте позже.";
         }
         finally
         {

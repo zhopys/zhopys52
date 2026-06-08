@@ -4,6 +4,7 @@
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using MiniFinance.Data
 @using MiniFinance.Components.Account
 @using MiniFinance.Services
@@ -14,6 +15,7 @@
 @inject ILogger<Register> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
+@inject IOptions<AppSettings> AppOptions
 
 <PageTitle>Регистрация — MiniFinance</PageTitle>
 
@@ -31,6 +33,13 @@
         @if (!string.IsNullOrEmpty(_infoMessage))
         {
             <div class="alert alert-success">@_infoMessage</div>
+        }
+        @if (_showResendHint)
+        {
+            <div class="alert alert-warning">
+                Email зарегистрирован, но не подтверждён.
+                <a href="@_resendUrl">Отправить письмо повторно</a>
+            </div>
         }
 
         <EditForm EditContext="_editContext" method="post" OnSubmit="RegisterUser" FormName="register">
@@ -77,6 +86,8 @@
     private string? _errorMessage;
     private string? _infoMessage;
     private bool _submitting;
+    private bool _showResendHint;
+    private string _resendUrl = "/Account/ResendEmailConfirmation";
 
     [SupplyParameterFromForm]
     private InputModel Input { get; set; } = default!;
@@ -97,6 +108,9 @@
         _submitting = true;
         _errorMessage = null;
         _infoMessage = null;
+        _showResendHint = false;
+
+        ApplicationUser? createdUser = null;
 
         try
         {
@@ -123,9 +137,17 @@
             var existing = await UserManager.FindByEmailAsync(email);
             if (existing != null)
             {
-                _errorMessage = existing.EmailConfirmed
-                    ? "Пользователь с таким email уже зарегистрирован. Войдите или восстановите пароль."
-                    : "Email уже зарегистрирован, но не подтверждён. Проверьте почту или запросите письмо повторно.";
+                if (existing.EmailConfirmed)
+                {
+                    _errorMessage = "Пользователь с таким email уже зарегистрирован. Войдите или восстановите пароль.";
+                }
+                else
+                {
+                    _resendUrl = NavigationManager.GetUriWithQueryParameters(
+                        "/Account/ResendEmailConfirmation",
+                        new Dictionary<string, object?> { ["email"] = email });
+                    _showResendHint = true;
+                }
                 return;
             }
 
@@ -144,14 +166,24 @@
                 return;
             }
 
-            // Роли временно отключены
-            await UserManager.AddToRoleAsync(user, AppRoles.Administrator);
+            createdUser = user;
+
+            var roleResult = await UserManager.AddToRoleAsync(user, AppRoles.Administrator);
+            if (!roleResult.Succeeded)
+            {
+                await UserManager.DeleteAsync(user);
+                createdUser = null;
+                _errorMessage = IdentityErrorTranslator.Join(roleResult.Errors);
+                return;
+            }
+
             Logger.LogInformation("User {Email} registered.", email);
 
             var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
             var userId = await UserManager.GetUserIdAsync(user);
+            var appBase = IdentityEmailLinks.GetAppBaseUri(AppOptions.Value, NavigationManager.BaseUri);
             var confirmUrl = IdentityEmailLinks.BuildConfirmEmailUrl(
-                NavigationManager.BaseUri,
+                appBase,
                 userId!,
                 token,
                 ReturnUrl);
@@ -172,9 +204,18 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Registration failed for {Email}", Input.Email);
+            if (createdUser != null)
+            {
+                try { await UserManager.DeleteAsync(createdUser); }
+                catch (Exception deleteEx) { Logger.LogWarning(deleteEx, "Failed to rollback user {UserId}", createdUser.Id); }
+            }
+
             _errorMessage = ex.Message.Contains("Почта не настроена", StringComparison.OrdinalIgnoreCase)
                 ? "Не удалось отправить письмо подтверждения. Проверьте настройки SMTP или обратитесь к администратору."
-                : "Ошибка регистрации. Попробуйте позже.";
+                : ex.Message.Contains("Authentication", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("535", StringComparison.Ordinal)
+                    ? "Не удалось отправить письмо подтверждения. Проверьте логин и пароль SMTP."
+                    : "Ошибка регистрации. Попробуйте позже.";
         }
         finally
         {

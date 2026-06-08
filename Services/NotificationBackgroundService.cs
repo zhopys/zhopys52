@@ -40,7 +40,14 @@ public class NotificationBackgroundService : BackgroundService
                 _logger.LogError(ex, "Error processing notifications");
             }
 
-            await Task.Delay(TimeSpan.FromHours(_checkIntervalHours), stoppingToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromHours(_checkIntervalHours), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

@@ -45,6 +45,9 @@ var seedDiplomaDemo = args.Any(a =>
 var resetUsers = args.Any(a => a.Equals("--reset-users", StringComparison.OrdinalIgnoreCase));
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<HostOptions>(options =>
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
 var ruCulture = CultureInfo.GetCultureInfo("ru-RU");
 CultureInfo.DefaultThreadCurrentCulture = ruCulture;
 CultureInfo.DefaultThreadCurrentUICulture = ruCulture;
@@ -76,10 +79,18 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
         options.Password.RequireLowercase = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Tokens.AuthenticatorTokenProvider = TokenOptions.DefaultAuthenticatorProvider;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders()
     .AddErrorDescriber<RussianIdentityErrorDescriber>();
+
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+    options.TokenLifespan = TimeSpan.FromMinutes(15));
+
+builder.Services.Configure<DataProtectionTokenProviderOptions>(
+    TokenOptions.DefaultEmailProvider,
+    options => options.TokenLifespan = TimeSpan.FromMinutes(10));
 
 builder.Services.AddAuthorization(options =>
 {
@@ -327,6 +338,7 @@ app.MapGet("/do-logout", async (HttpContext ctx, SignInManager<ApplicationUser> 
 
 ConfirmEmailEndpoint.MapConfirmEmailEndpoint(app);
 LoginEndpoint.MapLoginEndpoint(app);
+TwoFactorLoginEndpoint.MapTwoFactorLoginEndpoints(app);
 AccountDeleteEndpoint.MapAccountDeleteEndpoint(app);
 
 app.MapRazorComponents<MiniFinance.Components.App>()

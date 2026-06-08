@@ -1,5 +1,7 @@
 @using MiniFinance.Services
 @implements IDisposable
+
+@if (_messages.Count > 0)
 {
     <ul class="@CssClass" role="@Role">
         @foreach (var message in _messages)

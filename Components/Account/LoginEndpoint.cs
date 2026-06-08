@@ -94,15 +94,12 @@ internal static class LoginEndpoint
 
         if (result.RequiresTwoFactor)
         {
-            var twoFactorUser = await signInManager.GetTwoFactorAuthenticationUserAsync();
-            if (twoFactorUser is not null)
+            var twoFactorUser = await signInManager.GetTwoFactorAuthenticationUserAsync() ?? user;
+            var (sent, sendError) = await twoFactor.SendLoginCodeAsync(twoFactorUser);
+            if (!sent)
             {
-                var (sent, sendError) = await twoFactor.SendLoginCodeAsync(twoFactorUser);
-                if (!sent)
-                {
-                    logger.LogWarning("2FA code not sent for {Email}: {Error}", email, sendError);
-                    return Results.Redirect(AccountUrls.Login(error: "2fa_email", email: email));
-                }
+                logger.LogWarning("2FA code not sent for {Email}: {Error}", email, sendError);
+                return Results.Redirect(AccountUrls.Login(error: "2fa_email", email: email));
             }
 
             return Results.Redirect(QueryHelpers.AddQueryString("/Account/LoginWith2fa",

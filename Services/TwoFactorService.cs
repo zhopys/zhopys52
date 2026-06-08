@@ -63,13 +63,21 @@ public sealed class TwoFactorService : ITwoFactorService
             return (false, "Почта не настроена. Обратитесь к администратору.");
 
         var code = await _userManager.GenerateTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider);
-        var safeCode = HtmlEncoder.Default.Encode(code);
-        var html = $@"
-<p>Здравствуйте!</p>
-<p><strong>Код для входа в MiniFinance</strong></p>
-<p>Введите этот код на странице входа (действует ограниченное время):</p>
-<p style=""font-size:28px;font-weight:700;letter-spacing:4px;margin:16px 0"">{safeCode}</p>
-<p class=""text-muted"" style=""font-size:12px;color:#666"">Если вы не пытались войти, проигнорируйте это письмо.</p>";
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            _logger.LogWarning("Empty 2FA token generated for user {UserId}", user.Id);
+            return (false, "Не удалось сформировать код. Попробуйте позже.");
+        }
+
+        var safeCode = HtmlEncoder.Default.Encode(code.Trim());
+        var html = $"""
+            <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+              <h2 style="margin:0 0 12px">Код для входа в MiniFinance</h2>
+              <p style="color:#555">Введите код на странице входа (действует 10 минут):</p>
+              <p style="font-size:28px;font-weight:700;letter-spacing:4px;margin:16px 0">{safeCode}</p>
+              <p style="font-size:12px;color:#888">Если вы не пытались войти, проигнорируйте это письмо.</p>
+            </div>
+            """;
 
         try
         {
@@ -83,6 +91,5 @@ public sealed class TwoFactorService : ITwoFactorService
         }
     }
 
-    private bool IsSmtpConfigured() =>
-        !string.IsNullOrWhiteSpace(_smtp.Host) && !string.IsNullOrWhiteSpace(_smtp.FromEmail);
+    private bool IsSmtpConfigured() => _smtp.IsConfigured;
 }

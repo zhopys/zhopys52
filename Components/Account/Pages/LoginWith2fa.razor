@@ -1,16 +1,16 @@
 ﻿@page "/Account/LoginWith2fa"
 @attribute [Microsoft.AspNetCore.Components.LayoutAttribute(typeof(MiniFinance.Components.Layout.EmptyLayout))]
 
-@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Antiforgery
 @using Microsoft.AspNetCore.Identity
 @using MiniFinance.Data
 @using MiniFinance.Services
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
-@inject ITwoFactorService TwoFactorService
-@inject IdentityRedirectManager RedirectManager
-@inject ILogger<LoginWith2fa> Logger
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAntiforgery Antiforgery
+@inject NavigationManager NavigationManager
 
 <PageTitle>Двухфакторный вход — MiniFinance</PageTitle>
 
@@ -21,50 +21,66 @@
             <p class="text-muted">Код из письма отправлен на @maskedEmail</p>
         </div>
 
-        @if (!string.IsNullOrEmpty(message))
+        @if (!string.IsNullOrEmpty(_errorMessage))
         {
-            <div class="alert alert-danger" role="alert">@message</div>
+            <div class="alert alert-danger" role="alert">@_errorMessage</div>
         }
-        @if (!string.IsNullOrEmpty(infoMessage))
+        @if (!string.IsNullOrEmpty(_infoMessage))
         {
-            <div class="alert alert-success" role="alert">@infoMessage</div>
+            <div class="alert alert-success" role="alert">@_infoMessage</div>
         }
 
-        <EditForm Model="Input" FormName="login-with-2fa" OnValidSubmit="OnValidSubmitAsync" method="post">
-            <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
-            <input type="hidden" name="RememberMe" value="@RememberMe" />
-            <RussianDataAnnotationsValidator />
-            <RussianValidationSummary class="text-danger" role="alert" />
+        <form method="post" action="/Account/LoginWith2fa/Verify">
+            @if (_afTokens is not null)
+            {
+                <input type="hidden" name="@_afTokens.FormFieldName" value="@_afTokens.RequestToken" />
+            }
+            <input type="hidden" name="returnUrl" value="@(ReturnUrl ?? "")" />
+            <input type="hidden" name="rememberMe" value="@(RememberMe ? "true" : "false")" />
+
             <div class="form-group">
-                <label class="label" for="Input_TwoFactorCode">Код из email</label>
-                <InputText @bind-Value="Input.TwoFactorCode" id="Input_TwoFactorCode" class="input" autocomplete="one-time-code" placeholder="000000" maxlength="8" inputmode="numeric" />
-                <RussianValidationMessage For="() => Input.TwoFactorCode" class="text-danger" />
+                <label class="label" for="twoFactorCode">Код из email</label>
+                <input type="text"
+                       id="twoFactorCode"
+                       name="twoFactorCode"
+                       class="input"
+                       autocomplete="one-time-code"
+                       placeholder="000000"
+                       maxlength="8"
+                       inputmode="numeric"
+                       pattern="[0-9]{6}"
+                       required />
+                <div class="small text-muted">6 цифр из письма «Код входа — MiniFinance»</div>
             </div>
+
             <div class="form-group" style="display:flex;align-items:center;gap:.5rem">
-                <InputCheckbox @bind-Value="Input.RememberMachine" id="remember-machine" />
+                <input type="checkbox" id="remember-machine" name="rememberMachine" value="true" style="accent-color:var(--accent)" />
                 <label for="remember-machine">Запомнить это устройство</label>
             </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
-        </EditForm>
 
-        <div class="login-footer" style="margin-top:1rem">
-            <button type="button" class="btn btn-outline" style="width:100%" disabled="@_resending" @onclick="ResendCodeAsync">
-                @(_resending ? "Отправка…" : "Отправить код повторно")
-            </button>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem">Войти</button>
+        </form>
+
+        <div class="login-footer" style="margin-top:1rem;display:flex;flex-direction:column;gap:8px">
+            <form method="post" action="/Account/LoginWith2fa/Resend">
+                @if (_afTokens is not null)
+                {
+                    <input type="hidden" name="@_afTokens.FormFieldName" value="@_afTokens.RequestToken" />
+                }
+                <input type="hidden" name="returnUrl" value="@(ReturnUrl ?? "")" />
+                <input type="hidden" name="rememberMe" value="@(RememberMe ? "true" : "false")" />
+                <button type="submit" class="btn btn-outline" style="width:100%">Отправить код повторно</button>
+            </form>
             <a href="/login">Вернуться ко входу</a>
         </div>
     </div>
 </div>
 
 @code {
-    private string? message;
-    private string? infoMessage;
     private string maskedEmail = "";
-    private bool _resending;
-    private ApplicationUser user = default!;
-
-    [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = default!;
+    private string? _errorMessage;
+    private string? _infoMessage;
+    private AntiforgeryTokenSet? _afTokens;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
@@ -72,65 +88,38 @@
     [SupplyParameterFromQuery]
     private bool RememberMe { get; set; }
 
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "sent")]
+    private string? SentQuery { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
-        Input ??= new();
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+            _afTokens = Antiforgery.GetAndStoreTokens(httpContext);
 
-        user = await SignInManager.GetTwoFactorAuthenticationUserAsync()
-            ?? throw new InvalidOperationException("Unable to load two-factor authentication user.");
-
-        var email = await UserManager.GetEmailAsync(user) ?? "";
-        maskedEmail = MaskEmail(email);
-    }
-
-    private async Task OnValidSubmitAsync()
-    {
-        var codeCheck = AuthFieldValidation.ValidateTwoFactorCode(Input.TwoFactorCode);
-        if (!codeCheck.Ok)
+        var user = await SignInManager.GetTwoFactorAuthenticationUserAsync();
+        if (user is null)
         {
-            message = codeCheck.Error;
+            NavigationManager.NavigateTo("/login?error=session_expired", forceLoad: true);
             return;
         }
 
-        var code = Input.TwoFactorCode!.Replace(" ", string.Empty).Replace("-", string.Empty);
-        var result = await SignInManager.TwoFactorSignInAsync(
-            TokenOptions.DefaultEmailProvider, code, RememberMe, Input.RememberMachine);
-        var userId = await UserManager.GetUserIdAsync(user);
+        var email = await UserManager.GetEmailAsync(user) ?? "";
+        maskedEmail = MaskEmail(email);
 
-        if (result.Succeeded)
-        {
-            Logger.LogInformation("User with ID '{UserId}' logged in with 2fa.", userId);
-            RedirectManager.RedirectTo(ReturnUrl);
-        }
-        else if (result.IsLockedOut)
-        {
-            Logger.LogWarning("User with ID '{UserId}' account locked out.", userId);
-            RedirectManager.RedirectTo("Account/Lockout");
-        }
-        else
-        {
-            Logger.LogWarning("Invalid 2FA code for user with ID '{UserId}'.", userId);
-            message = "Неверный или просроченный код. Запросите новый.";
-        }
-    }
+        if (SentQuery == "1")
+            _infoMessage = "Новый код отправлен на email.";
 
-    private async Task ResendCodeAsync()
-    {
-        message = null;
-        infoMessage = null;
-        _resending = true;
-        try
+        _errorMessage = ErrorQuery switch
         {
-            var (ok, error) = await TwoFactorService.SendLoginCodeAsync(user);
-            if (ok)
-                infoMessage = "Новый код отправлен на email.";
-            else
-                message = error ?? "Не удалось отправить код.";
-        }
-        finally
-        {
-            _resending = false;
-        }
+            "invalid_code" => "Неверный или просроченный код. Запросите новый.",
+            "send_failed" => "Не удалось отправить код. Проверьте настройки почты.",
+            "session" => "Сессия истекла. Войдите снова.",
+            _ => null
+        };
     }
 
     private static string MaskEmail(string email)
@@ -138,17 +127,5 @@
         var at = email.IndexOf('@');
         if (at <= 1) return email;
         return email[0] + new string('*', Math.Min(at - 1, 5)) + email[at..];
-    }
-
-    private sealed class InputModel
-    {
-        [Required(ErrorMessage = "Введите код")]
-        [ValidTwoFactorCode]
-        [DataType(DataType.Text)]
-        [Display(Name = "Код")]
-        public string? TwoFactorCode { get; set; }
-
-        [Display(Name = "Запомнить устройство")]
-        public bool RememberMachine { get; set; }
     }
 }

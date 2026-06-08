@@ -1,5 +1,3 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
@@ -15,6 +13,11 @@ public class SmtpSettings
     public string Password { get; set; } = string.Empty;
     public string FromEmail { get; set; } = string.Empty;
     public string FromName { get; set; } = "MiniFinance";
+
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(Host) &&
+        !string.IsNullOrWhiteSpace(FromEmail) &&
+        (string.IsNullOrWhiteSpace(Username) || !string.IsNullOrWhiteSpace(Password));
 }
 
 public class NotificationSettings
@@ -48,7 +51,7 @@ public class NotificationEmailService : INotificationEmailService
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(_smtp.Host) || string.IsNullOrWhiteSpace(_smtp.FromEmail))
+            if (!_smtp.IsConfigured)
             {
                 _logger.LogWarning("SMTP not configured, skipping email notification to {Email}", userEmail);
                 return;
@@ -77,10 +80,10 @@ public class NotificationEmailService : INotificationEmailService
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(_smtp.Host) || string.IsNullOrWhiteSpace(_smtp.FromEmail))
+            if (!_smtp.IsConfigured)
             {
                 _logger.LogWarning("SMTP not configured, cannot send test email");
-                return;
+                throw new InvalidOperationException("Почта не настроена. Обратитесь к администратору.");
             }
 
             var template = EmailTemplateBuilder.BuildTestEmail(_app.PublicUrl);
@@ -98,10 +101,10 @@ public class NotificationEmailService : INotificationEmailService
 
     public async Task SendRawEmailAsync(string userEmail, string subject, string htmlBody)
     {
-        if (string.IsNullOrWhiteSpace(_smtp.Host) || string.IsNullOrWhiteSpace(_smtp.FromEmail))
+        if (!_smtp.IsConfigured)
         {
-            _logger.LogWarning("SMTP not configured, skipping email to {Email}", userEmail);
-            return;
+            _logger.LogWarning("SMTP not configured, email to {Email} not sent", userEmail);
+            throw new InvalidOperationException("Почта не настроена. Обратитесь к администратору.");
         }
 
         var message = CreateMessage(userEmail, subject, htmlBody, null);
@@ -143,21 +146,6 @@ public class NotificationEmailService : INotificationEmailService
         return message;
     }
 
-    private async Task SendMessageAsync(MimeMessage message)
-    {
-        using var client = new SmtpClient();
-        await client.ConnectAsync(_smtp.Host, _smtp.Port, GetSecureSocketOptions());
-        if (!string.IsNullOrWhiteSpace(_smtp.Username))
-            await client.AuthenticateAsync(_smtp.Username, _smtp.Password);
-        await client.SendAsync(message);
-        await client.DisconnectAsync(true);
-    }
-
-    private SecureSocketOptions GetSecureSocketOptions() =>
-        _smtp.Port switch
-        {
-            465 => SecureSocketOptions.SslOnConnect,
-            587 => SecureSocketOptions.StartTls,
-            _ => _smtp.EnableSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None
-        };
+    private Task SendMessageAsync(MimeMessage message) =>
+        SmtpEmailSender.SendAsync(_smtp, message);
 }
