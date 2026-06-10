@@ -31,11 +31,30 @@
             <div class="title">
                 <h1>@(_taxOnlyMode ? "Налоговые отчёты" : "Финансовые отчёты")</h1>
                 <div class="meta text-muted">
-                    @(_taxOnlyMode
-                        ? "Сводка по налогам за период — без списка операций и финансовых разделов"
-                        : "Сводка, прибыли и убытки, движение денег и учётные формы")
+                    @if (_taxOnlyMode)
+                    {
+                        <span>Налоговая сводка · @GetPeriodRange().start.ToString("dd.MM.yyyy") — @GetPeriodRange().end.ToString("dd.MM.yyyy")</span>
+                    }
+                    else if (_snapshot != null)
+                    {
+                        <span>@_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")</span>
+                        @if (!string.IsNullOrEmpty(GetActiveFilterSummary()))
+                        {
+                            <span> · @GetActiveFilterSummary()</span>
+                        }
+                    }
+                    else
+                    {
+                        <span>Учётные формы — P&amp;L, движение денег, ОСВ, книга, налоги, баланс</span>
+                    }
                 </div>
             </div>
+            @if (!_taxOnlyMode && _snapshot != null)
+            {
+                <div class="page-actions">
+                    <a href="/analytics" class="btn btn-outline btn-sm">Аналитика</a>
+                </div>
+            }
         </div>
 
         @if (_taxOnlyMode)
@@ -60,8 +79,7 @@
                         CustomStartChanged="OnCustomStartChanged"
                         CustomEnd="@_customEnd"
                         CustomEndChanged="OnCustomEndChanged"
-                        CompareMode="@_compareMode"
-                        CompareModeChanged="OnCompareModeChanged"
+                        CompareMode="none"
                         ProjectId="@_projectId"
                         ProjectIdChanged="OnProjectIdChanged"
                         SelectedCategory="@_selectedCategory"
@@ -75,67 +93,21 @@
                         Disabled="@_loading"
                         HideProjectFilter="@_taxOnlyMode"
                         HideCategoryFilter="@_taxOnlyMode"
-                        HideCompareMode="@_taxOnlyMode"
+                        HideCompareMode="true"
                         HideExport="@_taxOnlyMode" />
 
         @if (_taxOnlyMode && _extended?.Tax != null)
         {
-            <div class="reports-period-banner mb-3">
-                <div class="reports-period-main">
-                    <span class="reports-period-label">Период отчёта</span>
-                    <span class="reports-period-dates">
-                        @GetPeriodRange().start.ToString("dd.MM.yyyy") — @GetPeriodRange().end.ToString("dd.MM.yyyy")
-                    </span>
-                </div>
-            </div>
             @if (_taxPeriodTotals != null)
             {
-                <div class="reports-tax-summary cols-4 mb-3">
-                    <div class="reports-tax-kpi">
-                        <span class="reports-tax-kpi-label">Доход (сводка)</span>
-                        <span class="reports-tax-kpi-value text-success">@_taxPeriodTotals.Income.ToString("N0") <Byn /></span>
-                    </div>
-                    <div class="reports-tax-kpi">
-                        <span class="reports-tax-kpi-label">Расход (сводка)</span>
-                        <span class="reports-tax-kpi-value text-danger">@_taxPeriodTotals.Expenses.ToString("N0") <Byn /></span>
-                    </div>
-                    <div class="reports-tax-kpi">
-                        <span class="reports-tax-kpi-label">Прибыль</span>
-                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.Profit.ToString("N0") <Byn /></span>
-                    </div>
-                    <div class="reports-tax-kpi">
-                        <span class="reports-tax-kpi-label">Операций в учёте</span>
-                        <span class="reports-tax-kpi-value">@_taxPeriodTotals.OperationCount</span>
-                        <span class="small text-muted d-block">список скрыт</span>
-                    </div>
-                </div>
+                <p class="text-muted small mb-3">
+                    База для расчёта: доход @_taxPeriodTotals.Income.ToString("N0") <Byn />
+                    · расход @_taxPeriodTotals.Expenses.ToString("N0") <Byn />
+                    · @_taxPeriodTotals.OperationCount операций в учёте
+                </p>
             }
             <TaxReportPanel Report="@_extended.Tax" />
         }
-        else if (_snapshot != null && _snapshot.DataStatus.HasData)
-        {
-            <div class="reports-period-banner mb-3">
-                <div class="reports-period-main">
-                    <span class="reports-period-label">Период отчёта</span>
-                    <span class="reports-period-dates">
-                        @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
-                    </span>
-                </div>
-                @{
-                    var filterSummary = GetActiveFilterSummary();
-                }
-                @if (!string.IsNullOrEmpty(filterSummary))
-                {
-                    <div class="reports-period-filters">@filterSummary</div>
-                }
-            </div>
-        }
-
-        <ReportsKpiGrid Metrics="@(_snapshot?.Kpi ?? Array.Empty<KpiMetricDto>())"
-                        Loading="@(_loading && _snapshot == null)"
-                        PeriodStart="@(_snapshot?.Filters.Start)"
-                        PeriodEnd="@(_snapshot?.Filters.End)"
-                        CompareMode="@_compareMode" />
 
         @if (_loading && _snapshot == null && !(_taxOnlyMode && _extended != null))
         {
@@ -162,70 +134,24 @@
         }
         else if (_snapshot != null)
         {
-            @if (_snapshot.TaxReserve > 0)
+            @if (_snapshot.UncategorizedTransactions.Any())
             {
                 <div class="alert alert-warning small mb-3">
-                    <strong>Налоговый резерв:</strong> @_snapshot.TaxReserve.ToString("N0") <Byn />
-                    · свободные деньги: <strong>@_snapshot.FreeCash.ToString("N0") <Byn /></strong>
+                    @_snapshot.UncategorizedTransactions.Count операций без категории — это влияет на точность отчётов.
+                    <a href="/transactions" class="ms-1">Разобрать в транзакциях →</a>
                 </div>
             }
 
-            <div class="reports-top-row mb-3 @(_refreshing ? "reports-refreshing" : "")">
-                <DataSourcesCard Status="@_snapshot.DataStatus"
-                                 Refreshing="@_refreshing"
-                                 OnRefreshRequested="ReloadAsync" />
+            <div class="tabs reports-tabs mb-3 @(_refreshing ? "reports-refreshing" : "")">
+                <button type="button" class="tab @(_activeTab == "pl" ? "active" : "")" @onclick='() => SetTab("pl")'>Прибыли и убытки</button>
+                <button type="button" class="tab @(_activeTab == "cashflow" ? "active" : "")" @onclick='() => SetTab("cashflow")'>Денежный поток</button>
+                <button type="button" class="tab @(_activeTab == "trial" ? "active" : "")" @onclick='() => SetTab("trial")'>ОСВ</button>
+                <button type="button" class="tab @(_activeTab == "book" ? "active" : "")" @onclick='() => SetTab("book")'>Книга учёта</button>
+                <button type="button" class="tab @(_activeTab == "tax" ? "active" : "")" @onclick='() => SetTab("tax")'>Налоги</button>
+                <button type="button" class="tab @(_activeTab == "balance" ? "active" : "")" @onclick='() => SetTab("balance")'>Баланс</button>
             </div>
 
-            <div class="reports-charts-row mb-3">
-                <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
-                                    SelectedCategory="@_selectedCategory"
-                                    OnCategorySelected="FilterByCategory" />
-            </div>
-
-            <ProfitabilityMatrix Rows="@_snapshot.ProfitabilityMatrix" />
-
-            @if (_snapshot.Projects.Any())
-            {
-                <ProjectProfitTable Rows="@_snapshot.Projects" />
-            }
-
-            <UncategorizedTxList Transactions="@_snapshot.UncategorizedTransactions"
-                                 Categories="@_categoryNames"
-                                 OnCategoryUpdated="UpdateTransactionCategory" />
-
-            <div class="tabs mb-2">
-                <button type="button" class="tab @(_activeTab == "pl" ? "active" : "")" @onclick='() => SetTab("pl")' title="Отчёт о прибылях и убытках">Прибыли и убытки</button>
-                <button type="button" class="tab @(_activeTab == "cashflow" ? "active" : "")" @onclick='() => SetTab("cashflow")' title="Движение денежных средств">Денежный поток</button>
-                <button type="button" class="tab @(_activeTab == "trial" ? "active" : "")" @onclick='() => SetTab("trial")' title="Оборотно-сальдовая ведомость">ОСВ</button>
-                <button type="button" class="tab @(_activeTab == "book" ? "active" : "")" @onclick='() => SetTab("book")' title="Книга учёта доходов и расходов">Книга учёта</button>
-            </div>
-
-            <div class="tabs reports-extended-tabs mb-3">
-                <button type="button" class="tab @(_extendedTab == "tax" ? "active" : "")" @onclick='() => SetExtendedTab("tax")'>Налоги</button>
-                <button type="button" class="tab @(_extendedTab == "compare" ? "active" : "")" @onclick='() => SetExtendedTab("compare")'>Сравнение</button>
-                <button type="button" class="tab @(_extendedTab == "weekday" ? "active" : "")" @onclick='() => SetExtendedTab("weekday")'>По дням</button>
-                <button type="button" class="tab @(_extendedTab == "balance" ? "active" : "")" @onclick='() => SetExtendedTab("balance")'>Баланс</button>
-            </div>
-
-            @if (_extended != null)
-            {
-                @if (_extendedTab == "tax")
-                {
-                    <TaxReportPanel Report="@_extended.Tax" />
-                }
-                else if (_extendedTab == "compare")
-                {
-                    <PeriodComparisonPanel Comparison="@_extended.PeriodComparison" />
-                }
-                else if (_extendedTab == "weekday")
-                {
-                    <WeekdayExpensePanel Data="@_extended.WeekdayExpenses" />
-                }
-                else if (_extendedTab == "balance" && _balance != null)
-                {
-                    <BalanceReportPanel Report="@_balance" />
-                }
-            }
+            <p class="reports-tab-hint text-muted small mb-3">@GetTabHint()</p>
 
             @if (_activeTab == "pl")
             {
@@ -238,7 +164,10 @@
             else if (_activeTab == "trial")
             {
                 <div class="card mb-3">
-                    <div class="card-header">Оборотно-сальдовая ведомость</div>
+                    <div class="card-header">
+                        Оборотно-сальдовая ведомость
+                        <span class="text-muted small ms-2">остатки и обороты по категориям</span>
+                    </div>
                     <div class="card-body" style="padding:0">
                         @if (_snapshot.TrialBalance == null || !_snapshot.TrialBalance.Entries.Any())
                         {
@@ -250,10 +179,10 @@
                                 <thead>
                                     <tr>
                                         <th>Категория</th>
-                                        <th class="text-end">Нач.</th>
+                                        <th class="text-end">Сальдо на начало</th>
                                         <th class="text-end">Дебет</th>
                                         <th class="text-end">Кредит</th>
-                                        <th class="text-end">Кон.</th>
+                                        <th class="text-end">Сальдо на конец</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -268,6 +197,15 @@
                                         </tr>
                                     }
                                 </tbody>
+                                <tfoot>
+                                    <tr class="fw-bold">
+                                        <td>Итого</td>
+                                        <td class="text-end">@_snapshot.TrialBalance.TotalOpeningBalance.ToString("N2")</td>
+                                        <td class="text-end">@_snapshot.TrialBalance.TotalDebit.ToString("N2")</td>
+                                        <td class="text-end">@_snapshot.TrialBalance.TotalCredit.ToString("N2")</td>
+                                        <td class="text-end">@_snapshot.TrialBalance.TotalClosingBalance.ToString("N2")</td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         }
                     </div>
@@ -276,7 +214,10 @@
             else if (_activeTab == "book")
             {
                 <div class="card mb-3">
-                    <div class="card-header">Книга доходов и расходов</div>
+                    <div class="card-header">
+                        Книга учёта доходов и расходов
+                        <span class="text-muted small ms-2">хронологический список операций</span>
+                    </div>
                     <div class="card-body" style="padding:0">
                         @if (!_snapshot.IncomeExpenseBook.Any())
                         {
@@ -311,6 +252,21 @@
                     </div>
                 </div>
             }
+            else if (_activeTab == "tax" && _extended != null)
+            {
+                <TaxReportPanel Report="@_extended.Tax" />
+            }
+            else if (_activeTab == "balance" && _balance != null)
+            {
+                @if (_snapshot.TaxReserve > 0)
+                {
+                    <div class="alert alert-warning small mb-3">
+                        Налоговый резерв @_snapshot.TaxReserve.ToString("N0") <Byn />
+                        · свободные деньги <strong>@_snapshot.FreeCash.ToString("N0") <Byn /></strong>
+                    </div>
+                }
+                <BalanceReportPanel Report="@_balance" />
+            }
         }
     </Authorized>
 </AuthorizeView>
@@ -320,7 +276,6 @@
     private ExtendedAnalyticsDto? _extended;
     private TaxPeriodTotalsDto? _taxPeriodTotals;
     private BalanceReportDto? _balance;
-    private string _extendedTab = "tax";
     private string _userId = "";
     private string _dataUserId = "";
     private bool _taxOnlyMode;
@@ -329,7 +284,6 @@
     private string? _errorMessage;
     private string _activeTab = "pl";
     private string _periodType = "Month";
-    private string _compareMode = "mom";
     private DateTime _selectedMonth = DateTime.Today;
     private string _selectedMonthKey = "";
     private DateTime _customStart;
@@ -417,11 +371,11 @@
             Start = start,
             End = end,
             PeriodType = _periodType,
-            CompareMode = _compareMode,
+            CompareMode = "none",
             ForecastDays = 90,
             ProjectId = _projectId,
             Categories = string.IsNullOrEmpty(_selectedCategory) ? Array.Empty<string>() : new[] { _selectedCategory },
-            ExportReport = exportReport ?? MapTabForExport(_activeTab)
+            ExportReport = exportReport ?? "full"
         };
     }
 
@@ -471,7 +425,6 @@
     private async Task ResetFiltersAsync()
     {
         _periodType = "Month";
-        _compareMode = "mom";
         _projectId = null;
         _selectedCategory = null;
         _selectedMonth = _availableMonths.Count > 0 ? _availableMonths[0] : DateTime.Today;
@@ -486,12 +439,6 @@
     {
         _periodType = value;
         await LoadAvailableAnchorsAsync();
-        await ReloadAsync();
-    }
-
-    private async Task OnCompareModeChanged(string value)
-    {
-        _compareMode = value;
         await ReloadAsync();
     }
 
@@ -527,31 +474,23 @@
 
     private void SetTab(string tab) => _activeTab = tab;
 
-    private void SetExtendedTab(string tab) => _extendedTab = tab;
-
-    private async Task FilterByCategory(string category)
+    private string GetTabHint() => _activeTab switch
     {
-        _selectedCategory = string.Equals(_selectedCategory, category, StringComparison.OrdinalIgnoreCase) ? null : category;
-        await ReloadAsync();
-    }
-
-    private async Task UpdateTransactionCategory((int Id, string Category) args)
-    {
-        await TransactionService.UpdateCategoryAsync(args.Id, args.Category, _userId);
-        await ReloadAsync();
-    }
+        "pl" => "Доходы и расходы по категориям за период.",
+        "cashflow" => "Движение денег по видам деятельности — каждая транзакция классифицируется автоматически.",
+        "trial" => "Обороты и сальдо по категориям.",
+        "book" => "Хронологический журнал доходов и расходов.",
+        "tax" => "Начисленные и уплаченные налоги за период.",
+        "balance" => "Активы, обязательства и чистая позиция на дату.",
+        _ => ""
+    };
 
     private void ExportAsync((string Format, string? Report) request) =>
         ExportReport(request.Format, request.Report);
 
     private void ExportReport(string format, string? report = null)
     {
-        var exportReport = report ?? format.ToLowerInvariant() switch
-        {
-            "csv" => "transactions",
-            "pdf" => MapTabForExport(_activeTab),
-            _ => MapTabForExport(_activeTab)
-        };
+        var exportReport = report ?? "full";
         var qs = BuildFilters(exportReport).ToQueryString(format, exportReport);
         NavigationManager.NavigateTo($"/api/reports/export?{qs}", forceLoad: true);
     }
@@ -583,8 +522,6 @@
         }
         if (!string.IsNullOrEmpty(_selectedCategory))
             parts.Add($"категория: {_selectedCategory}");
-        if (_compareMode != "none")
-            parts.Add(ReportKpiLabels.FormatCompareHint(_compareMode));
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 
@@ -600,12 +537,4 @@
             "Не удалось построить отчёт. Проверьте выбранные фильтры и нажмите «Применить», либо обновите страницу."
     };
 
-    private static string MapTabForExport(string tab) => tab switch
-    {
-        "cashflow" => "cashflow",
-        "trial" => "trial",
-        "book" => "book",
-        "pl" => "pl",
-        _ => "full"
-    };
 }

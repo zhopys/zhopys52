@@ -8,7 +8,9 @@
 @inject ICommentService CommentService
 @inject ITransactionService TransactionService
 @inject IUserContextService UserContext
-
+@inject ITransactionTaxService TransactionTaxService
+@inject ITaxService TaxService
+@inject IDataScopeService DataScope
 <DetailsDrawer IsOpen="@IsOpen" Wide="true" CssClass="details-drawer-entity" OnClose="OnClose">
     <HeaderContent>
         @if (_tx != null)
@@ -19,7 +21,7 @@
                 </div>
                 <div class="entity-drawer-head-text">
                     <h3 class="entity-drawer-title">@_tx.Description</h3>
-                    <div class="entity-drawer-sub">@_tx.Date.ToString("dd MMMM yyyy")</div>
+                    <div class="entity-drawer-sub">@DisplayDateHelper.Short(_tx.Date)</div>
                 </div>
             </div>
         }
@@ -103,6 +105,39 @@
                     <div class="entity-drawer-note">@_tx.Notes</div>
                 }
             </div>
+
+            @if (_canManageTaxes && _taxSystem.HasValue)
+            {
+                <div class="entity-drawer-block">
+                    <div class="entity-drawer-block-title">Налог</div>
+                    @if (_taxLine == null)
+                    {
+                        <p class="entity-drawer-muted">Операция не участвует в расчёте</p>
+                    }
+                    else if (_linkedTax != null)
+                    {
+                        <p class="small mb-2">Плановый платёж: <strong>@_linkedTax.Name</strong> — @_linkedTax.Amount.ToString("N2") <Byn />, срок @DisplayDateHelper.Short(_linkedTax.DueDate)</p>
+                        <a href="/taxes" class="btn btn-sm btn-outline">Открыть налоги</a>
+                    }
+                    else if (_taxSuggestions.Count > 0)
+                    {
+                        <p class="entity-drawer-muted small mb-2">@_taxLine.Note</p>
+                        <div class="entity-drawer-tax-actions">
+                            @foreach (var s in _taxSuggestions)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline" title="@s.Hint" disabled="@_taxBusy"
+                                        @onclick="() => CreateTaxFromTransaction(s)">
+                                    @s.PaymentType @s.Amount.ToString("N2") <Byn />
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="entity-drawer-muted small">@(_taxLine.Note ?? "Нет связанных налоговых платежей")</p>
+                    }
+                </div>
+            }
 
             <div class="entity-drawer-block">
                 <div class="entity-drawer-block-title">Теги</div>
@@ -193,6 +228,14 @@
     private string _newComment = "";
     private TransactionApprovalStatus _status;
     private bool _canApprove;
+    private bool _canManageTaxes;
+    private TaxSystem? _taxSystem;
+    private TaxpayerKind _taxpayerKind = TaxpayerKind.LegalEntity;
+    private TransactionTaxLine? _taxLine;
+    private List<TransactionTaxSuggestion> _taxSuggestions = new();
+    private TaxPayment? _linkedTax;
+    private bool _taxBusy;
+    private string _dataOwnerId = "";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -208,6 +251,8 @@
     {
         var ctx = await UserContext.GetContextAsync(UserId);
         _canApprove = UserContext.CanApproveTransactions(ctx);
+        _canManageTaxes = UserContext.CanManageTaxes(ctx);
+        _dataOwnerId = await DataScope.GetDataOwnerUserIdAsync(UserId);
         _tx = await TransactionService.GetAsync(TransactionId, UserId);
         _status = _tx?.ApprovalStatus ?? TransactionApprovalStatus.Approved;
         _category = _tx == null || string.IsNullOrWhiteSpace(_tx.Category)
@@ -218,6 +263,54 @@
         _tagsInput = string.Join(", ", _tagNames);
         _attachments = await AttachmentService.ListAsync(TransactionId, UserId);
         _comments = await CommentService.ListAsync(TransactionId, UserId);
+        await LoadTaxContextAsync();
+    }
+
+    private async Task LoadTaxContextAsync()
+    {
+        _taxLine = null;
+        _taxSuggestions = new();
+        _linkedTax = null;
+        if (_tx == null || !_tx.IsConfirmed || !_canManageTaxes)
+            return;
+
+        var settings = await DbContext.OrganizationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == _dataOwnerId);
+        _taxSystem = settings?.TaxSystem;
+        _taxpayerKind = settings?.TaxpayerKind ?? TaxpayerKind.LegalEntity;
+        if (!_taxSystem.HasValue)
+            return;
+
+        _linkedTax = await TaxService.GetBySourceTransactionAsync(_dataOwnerId, TransactionId);
+        _taxLine = await TransactionTaxService.AnalyzeTransactionAsync(
+            _dataOwnerId, TransactionId, _taxSystem.Value, _taxpayerKind);
+        if (_taxLine != null && _linkedTax == null)
+            _taxSuggestions = TransactionTaxLinkHelper.GetSuggestions(_taxLine, _taxSystem.Value, _taxpayerKind).ToList();
+    }
+
+    private async Task CreateTaxFromTransaction(TransactionTaxSuggestion suggestion)
+    {
+        if (_taxLine == null || !_taxSystem.HasValue || suggestion.Amount <= 0)
+            return;
+
+        _taxBusy = true;
+        try
+        {
+            var name = TransactionTaxLinkHelper.BuildPaymentName(suggestion, _taxLine);
+            await TaxService.AddTaxAsync(new TaxPayment
+            {
+                UserId = _dataOwnerId,
+                Name = name,
+                Amount = suggestion.Amount,
+                DueDate = suggestion.DueDate,
+                SourceTransactionId = TransactionId
+            });
+            await LoadTaxContextAsync();
+        }
+        finally
+        {
+            _taxBusy = false;
+        }
     }
 
     private async Task SaveTags()

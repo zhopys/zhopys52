@@ -28,7 +28,7 @@
         }
         else
         {
-            <div class="chart-canvas-wrap" style="height:220px">
+            <div class="chart-canvas-wrap cash-forecast-chart cash-forecast-chart--compact">
                 <canvas id="@_canvasId" aria-label="Прогноз баланса"></canvas>
             </div>
             @if (Forecast.Gaps.Any())
@@ -65,22 +65,14 @@
         if (!Forecast.Points.Any()) return;
         try
         {
-            var points = Forecast.Points.ToList();
-            var labels = points.Select(p => p.Date.ToString("dd.MM")).ToArray();
-            var balances = points.Select(p => (double)p.Balance).ToArray();
-            var gapRanges = Forecast.Gaps.Select(g =>
-            {
-                var endDate = (g.End ?? g.Start).Date;
-                var startIdx = points.FindIndex(p => p.Date.Date >= g.Start.Date);
-                if (startIdx < 0) startIdx = 0;
-                var endIdx = points.FindIndex(p => p.Date.Date >= endDate);
-                if (endIdx < 0) endIdx = points.Count - 1;
-                return new[] { startIdx, Math.Max(startIdx, endIdx) };
-            }).ToArray();
+            var series = ForecastChartSeriesBuilder.Build(
+                Forecast.CurrentBalance,
+                Forecast.Points.Select(p => (p.Date, p.Balance)),
+                Forecast.Gaps.Select(g => (g.Start, g.End)));
+
             await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart",
-                _canvasId, labels, balances, gapRanges, (double)MinCashThreshold);
+                _canvasId, series.Dates, series.Balances, series.GapRanges, (double)MinCashThreshold);
         }
         catch { }
     }
 }
-

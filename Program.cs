@@ -149,6 +149,7 @@ builder.Services.AddScoped<ITransactionDataStatusService, TransactionDataStatusS
 builder.Services.AddScoped<IAccountingIntegrationService, AccountingIntegrationService>();
 builder.Services.AddScoped<IReportPdfService, ReportPdfService>();
 builder.Services.AddScoped<ITaxService, TaxService>();
+builder.Services.AddScoped<ITransactionTaxService, TransactionTaxService>();
 builder.Services.AddScoped<ITaxFinanceSummaryService, TaxFinanceSummaryService>();
 builder.Services.AddScoped<ITaxAutoRuleService, TaxAutoRuleService>();
 builder.Services.AddScoped<ITaxExportService, TaxExportService>();
@@ -833,6 +834,11 @@ using (var scope = app.Services.CreateScope())
             if (!taxColumns.Contains("ReceiptNote"))
             {
                 cmd.CommandText = "ALTER TABLE TaxPayments ADD COLUMN ReceiptNote TEXT;";
+                cmd.ExecuteNonQuery();
+            }
+            if (!taxColumns.Contains("SourceTransactionId"))
+            {
+                cmd.CommandText = "ALTER TABLE TaxPayments ADD COLUMN SourceTransactionId INTEGER;";
                 cmd.ExecuteNonQuery();
             }
 

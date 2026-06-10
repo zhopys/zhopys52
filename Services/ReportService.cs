@@ -322,60 +322,100 @@ namespace MiniFinance.Services
             var report = new CashFlowStatementReport
             {
                 StartDate = startDate,
-                EndDate = endDate
+                EndDate = endDate,
+                TransactionCount = filtered.Count
             };
 
-            // Операционная деятельность
-            report.OperatingIncome = filtered
-                .Where(t => t.Amount > 0 && (t.Category == "Доход" || t.Category == "Продажи" || t.Category == "Услуги"))
-                .Sum(t => t.Amount);
-
-            report.OperatingExpenses = Math.Abs(filtered
-                .Where(t => t.Amount < 0 && (t.Category == "Расход" || t.Category == "Зарплата" || t.Category == "Аренда" || t.Category == "Налоги"))
-                .Sum(t => t.Amount));
+            foreach (var t in filtered)
+            {
+                var activity = CashFlowActivityHelper.Classify(t);
+                if (t.Amount > 0)
+                    AddIncome(report, activity, t.Amount);
+                else
+                    AddExpense(report, activity, Math.Abs(t.Amount));
+            }
 
             report.OperatingCashFlow = report.OperatingIncome - report.OperatingExpenses;
-
-            // Инвестиционная деятельность
-            report.InvestmentIncome = filtered
-                .Where(t => t.Amount > 0 && t.Category == "Инвестиции")
-                .Sum(t => t.Amount);
-
-            report.InvestmentExpenses = Math.Abs(filtered
-                .Where(t => t.Amount < 0 && t.Category == "Инвестиции")
-                .Sum(t => t.Amount));
-
             report.InvestmentCashFlow = report.InvestmentIncome - report.InvestmentExpenses;
-
-            // Финансовая деятельность
-            report.FinancingIncome = filtered
-                .Where(t => t.Amount > 0 && (t.Category == "Кредит" || t.Category == "Займ"))
-                .Sum(t => t.Amount);
-
-            report.FinancingExpenses = Math.Abs(filtered
-                .Where(t => t.Amount < 0 && (t.Category == "Кредит" || t.Category == "Займ"))
-                .Sum(t => t.Amount));
-
             report.FinancingCashFlow = report.FinancingIncome - report.FinancingExpenses;
-
-            // Итого
             report.NetCashFlow = report.OperatingCashFlow + report.InvestmentCashFlow + report.FinancingCashFlow;
 
-            // Детализация по категориям
             report.CategoryDetails = filtered
-                .GroupBy(t => t.Category)
+                .GroupBy(t => (CashFlowActivityHelper.Classify(t), Category: string.IsNullOrWhiteSpace(t.Category) ? "Без категории" : t.Category))
                 .Select(g => new CashFlowCategoryDetail
                 {
-                    Category = g.Key,
+                    Activity = g.Key.Item1,
+                    Category = g.Key.Category,
                     Income = g.Where(t => t.Amount > 0).Sum(t => t.Amount),
                     Expense = Math.Abs(g.Where(t => t.Amount < 0).Sum(t => t.Amount)),
                     NetFlow = g.Sum(t => t.Amount),
                     TransactionCount = g.Count()
                 })
-                .OrderByDescending(c => Math.Abs(c.NetFlow))
+                .OrderBy(c => c.Activity)
+                .ThenByDescending(c => Math.Abs(c.NetFlow))
+                .ToList();
+
+            report.ActivityDetails = Enum.GetValues<CashFlowActivity>()
+                .Cast<CashFlowActivity>()
+                .Select(BuildActivityDetail)
                 .ToList();
 
             return report;
+
+            CashFlowActivityDetail BuildActivityDetail(CashFlowActivity activity)
+            {
+                var rows = report.CategoryDetails.Where(c => c.Activity == activity).ToList();
+                return activity switch
+                {
+                    CashFlowActivity.Investment => new CashFlowActivityDetail
+                    {
+                        Activity = activity,
+                        Income = report.InvestmentIncome,
+                        Expense = report.InvestmentExpenses,
+                        NetFlow = report.InvestmentCashFlow,
+                        TransactionCount = rows.Sum(r => r.TransactionCount),
+                        Categories = rows
+                    },
+                    CashFlowActivity.Financing => new CashFlowActivityDetail
+                    {
+                        Activity = activity,
+                        Income = report.FinancingIncome,
+                        Expense = report.FinancingExpenses,
+                        NetFlow = report.FinancingCashFlow,
+                        TransactionCount = rows.Sum(r => r.TransactionCount),
+                        Categories = rows
+                    },
+                    _ => new CashFlowActivityDetail
+                    {
+                        Activity = activity,
+                        Income = report.OperatingIncome,
+                        Expense = report.OperatingExpenses,
+                        NetFlow = report.OperatingCashFlow,
+                        TransactionCount = rows.Sum(r => r.TransactionCount),
+                        Categories = rows
+                    }
+                };
+            }
+
+            static void AddIncome(CashFlowStatementReport r, CashFlowActivity activity, decimal amount)
+            {
+                switch (activity)
+                {
+                    case CashFlowActivity.Investment: r.InvestmentIncome += amount; break;
+                    case CashFlowActivity.Financing: r.FinancingIncome += amount; break;
+                    default: r.OperatingIncome += amount; break;
+                }
+            }
+
+            static void AddExpense(CashFlowStatementReport r, CashFlowActivity activity, decimal amount)
+            {
+                switch (activity)
+                {
+                    case CashFlowActivity.Investment: r.InvestmentExpenses += amount; break;
+                    case CashFlowActivity.Financing: r.FinancingExpenses += amount; break;
+                    default: r.OperatingExpenses += amount; break;
+                }
+            }
         }
 
     }
@@ -512,13 +552,25 @@ namespace MiniFinance.Services
 
         // Итого
         public decimal NetCashFlow { get; set; }
+        public int TransactionCount { get; set; }
 
-        // Детализация
+        public List<CashFlowActivityDetail> ActivityDetails { get; set; } = new();
         public List<CashFlowCategoryDetail> CategoryDetails { get; set; } = new();
+    }
+
+    public class CashFlowActivityDetail
+    {
+        public CashFlowActivity Activity { get; set; }
+        public decimal Income { get; set; }
+        public decimal Expense { get; set; }
+        public decimal NetFlow { get; set; }
+        public int TransactionCount { get; set; }
+        public List<CashFlowCategoryDetail> Categories { get; set; } = new();
     }
 
     public class CashFlowCategoryDetail
     {
+        public CashFlowActivity Activity { get; set; }
         public string Category { get; set; } = string.Empty;
         public decimal Income { get; set; }
         public decimal Expense { get; set; }

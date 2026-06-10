@@ -32,43 +32,55 @@ public sealed class TaxExportService : ITaxExportService
         var settings = await _db.OrganizationSettings.AsNoTracking()
             .FirstOrDefaultAsync(s => s.UserId == ownerUserId);
 
-        var totals = await _summary.GetPeriodTotalsAsync(ownerUserId, start, end);
+        var taxSystem = settings?.TaxSystem ?? TaxSystem.USN;
+        var taxpayerKind = settings?.TaxpayerKind ?? TaxpayerKind.LegalEntity;
 
-        var calc = TaxCalculatorHelper.Calculate(new TaxCalculatorInput
+        var analysis = await _summary.GetPeriodAnalysisAsync(
+            ownerUserId, start, end, taxSystem, taxpayerKind);
+
+        var totals = new TaxPeriodTotalsDto
         {
-            System = settings?.TaxSystem ?? TaxSystem.USN,
-            TaxpayerKind = settings?.TaxpayerKind ?? TaxpayerKind.LegalEntity,
-            Income = totals.Income,
-            Expenses = totals.Expenses
-        });
+            PeriodStart = start,
+            PeriodEnd = end,
+            Income = analysis.Income,
+            Expenses = analysis.Expenses,
+            OperationCount = analysis.OperationCount,
+            ExcludedCount = analysis.ExcludedCount,
+            AccruedTax = analysis.AccruedTaxTotal
+        };
 
         var payments = await _db.TaxPayments.AsNoTracking()
             .Where(t => t.UserId == ownerUserId && t.DueDate >= start && t.DueDate <= end)
             .OrderBy(t => t.DueDate)
             .ToListAsync();
 
-        var txs = await _db.Transactions.AsNoTracking()
-            .Where(t => t.UserId == ownerUserId && t.IsConfirmed && t.Date >= start && t.Date <= end)
-            .OrderBy(t => t.Date).ThenBy(t => t.Id)
-            .Select(t => new TransactionPdfRow(
-                t.Date,
-                t.Description,
-                t.Category,
-                t.Amount,
+        var txs = analysis.Lines.Select(l =>
+        {
+            var note = string.IsNullOrEmpty(l.RateLabel) ? l.Note : $"{l.RateLabel} · {l.Note}";
+            return new TransactionPdfRow(
+                l.Date,
+                l.Description,
+                l.Category,
+                l.Amount,
                 null,
-                t.Counterparty))
-            .ToListAsync();
+                l.Counterparty,
+                l.AccruedTax > 0 ? l.AccruedTax : null,
+                string.IsNullOrWhiteSpace(note) ? null : note);
+        }).ToList();
 
         var doc = new TaxExportDocument
         {
             CompanyName = settings?.CompanyName ?? "",
             Unp = settings?.UNP ?? "",
-            TaxSystem = settings?.TaxSystem ?? TaxSystem.USN,
-            TaxpayerKind = settings?.TaxpayerKind ?? TaxpayerKind.LegalEntity,
+            TaxSystem = taxSystem,
+            TaxpayerKind = taxpayerKind,
             PeriodStart = start,
             PeriodEnd = end,
             Totals = totals,
-            Estimate = calc.TaxAmount > 0 || !string.IsNullOrEmpty(calc.Description) ? calc : null,
+            Analysis = analysis,
+            Estimate = analysis.Calculation.TaxAmount > 0 || !string.IsNullOrEmpty(analysis.Calculation.Description)
+                ? analysis.Calculation
+                : null,
             Payments = payments,
             Transactions = txs
         };
@@ -88,6 +100,7 @@ public sealed class TaxExportDocument
     public DateTime PeriodStart { get; init; }
     public DateTime PeriodEnd { get; init; }
     public TaxPeriodTotalsDto Totals { get; init; } = new();
+    public TaxPeriodAnalysisDto? Analysis { get; init; }
     public TaxCalculationResult? Estimate { get; init; }
     public IReadOnlyList<TaxPayment> Payments { get; init; } = Array.Empty<TaxPayment>();
     public IReadOnlyList<TransactionPdfRow> Transactions { get; init; } = Array.Empty<TransactionPdfRow>();

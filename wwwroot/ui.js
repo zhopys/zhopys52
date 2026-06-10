@@ -152,6 +152,84 @@
         };
     }
 
+    function movingAverage(values, windowSize) {
+        if (!values || values.length === 0) return [];
+        var w = Math.max(1, windowSize || 1);
+        var out = [];
+        for (var i = 0; i < values.length; i++) {
+            var from = Math.max(0, i - w + 1);
+            var sum = 0;
+            var count = 0;
+            for (var j = from; j <= i; j++) {
+                sum += values[j];
+                count++;
+            }
+            out.push(sum / count);
+        }
+        return out;
+    }
+
+    function downsampleForecastSeries(labels, balances, gapRanges, maxPoints) {
+        if (!labels || labels.length <= maxPoints) {
+            return { labels: labels.slice(), balances: balances.slice(), gapRanges: gapRanges || [] };
+        }
+
+        var last = labels.length - 1;
+        var step = last / (maxPoints - 1);
+        var newLabels = [];
+        var newBalances = [];
+        var picked = [];
+
+        for (var k = 0; k < maxPoints; k++) {
+            var idx = Math.round(k * step);
+            if (idx > last) idx = last;
+            if (picked.indexOf(idx) >= 0) continue;
+            picked.push(idx);
+            newLabels.push(labels[idx]);
+            newBalances.push(balances[idx]);
+        }
+
+        if (picked.indexOf(0) < 0) {
+            newLabels.unshift(labels[0]);
+            newBalances.unshift(balances[0]);
+            picked.unshift(0);
+        }
+        if (picked.indexOf(last) < 0) {
+            newLabels.push(labels[last]);
+            newBalances.push(balances[last]);
+        }
+
+        var remapped = (gapRanges || []).map(function (range) {
+            if (!range || range.length < 2) return range;
+            return [
+                findNearestPickedIndex(picked, range[0]),
+                findNearestPickedIndex(picked, range[1])
+            ];
+        });
+
+        return { labels: newLabels, balances: newBalances, gapRanges: remapped };
+    }
+
+    function findNearestPickedIndex(picked, targetIdx) {
+        var best = 0;
+        var bestDist = Infinity;
+        for (var i = 0; i < picked.length; i++) {
+            var dist = Math.abs(picked[i] - targetIdx);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    function prepareForecastSeries(labels, balances, gapRanges) {
+        var smoothWindow = labels.length > 60 ? 7 : labels.length > 30 ? 5 : 3;
+        var smoothed = movingAverage(balances, smoothWindow);
+        var sampled = downsampleForecastSeries(labels, smoothed, gapRanges, 40);
+        return sampled;
+    }
+
     window.dashboardCharts = {
         renderProfitChart: function (canvasId, labels, profitData, incomeData, expenseData) {
             var canvas = document.getElementById(canvasId);
@@ -305,22 +383,23 @@
                 }
             });
         },
-        renderForecastChart: function (canvasId, labels, balances, gapRanges, minThreshold) {
+        renderForecastChart: function (canvasId, dates, balances, gapRanges, minThreshold) {
             var canvas = document.getElementById(canvasId);
             if (!canvas || typeof Chart === 'undefined') return;
+            if (!dates || !balances || dates.length === 0 || balances.length === 0) return;
 
             if (forecastChartsByCanvas[canvasId]) {
                 forecastChartsByCanvas[canvasId].destroy();
                 delete forecastChartsByCanvas[canvasId];
             }
-            if (forecastChartInstance) {
-                forecastChartInstance.destroy();
-                forecastChartInstance = null;
-            }
 
             var c = chartColors();
             var threshold = typeof minThreshold === 'number' ? minThreshold : 0;
             gapRanges = gapRanges || [];
+
+            function parseIsoDate(iso) {
+                return new Date(iso + 'T12:00:00').getTime();
+            }
 
             function formatBr(v) {
                 if (typeof v !== 'number' || isNaN(v)) return v;
@@ -334,47 +413,78 @@
                 return withBynSuffix(formatBr(v));
             }
 
+            function formatDateTick(ts) {
+                return new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+            }
+
+            function niceNum(range, round) {
+                var exponent = Math.floor(Math.log10(range));
+                var fraction = range / Math.pow(10, exponent);
+                var niceFraction = round
+                    ? (fraction < 1.5 ? 1 : fraction < 3 ? 2 : fraction < 7 ? 5 : 10)
+                    : (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10);
+                return niceFraction * Math.pow(10, exponent);
+            }
+
+            function niceAxis(min, max, ticks) {
+                if (min === max) {
+                    min -= 1;
+                    max += 1;
+                }
+                var range = niceNum(max - min, false);
+                var step = niceNum(range / Math.max(ticks - 1, 1), true);
+                var niceMin = Math.floor(min / step) * step;
+                var niceMax = Math.ceil(max / step) * step;
+                return { min: niceMin, max: niceMax, step: step };
+            }
+
             ensureBynFont();
 
-            var yMin = Math.min.apply(null, balances.concat([0, threshold]));
-            var yMax = Math.max.apply(null, balances.concat([threshold, 0]));
-            var pad = Math.max((yMax - yMin) * 0.08, 500);
-            yMin = Math.floor((yMin - pad) / 100) * 100;
-            yMax = Math.ceil((yMax + pad) / 100) * 100;
+            var series = dates.map(function (d, i) {
+                return { x: parseIsoDate(d), y: Number(balances[i]) || 0, iso: d };
+            });
+
+            var yValues = series.map(function (p) { return p.y; });
+            if (threshold > 0) yValues.push(threshold);
+            yValues.push(0);
+
+            var dataMin = Math.min.apply(null, yValues);
+            var dataMax = Math.max.apply(null, yValues);
+            var span = dataMax - dataMin;
+            var yPad = span > 0 ? span * 0.1 : Math.max(Math.abs(dataMax), 1) * 0.1;
+            var yAxis = niceAxis(dataMin - yPad, dataMax + yPad, 6);
+
+            var todayTs = parseIsoDate(dates[0]);
+            var xMin = series[0].x;
+            var xMax = series[series.length - 1].x;
+            var dayMs = 24 * 60 * 60 * 1000;
+            var tickEveryDays = Math.max(1, Math.ceil((xMax - xMin) / dayMs / 7));
 
             var chart = new Chart(canvas.getContext('2d'), {
                 type: 'line',
                 data: {
-                    labels: labels,
                     datasets: [{
-                        label: 'Остаток (базовый сценарий)',
-                        data: balances,
+                        label: 'Остаток на счёте',
+                        data: series,
+                        parsing: false,
                         borderColor: c.teal,
-                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                        fill: true,
+                        backgroundColor: 'rgba(0, 212, 170, 0.12)',
+                        fill: 'origin',
                         tension: 0.3,
-                        borderWidth: 2.5,
-                        pointRadius: 0,
+                        cubicInterpolationMode: 'monotone',
+                        borderWidth: 2,
+                        borderJoinStyle: 'round',
+                        pointRadius: series.length <= 35 ? 0 : 0,
                         pointHoverRadius: 5,
                         pointHitRadius: 12,
-                        segment: {
-                            borderColor: function (ctx) {
-                                var y0 = ctx.p0.parsed.y;
-                                var y1 = ctx.p1.parsed.y;
-                                return (y0 < 0 || y1 < 0) ? 'rgba(239, 68, 68, 0.9)' : c.teal;
-                            },
-                            backgroundColor: function (ctx) {
-                                var y1 = ctx.p1.parsed.y;
-                                return y1 < 0 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(0, 212, 170, 0.08)';
-                            }
-                        }
+                        pointBackgroundColor: c.teal
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    layout: { padding: { top: 8, right: 12, bottom: 4, left: 4 } },
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                    layout: { padding: { top: 16, right: 8, bottom: 4, left: 4 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -384,6 +494,15 @@
                             titleColor: c.text,
                             bodyColor: c.text,
                             callbacks: {
+                                title: function (items) {
+                                    if (!items || !items.length) return '';
+                                    var p = items[0].raw;
+                                    return new Date(p.x).toLocaleDateString('ru-RU', {
+                                        day: '2-digit',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    });
+                                },
                                 label: function (ctx) {
                                     var v = ctx.parsed.y;
                                     var s = formatByn(v);
@@ -396,15 +515,35 @@
                     },
                     scales: {
                         x: {
-                            grid: { display: false },
-                            ticks: { color: c.text, maxTicksLimit: 10, maxRotation: 0 }
-                        },
-                        y: {
-                            min: yMin,
-                            max: yMax,
-                            grid: { color: c.grid },
+                            type: 'linear',
+                            min: xMin,
+                            max: xMax,
+                            bounds: 'ticks',
+                            grid: { color: 'rgba(148,163,184,0.08)', drawTicks: true },
+                            border: { display: false },
                             ticks: {
                                 color: c.text,
+                                maxRotation: 0,
+                                autoSkip: false,
+                                maxTicksLimit: 8,
+                                callback: function (val) {
+                                    var daysFromStart = Math.round((val - xMin) / dayMs);
+                                    if (daysFromStart % tickEveryDays !== 0 && Math.abs(val - todayTs) > dayMs * 0.5) {
+                                        return '';
+                                    }
+                                    return formatDateTick(val);
+                                }
+                            }
+                        },
+                        y: {
+                            min: yAxis.min,
+                            max: yAxis.max,
+                            bounds: 'ticks',
+                            grid: { color: c.grid, drawBorder: false },
+                            border: { display: false },
+                            ticks: {
+                                color: c.text,
+                                stepSize: yAxis.step,
                                 font: { family: "'" + BYN_FONT + "', Inter, sans-serif", size: 11 },
                                 callback: function (v) { return formatByn(v); }
                             }
@@ -415,30 +554,31 @@
                     id: 'cashForecastOverlays',
                     beforeDatasetsDraw: function (ch) {
                         var ctx = ch.ctx;
-                        var x = ch.scales.x;
+                        var xScale = ch.scales.x;
                         var area = ch.chartArea;
-                        if (!x || !area) return;
+                        if (!xScale || !area) return;
 
                         gapRanges.forEach(function (range) {
                             if (!range || range.length < 2) return;
-                            var i0 = Math.max(0, Math.min(range[0], labels.length - 1));
-                            var i1 = Math.max(i0, Math.min(range[1], labels.length - 1));
-                            var px0 = x.getPixelForValue(i0);
-                            var px1 = x.getPixelForValue(i1);
+                            var i0 = Math.max(0, Math.min(range[0], series.length - 1));
+                            var i1 = Math.max(i0, Math.min(range[1], series.length - 1));
+                            var px0 = xScale.getPixelForValue(series[i0].x);
+                            var px1 = xScale.getPixelForValue(series[i1].x);
                             ctx.save();
-                            ctx.fillStyle = 'rgba(239, 68, 68, 0.14)';
-                            ctx.fillRect(px0, area.top, px1 - px0, area.bottom - area.top);
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
+                            ctx.fillRect(Math.min(px0, px1), area.top, Math.abs(px1 - px0), area.bottom - area.top);
                             ctx.restore();
                         });
                     },
                     afterDatasetsDraw: function (ch) {
                         var ctx = ch.ctx;
-                        var y = ch.scales.y;
+                        var xScale = ch.scales.x;
+                        var yScale = ch.scales.y;
                         var area = ch.chartArea;
-                        if (!y || !area) return;
+                        if (!xScale || !yScale || !area) return;
 
                         var drawHLine = function (value, color, dash, label) {
-                            var py = y.getPixelForValue(value);
+                            var py = yScale.getPixelForValue(value);
                             if (py < area.top || py > area.bottom) return;
                             ctx.save();
                             ctx.strokeStyle = color;
@@ -450,23 +590,39 @@
                             ctx.stroke();
                             if (label) {
                                 ctx.fillStyle = color;
-                                ctx.font = '11px "' + BYN_FONT + '", system-ui, sans-serif';
+                                ctx.font = '10px "' + BYN_FONT + '", system-ui, sans-serif';
                                 ctx.textAlign = 'right';
                                 ctx.fillText(label, area.right - 4, py - 4);
                             }
                             ctx.restore();
                         };
 
-                        drawHLine(0, 'rgba(239, 68, 68, 0.55)', [6, 4], formatByn(0));
+                        drawHLine(0, 'rgba(239, 68, 68, 0.5)', [5, 4], formatByn(0));
                         if (threshold > 0) {
-                            drawHLine(threshold, 'rgba(245, 158, 11, 0.75)', [4, 4], 'Порог ' + formatBr(threshold) + ' ' + BYN_SYMBOL);
+                            drawHLine(threshold, 'rgba(245, 158, 11, 0.7)', [4, 4], 'Порог ' + formatBr(threshold) + ' ' + BYN_SYMBOL);
+                        }
+
+                        var tx = xScale.getPixelForValue(todayTs);
+                        if (tx >= area.left && tx <= area.right) {
+                            ctx.save();
+                            ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+                            ctx.lineWidth = 1.5;
+                            ctx.setLineDash([4, 4]);
+                            ctx.beginPath();
+                            ctx.moveTo(tx, area.top);
+                            ctx.lineTo(tx, area.bottom);
+                            ctx.stroke();
+                            ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+                            ctx.font = '10px system-ui, sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('Сегодня', tx, area.top + 12);
+                            ctx.restore();
                         }
                     }
                 }]
             });
 
             forecastChartsByCanvas[canvasId] = chart;
-            forecastChartInstance = chart;
         },
         renderWeekdayChart: function (canvasId, labels, values) {
             var canvas = document.getElementById(canvasId);

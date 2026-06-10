@@ -80,14 +80,15 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr; @(GetWideLayoutStyles()) gap: 24px;">
-                    <div style="min-width: 0;">
+                <div class="cash-forecast-layout">
+                    <div class="cash-forecast-main">
                         <div class="card chart-panel mb-4">
                             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <span>Динамика остатков (Базовый сценарий)</span>
+                                <span>Прогноз остатка на счёте</span>
                                 <div class="small text-muted d-flex gap-3 flex-wrap">
                                     <span><span class="chart-legend-dot" style="background:var(--chart-teal)"></span> Остаток</span>
                                     <span><span class="chart-legend-dot" style="background:rgba(239,68,68,.5)"></span> Разрыв</span>
+                                    <span><span class="chart-legend-dot" style="background:rgba(59,130,246,.7)"></span> Сегодня</span>
                                     @if (minCashThreshold > 0)
                                     {
                                         <span><span class="chart-legend-dot" style="background:rgba(245,158,11,.8)"></span> Порог @minCashThreshold.ToString("N0") <Byn /></span>
@@ -97,8 +98,8 @@
                             <div class="card-body">
                                 @if (forecast.BaseScenario.Points.Any())
                                 {
-                                    <div class="chart-canvas-wrap" style="height:260px">
-                                        <canvas id="@_balanceChartId" aria-label="Динамика остатков"></canvas>
+                                    <div class="chart-canvas-wrap cash-forecast-chart">
+                                        <canvas id="@_balanceChartId" aria-label="Прогноз остатка на счёте"></canvas>
                                     </div>
                                 }
                                 else
@@ -147,7 +148,7 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div class="cash-forecast-side">
                         <div class="card mb-4">
                             <div class="card-header">Сценарии прогноза</div>
                             <div class="card-body">
@@ -255,28 +256,15 @@
 
         try
         {
-            var labels = points.Select(p => p.Date.ToString("dd.MM")).ToArray();
-            var balances = points.Select(p => (double)p.Balance).ToArray();
-            var gapRanges = BuildGapIndexRanges(points, forecast.Gaps);
+            var series = ForecastChartSeriesBuilder.Build(
+                forecast.CurrentBalance,
+                points.Select(p => (p.Date, p.Balance)),
+                forecast.Gaps.Select(g => (g.StartDate, g.EndDate)));
+
             await JS.InvokeVoidAsync("dashboardCharts.renderForecastChart",
-                _balanceChartId, labels, balances, gapRanges, (double)minCashThreshold);
+                _balanceChartId, series.Dates, series.Balances, series.GapRanges, (double)minCashThreshold);
         }
         catch { }
-    }
-
-    private static int[][] BuildGapIndexRanges(List<ScenarioPoint> points, List<CashGap> gaps)
-    {
-        if (points.Count == 0 || gaps.Count == 0) return [];
-
-        return gaps.Select(g =>
-        {
-            var endDate = (g.EndDate ?? g.StartDate).Date;
-            var startIdx = points.FindIndex(p => p.Date.Date >= g.StartDate.Date);
-            if (startIdx < 0) startIdx = 0;
-            var endIdx = points.FindIndex(p => p.Date.Date >= endDate);
-            if (endIdx < 0) endIdx = points.Count - 1;
-            return new[] { startIdx, Math.Max(startIdx, endIdx) };
-        }).ToArray();
     }
 
     private string GetDaysToGap() {
@@ -285,8 +273,6 @@
         var d = (gap.StartDate - DateTime.Today).Days;
         return d <= 0 ? "Сегодня" : $"{d} дн.";
     }
-
-    private string GetWideLayoutStyles() => "grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));";
 
     private string GetRiskClass() => forecast.RiskLevel switch {
         "critical" or "high" => "alert-danger",
@@ -326,6 +312,30 @@
 }
 
 <style>
+    .cash-forecast-layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+    @@media (min-width: 1100px) {
+        .cash-forecast-layout {
+            grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+            align-items: start;
+        }
+    }
+    .cash-forecast-chart {
+        height: 320px;
+        min-height: 280px;
+        width: 100%;
+        position: relative;
+    }
+    .cash-forecast-chart--compact { height: 240px; min-height: 220px; }
+    .cash-forecast-chart canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+    }
+    .cash-forecast-main, .cash-forecast-side { min-width: 0; }
     .table thead th { border-top: none; }
     .kpi-card { transition: transform 0.2s; }
     .kpi-card:hover { transform: translateY(-2px); }
@@ -336,9 +346,5 @@
         border-radius: 50%;
         margin-right: 4px;
         vertical-align: middle;
-    }
-
-    @@media (min-width: 992px) {
-        .main { padding: 32px 48px; }
     }
 </style>

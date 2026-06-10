@@ -6,4 +6,6 @@ public sealed record TransactionPdfRow(
     string Category,
     decimal Amount,
     string? Project,
-    string? Counterparty);
+    string? Counterparty,
+    decimal? AccruedTax = null,
+    string? TaxNote = null);

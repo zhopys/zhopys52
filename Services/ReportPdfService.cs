@@ -362,25 +362,61 @@ public class ReportPdfService : IReportPdfService
         return ft;
     }
 
-    private Table BuildTransactionsTable(IReadOnlyList<TransactionPdfRow> rows)
+    private Table BuildTransactionsTable(IReadOnlyList<TransactionPdfRow> rows, bool includeTaxColumns = false)
     {
-        var t = new Table(UnitValue.CreatePercentArray(new float[] { 11, 30, 18, 13, 14, 14 })).UseAllAvailableWidth();
-        t.AddHeaderCell(H("Дата"));
-        t.AddHeaderCell(H("Описание"));
-        t.AddHeaderCell(H("Категория"));
-        t.AddHeaderCell(H("Сумма"));
-        t.AddHeaderCell(H("Проект"));
-        t.AddHeaderCell(H("Контрагент"));
+        includeTaxColumns = includeTaxColumns || rows.Any(r => r.AccruedTax is > 0 || !string.IsNullOrEmpty(r.TaxNote));
+
+        if (includeTaxColumns)
+        {
+            var t = new Table(UnitValue.CreatePercentArray(new float[] { 9, 22, 14, 11, 11, 12, 21 })).UseAllAvailableWidth();
+            t.AddHeaderCell(H("Дата"));
+            t.AddHeaderCell(H("Описание"));
+            t.AddHeaderCell(H("Категория"));
+            t.AddHeaderCell(H("Сумма"));
+            t.AddHeaderCell(H("Налог"));
+            t.AddHeaderCell(H("Ставка"));
+            t.AddHeaderCell(H("Примечание"));
+            foreach (var row in rows)
+            {
+                t.AddCell(D(row.Date.ToString("dd.MM.yyyy")));
+                t.AddCell(D(row.Description));
+                t.AddCell(D(row.Category));
+                t.AddCell(N(row.Amount, decimals: true));
+                t.AddCell(row.AccruedTax is > 0 ? N(row.AccruedTax.Value, decimals: true) : D("—", TextAlignment.CENTER));
+                t.AddCell(D(row.TaxNote?.Contains('%') == true ? ExtractRate(row.TaxNote) : "—", TextAlignment.CENTER));
+                t.AddCell(D(row.TaxNote, size: 8));
+            }
+            return t;
+        }
+
+        var std = new Table(UnitValue.CreatePercentArray(new float[] { 11, 30, 18, 13, 14, 14 })).UseAllAvailableWidth();
+        std.AddHeaderCell(H("Дата"));
+        std.AddHeaderCell(H("Описание"));
+        std.AddHeaderCell(H("Категория"));
+        std.AddHeaderCell(H("Сумма"));
+        std.AddHeaderCell(H("Проект"));
+        std.AddHeaderCell(H("Контрагент"));
         foreach (var row in rows)
         {
-            t.AddCell(D(row.Date.ToString("dd.MM.yyyy")));
-            t.AddCell(D(row.Description));
-            t.AddCell(D(row.Category));
-            t.AddCell(N(row.Amount, decimals: true));
-            t.AddCell(D(row.Project));
-            t.AddCell(D(row.Counterparty));
+            std.AddCell(D(row.Date.ToString("dd.MM.yyyy")));
+            std.AddCell(D(row.Description));
+            std.AddCell(D(row.Category));
+            std.AddCell(N(row.Amount, decimals: true));
+            std.AddCell(D(row.Project));
+            std.AddCell(D(row.Counterparty));
         }
-        return t;
+        return std;
+    }
+
+    private static string ExtractRate(string? note)
+    {
+        if (string.IsNullOrEmpty(note)) return "—";
+        if (note.Contains("6%", StringComparison.Ordinal)) return "6%";
+        if (note.Contains("4%", StringComparison.Ordinal)) return "4%";
+        if (note.Contains("8%", StringComparison.Ordinal)) return "8%";
+        if (note.Contains("20/120", StringComparison.Ordinal)) return "20/120";
+        if (note.Contains("16%", StringComparison.Ordinal)) return "16%";
+        return "—";
     }
 
     private static string Fmt(decimal value, bool decimals = false) =>
@@ -546,19 +582,29 @@ public class ReportPdfService : IReportPdfService
             body.Add(Spacer(8));
 
             body.Add(SectionTitle("Сводка по учёту за период"));
-            body.Add(Line($"Доход (выручка): {doc.Totals.Income:N2}{BynCurrency.Suffix}"));
-            body.Add(Line($"Расходы: {doc.Totals.Expenses:N2}{BynCurrency.Suffix}"));
+            body.Add(Line($"Доход (налоговая база): {doc.Totals.Income:N2}{BynCurrency.Suffix}"));
+            body.Add(Line($"Расходы (вычитаемые): {doc.Totals.Expenses:N2}{BynCurrency.Suffix}"));
             body.Add(Line($"Финансовый результат: {doc.Totals.Profit:N2}{BynCurrency.Suffix}"));
-            body.Add(Line($"Операций в учёте: {doc.Totals.OperationCount}"));
+            body.Add(Line($"Операций: {doc.Totals.OperationCount} (исключено из базы: {doc.Totals.ExcludedCount})"));
+            if (doc.Totals.AccruedTax > 0)
+                body.Add(Line($"Начислено по операциям: {doc.Totals.AccruedTax:N2}{BynCurrency.Suffix}", bold: true));
             body.Add(Spacer(8));
+
+            if (doc.Analysis != null && doc.TaxSystem == TaxSystem.NPD)
+            {
+                body.Add(Line(
+                    $"НПД: физлица {doc.Analysis.IncomeFromIndividuals:N2}{BynCurrency.Suffix}, " +
+                    $"юрлица/ИП {doc.Analysis.IncomeFromLegalEntities:N2}{BynCurrency.Suffix}", size: 10));
+                body.Add(Spacer(6));
+            }
 
             if (doc.Estimate != null && doc.Estimate.TaxAmount > 0)
             {
-                body.Add(SectionTitle("Оценка налога (MiniFinance)"));
+                body.Add(SectionTitle("Итоговый расчёт налога"));
                 body.Add(Line(doc.Estimate.Description, size: 10));
                 foreach (var line in doc.Estimate.Lines)
                     body.Add(Line($"  · {line.Name}: {line.Amount:N2}{BynCurrency.Suffix}", size: 10));
-                body.Add(Line($"Итого к ориентиру: {doc.Estimate.TaxAmount:N2}{BynCurrency.Suffix}", bold: true));
+                body.Add(Line($"Итого к уплате (ориентир): {doc.Estimate.TaxAmount:N2}{BynCurrency.Suffix}", bold: true));
                 body.Add(Spacer(8));
             }
 
@@ -583,12 +629,12 @@ public class ReportPdfService : IReportPdfService
             }
             body.Add(Spacer(10));
 
-            body.Add(SectionTitle("Операции учёта (для первичной сверки)"));
-            body.Add(Line("Подтверждённые транзакции за период — основание для расчёта выручки и расходов.", size: 9, color: ColorConstants.GRAY));
+            body.Add(SectionTitle("Расчёт по каждой операции"));
+            body.Add(Line("Каждая подтверждённая операция с указанием налоговой базы и начисленного налога.", size: 9, color: ColorConstants.GRAY));
             if (doc.Transactions.Count == 0)
                 body.Add(Line("Нет операций", size: 10));
             else
-                body.Add(BuildTransactionsTable(doc.Transactions));
+                body.Add(BuildTransactionsTable(doc.Transactions, includeTaxColumns: true));
 
             body.Add(Spacer(12));
             body.Add(Line(TaxSystemInfo.GetMnsHint(), size: 8, color: ColorConstants.GRAY));

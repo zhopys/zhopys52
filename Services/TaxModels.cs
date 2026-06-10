@@ -7,6 +7,7 @@ public sealed class TaxSummaryDto
     public decimal UnpaidTotal { get; init; }
     public decimal PaidYearToDate { get; init; }
     public decimal PaidInTransactionsYearToDate { get; init; }
+    public decimal AccruedForPeriod { get; init; }
     public int OverdueCount { get; init; }
     public int UpcomingCount { get; init; }
     public DateTime? NextDueDate { get; init; }

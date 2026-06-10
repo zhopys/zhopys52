@@ -11,4 +11,5 @@ public interface ITaxService
     Task AddTaxAsync(TaxPayment tax);
     Task UpdateTaxAsync(TaxPayment tax, string userId);
     Task DeleteTaxAsync(int taxId, string userId);
+    Task<TaxPayment?> GetBySourceTransactionAsync(string userId, int transactionId);
 }

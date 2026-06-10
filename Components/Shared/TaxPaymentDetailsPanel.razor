@@ -1,5 +1,9 @@
+@using MiniFinance.Data.Models
 @using MiniFinance.Services
+@using Microsoft.EntityFrameworkCore
+@using MiniFinance.Data
 @inject ITaxService TaxService
+@inject ApplicationDbContext DbContext
 
 <DetailsDrawer IsOpen="@IsOpen" Title="@(_tax?.Name ?? "Налог")" OnClose="OnClose">
     <Actions>
@@ -32,6 +36,13 @@
             {
                 <p class="small text-muted mt-2">Остаток к уплате: @((_tax.Amount - _tax.PaidAmount).ToString("N2")) <Byn /></p>
             }
+            @if (_sourceTransaction != null)
+            {
+                <p class="small text-muted mt-3">
+                    Из операции: @_sourceTransaction.Description (@DisplayDateHelper.Short(_sourceTransaction.Date))
+                    <a href="/transactions" class="ms-1">Открыть операции</a>
+                </p>
+            }
         }
     </ChildContent>
 </DetailsDrawer>
@@ -45,12 +56,19 @@
     [Parameter] public EventCallback<int> OnEdit { get; set; }
 
     private TaxPayment? _tax;
+    private Transaction? _sourceTransaction;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!IsOpen || TaxId <= 0) { _tax = null; return; }
+        if (!IsOpen || TaxId <= 0) { _tax = null; _sourceTransaction = null; return; }
         var list = await TaxService.GetTaxesAsync(UserId);
         _tax = list.FirstOrDefault(t => t.Id == TaxId);
+        _sourceTransaction = null;
+        if (_tax?.SourceTransactionId is int txId)
+        {
+            _sourceTransaction = await DbContext.Transactions.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == txId && t.UserId == UserId);
+        }
     }
 
     private async Task MarkPaid()

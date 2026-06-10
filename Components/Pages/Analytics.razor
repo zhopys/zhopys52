@@ -17,12 +17,22 @@
 @inject NavigationManager NavigationManager
 @attribute [Authorize(Policy = AuthorizationPolicies.CanViewReports)]
 
-<PageTitle>Финансовая аналитика — MiniFinance</PageTitle>
+<PageTitle>Аналитика — MiniFinance</PageTitle>
 
 <div class="page-header">
     <div class="title">
-        <h1>Финансовая аналитика</h1>
-        <div class="meta text-muted">P&amp;L, движение денег, графики и сравнение периодов</div>
+        <h1>Аналитика</h1>
+        <div class="meta text-muted">
+            @if (_snapshot != null)
+            {
+                <span>@_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")</span>
+                <span> · графики, сравнение и структура расходов</span>
+            }
+            else
+            {
+                <span>Графики, сравнение периодов и анализ по проектам</span>
+            }
+        </div>
     </div>
     <div class="page-actions analytics-toolbar">
         <select class="input" style="width:auto" @bind="_periodType" @bind:after="ReloadAsync">
@@ -46,7 +56,7 @@
             <option value="yoy">Год к году</option>
             <option value="none">Без сравнения</option>
         </select>
-        <button class="btn btn-outline" @onclick="ReloadAsync" disabled="@_loading">Обновить</button>
+        <a href="/reports" class="btn btn-outline btn-sm">Отчёты</a>
     </div>
 </div>
 
@@ -63,7 +73,7 @@ else if (_snapshot != null && !_snapshot.DataStatus.HasData)
 {
     <div class="empty-state">
         <div class="empty-state-title">Недостаточно данных</div>
-        <p class="text-muted">Добавьте или импортируйте транзакции для построения отчётов.</p>
+        <p class="text-muted">Добавьте или импортируйте транзакции для построения аналитики.</p>
         <div class="page-actions" style="justify-content:center;margin-top:1rem">
             <a href="/import" class="btn btn-primary">Импорт CSV</a>
             <a href="/transactions" class="btn btn-outline">Операции</a>
@@ -72,117 +82,90 @@ else if (_snapshot != null && !_snapshot.DataStatus.HasData)
 }
 else if (_snapshot != null)
 {
-    <div class="reports-period-banner mb-3">
-        <span class="reports-period-dates">
-            @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
-        </span>
-    </div>
-
-    <ReportsKpiGrid Metrics="@_snapshot.Kpi"
-                    Loading="@_refreshing"
-                    PeriodStart="@_snapshot.Filters.Start"
-                    PeriodEnd="@_snapshot.Filters.End"
-                    CompareMode="@_compareMode"
-                    PeriodHasNoActivity="@_periodHasNoActivity" />
     @if (_periodHasNoActivity && _hasAnyTransactions)
     {
-        <div class="alert alert-info mb-3">
-            В выбранном периоде нет операций, но в базе есть данные.
-            <button type="button" class="btn btn-sm btn-outline ms-2" @onclick="JumpToLatestPeriodAsync">Показать последний месяц с операциями</button>
+        <div class="alert alert-info mb-3 small">
+            В выбранном периоде нет операций.
+            <button type="button" class="btn btn-sm btn-outline ms-2" @onclick="JumpToLatestPeriodAsync">Последний месяц с данными</button>
         </div>
     }
 
-    <div class="hub-layout mt-3">
-        <nav class="hub-nav card">
-            <button type="button" class="hub-nav-item @(_tab == "pl" ? "active" : "")" @onclick='() => SetTab("pl")'>P&amp;L отчёт</button>
-            <button type="button" class="hub-nav-item @(_tab == "cashflow" ? "active" : "")" @onclick='() => SetTab("cashflow")'>Cash Flow</button>
-            <button type="button" class="hub-nav-item @(_tab == "charts" ? "active" : "")" @onclick='() => SetTab("charts")'>Графики</button>
-            <button type="button" class="hub-nav-item @(_tab == "compare" ? "active" : "")" @onclick='() => SetTab("compare")'>Сравнение</button>
-            <button type="button" class="hub-nav-item @(_tab == "export" ? "active" : "")" @onclick='() => SetTab("export")'>Экспорт</button>
-        </nav>
+    <div class="tabs reports-tabs mb-3">
+        <button type="button" class="tab @(_tab == "expenses" ? "active" : "")" @onclick='() => SetTab("expenses")'>Структура расходов</button>
+        <button type="button" class="tab @(_tab == "compare" ? "active" : "")" @onclick='() => SetTab("compare")'>Сравнение</button>
+        <button type="button" class="tab @(_tab == "weekday" ? "active" : "")" @onclick='() => SetTab("weekday")'>По дням</button>
+        <button type="button" class="tab @(_tab == "projects" ? "active" : "")" @onclick='() => SetTab("projects")'>Проекты</button>
+    </div>
 
-        <div class="hub-content @(_refreshing ? "hub-refreshing" : "")">
-            @if (_tab == "pl")
+    <p class="reports-tab-hint text-muted small mb-3">@GetTabHint()</p>
+
+    <div class="@(_refreshing ? "hub-refreshing" : "")">
+        @if (_tab == "expenses")
+        {
+            <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
+                                SelectedCategory="@_selectedCategory"
+                                OnCategorySelected="OnCategoryFilter" />
+
+            @if (_extended?.Forecast.Anomalies.Any() == true)
             {
-                <PlReportPanel Report="@_snapshot.ProfitLoss" />
-            }
-            else if (_tab == "cashflow")
-            {
-                <CashFlowPanel Statement="@_snapshot.CashFlow" MonthlyCashflow="@_snapshot.MonthlyCashflow" />
-            }
-            else if (_tab == "charts")
-            {
-                <CategoryDonutChart Chart="@_snapshot.ExpenseChart"
-                                    SelectedCategory="@_selectedCategory"
-                                    OnCategorySelected="OnCategoryFilter" />
-                <p class="small text-muted mt-2">
-                    Прогноз кассы и порог остатка — на странице <a href="/cash-forecast">Прогноз кассовых разрывов</a>.
-                </p>
-                @if (_extended?.Forecast.Anomalies.Any() == true)
-                {
-                    <div class="card mt-3">
-                        <div class="card-header">Аномалии расходов</div>
-                        <div class="card-body" style="padding:0">
-                            <table class="table mb-0">
-                                <thead>
-                                    <tr><th>Дата</th><th>Описание</th><th>Категория</th><th class="text-end">Сумма</th></tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var a in _extended.Forecast.Anomalies.Take(10))
-                                    {
-                                        <tr>
-                                            <td>@a.Date.ToString("dd.MM.yyyy")</td>
-                                            <td>@a.Description</td>
-                                            <td>@a.Category</td>
-                                            <td class="text-end text-danger">@a.Amount.ToString("N0") <Byn /></td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                }
-            }
-            else if (_tab == "compare")
-            {
-                <PeriodComparisonPanel Comparison="@(_extended?.PeriodComparison ?? new())" />
-                @if (_compareMode == "none")
-                {
-                    <div class="alert alert-info mt-3">Выберите «Месяц к месяцу» или «Год к году» в фильтрах выше.</div>
-                }
-            }
-            else if (_tab == "export")
-            {
-                <div class="card">
-                    <div class="card-header">Экспорт отчётов</div>
-                    <div class="card-body">
-                        <p class="text-muted small mb-3">
-                            Период: @_snapshot.Filters.Start.ToString("dd.MM.yyyy") — @_snapshot.Filters.End.ToString("dd.MM.yyyy")
-                        </p>
-                        <div class="export-actions-grid">
-                            <button class="btn btn-primary" @onclick='() => Export("pdf", "full")'>PDF — полный (все разделы + транзакции)</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "transactions")'>PDF — все транзакции</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "pl")'>PDF — P&amp;L</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "cashflow")'>PDF — Cash Flow</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "trial")'>PDF — ОСВ</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "book")'>PDF — книга учёта</button>
-                            <button class="btn btn-outline" @onclick='() => Export("pdf", "profitability")'>PDF — рентабельность</button>
-                            <button class="btn btn-outline" @onclick='() => Export("xlsx", "full")'>Excel — всё</button>
-                            <button class="btn btn-outline" @onclick='() => Export("csv", "transactions")'>CSV — транзакции</button>
-                        </div>
-                        <p class="small text-muted mt-3">
-                            Также доступны отчёты на странице <a href="/reports">Финансовые отчёты</a>.
-                        </p>
+                <div class="card mt-3">
+                    <div class="card-header">Нетипичные расходы</div>
+                    <div class="card-body" style="padding:0">
+                        <table class="table mb-0">
+                            <thead>
+                                <tr><th>Дата</th><th>Описание</th><th>Категория</th><th class="text-end">Сумма</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in _extended.Forecast.Anomalies.Take(8))
+                                {
+                                    <tr>
+                                        <td>@a.Date.ToString("dd.MM.yyyy")</td>
+                                        <td>@a.Description</td>
+                                        <td>@a.Category</td>
+                                        <td class="text-end text-danger">@a.Amount.ToString("N0") <Byn /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             }
-        </div>
+
+            <p class="small text-muted mt-3 mb-0">
+                Учётные формы (P&amp;L, денежный поток, ОСВ) — на странице <a href="/reports">Отчёты</a>.
+                Прогноз кассы — <a href="/cash-forecast">Прогноз кассовых разрывов</a>.
+            </p>
+        }
+        else if (_tab == "compare")
+        {
+            @if (_compareMode == "none")
+            {
+                <div class="alert alert-info mb-3 small">Выберите «Месяц к месяцу» или «Год к году» в фильтрах выше.</div>
+            }
+            <PeriodComparisonPanel Comparison="@(_extended?.PeriodComparison ?? new())" />
+        }
+        else if (_tab == "weekday" && _extended != null)
+        {
+            <WeekdayExpensePanel Data="@_extended.WeekdayExpenses" />
+        }
+        else if (_tab == "projects")
+        {
+            <ProfitabilityMatrix Rows="@_snapshot.ProfitabilityMatrix" />
+            @if (_snapshot.Projects.Any())
+            {
+                <ProjectProfitTable Rows="@_snapshot.Projects" />
+            }
+            else
+            {
+                <div class="empty-state small mt-3">Нет операций, привязанных к проектам за период.</div>
+            }
+        }
     </div>
 }
 
 @code {
     private string _userId = "";
-    private string _tab = "pl";
+    private string _tab = "expenses";
     private bool _loading = true;
     private bool _refreshing;
     private string? _error;
@@ -253,7 +236,16 @@ else if (_snapshot != null)
 
     private void SetTab(string tab) => _tab = tab;
 
-    private ReportFilters BuildFilters(string? exportReport = null)
+    private string GetTabHint() => _tab switch
+    {
+        "expenses" => "Доли категорий в расходах и нетипичные операции.",
+        "compare" => "Изменение ключевых показателей относительно прошлого периода.",
+        "weekday" => "В какие дни недели тратите больше всего.",
+        "projects" => "Выручка, маржа и затраты по проектам.",
+        _ => ""
+    };
+
+    private ReportFilters BuildFilters()
     {
         var (start, end) = _periodType == "Custom"
             ? (_customStart.Date, _customEnd.Date)
@@ -271,12 +263,7 @@ else if (_snapshot != null)
             CompareMode = _compareMode,
             ForecastDays = 90,
             Categories = string.IsNullOrEmpty(_selectedCategory) ? Array.Empty<string>() : new[] { _selectedCategory },
-            ExportReport = exportReport ?? _tab switch
-            {
-                "pl" => "pl",
-                "cashflow" => "cashflow",
-                _ => "full"
-            }
+            ExportReport = "full"
         };
     }
 
@@ -312,11 +299,5 @@ else if (_snapshot != null)
     {
         _selectedCategory = _selectedCategory == category ? null : category;
         await ReloadAsync();
-    }
-
-    private void Export(string format, string report)
-    {
-        var qs = BuildFilters(report).ToQueryString(format, report);
-        NavigationManager.NavigateTo($"/api/reports/export?{qs}", forceLoad: true);
     }
 }

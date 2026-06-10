@@ -1,88 +1,128 @@
 @using MiniFinance.Services
+@inject NavigationManager Navigation
 
 <div class="card mb-3">
-    <div class="card-header">Движение денежных средств (Cash Flow)</div>
+    <div class="card-header">Денежный поток</div>
     <div class="card-body" style="padding:0">
         @if (Statement == null)
         {
             <div class="empty-state">Нет данных за выбранный период</div>
         }
+        else if (Statement.TransactionCount == 0)
+        {
+            <div class="empty-state">Нет транзакций за период — импортируйте выписку или добавьте операции</div>
+        }
         else
         {
-            <div style="padding:1rem;border-bottom:1px solid var(--border)">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
-                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                        <div class="metric-label">Операционная деятельность</div>
-                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.OperatingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.OperatingCashFlow.ToString("N0") <Byn />
-                        </div>
-                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.OperatingIncome.ToString("N0") | Расход: @Statement.OperatingExpenses.ToString("N0")</div>
-                    </div>
-                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                        <div class="metric-label">Инвестиционная деятельность</div>
-                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.InvestmentCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.InvestmentCashFlow.ToString("N0") <Byn />
-                        </div>
-                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.InvestmentIncome.ToString("N0") | Расход: @Statement.InvestmentExpenses.ToString("N0")</div>
-                    </div>
-                    <div style="background:var(--surface-hover);padding:1rem;border-radius:var(--radius)">
-                        <div class="metric-label">Финансовая деятельность</div>
-                        <div class="metric-value" style="font-size:1.2rem;color:@(Statement.FinancingCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                            @Statement.FinancingCashFlow.ToString("N0") <Byn />
-                        </div>
-                        <div class="text-muted" style="font-size:0.8rem">Приход: @Statement.FinancingIncome.ToString("N0") | Расход: @Statement.FinancingExpenses.ToString("N0")</div>
-                    </div>
-                </div>
-                <div style="margin-top:1rem;padding:1rem;background:var(--surface-hover);border-radius:var(--radius);text-align:center">
-                    <div class="metric-label">Чистый денежный поток</div>
-                    <div class="metric-value" style="color:@(Statement.NetCashFlow >= 0 ? "var(--success)" : "var(--danger)")">
-                        @Statement.NetCashFlow.ToString("N0") <Byn />
-                    </div>
-                </div>
+            <div class="cashflow-rules-note">
+                Вид деятельности определяется по <strong>категории</strong> и <strong>описанию</strong> каждой транзакции.
+                Обычные доходы и расходы — операционная; оборудование и активы — инвестиционная; кредиты и займы — финансовая.
             </div>
-            @if (Statement.CategoryDetails.Any())
-            {
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Категория</th>
-                            <th class="text-end">Приход</th>
-                            <th class="text-end">Расход</th>
-                            <th class="text-end">Нетто</th>
-                            <th class="text-end">Операций</th>
+
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Вид деятельности</th>
+                        <th class="text-end">Поступления</th>
+                        <th class="text-end">Выплаты</th>
+                        <th class="text-end">Нетто</th>
+                        <th class="text-end">Операций</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var block in Statement.ActivityDetails)
+                    {
+                        <tr class="cashflow-activity-row">
+                            <td>
+                                <div class="fw-bold">@CashFlowActivityHelper.GetLabel(block.Activity)</div>
+                                <div class="small text-muted">@CashFlowActivityHelper.GetHint(block.Activity)</div>
+                            </td>
+                            <td class="text-end text-success">@block.Income.ToString("N0") <Byn /></td>
+                            <td class="text-end text-danger">@block.Expense.ToString("N0") <Byn /></td>
+                            <td class="text-end fw-bold @(block.NetFlow >= 0 ? "text-success" : "text-danger")">@block.NetFlow.ToString("N0") <Byn /></td>
+                            <td class="text-end">
+                                @if (block.TransactionCount > 0)
+                                {
+                                    <a class="cashflow-tx-link" href="@BuildActivityUrl(block.Activity)">@block.TransactionCount</a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var cat in Statement.CategoryDetails)
-                        {
-                            <tr class="@(cat.NetFlow < 0 ? "negative-balance" : null)" data-balance="@cat.NetFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)">
-                                <td>@cat.Category</td>
-                                <td class="text-end text-success">@cat.Income.ToString("N0") <Byn /></td>
-                                <td class="text-end text-danger">@cat.Expense.ToString("N0") <Byn /></td>
-                                <td class="text-end fw-bold @(cat.NetFlow >= 0 ? "text-success" : "text-danger")">
-                                    @cat.NetFlow.ToString("N0") <Byn />
-                                </td>
-                                <td class="text-end text-muted">@cat.TransactionCount</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td>Чистый денежный поток</td>
+                        <td class="text-end text-success">@Statement.ActivityDetails.Sum(a => a.Income).ToString("N0") <Byn /></td>
+                        <td class="text-end text-danger">@Statement.ActivityDetails.Sum(a => a.Expense).ToString("N0") <Byn /></td>
+                        <td class="text-end @(Statement.NetCashFlow >= 0 ? "text-success" : "text-danger")">@Statement.NetCashFlow.ToString("N0") <Byn /></td>
+                        <td class="text-end">
+                            <a class="cashflow-tx-link" href="@BuildAllUrl()">@Statement.TransactionCount</a>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
         }
     </div>
 </div>
 
+@if (Statement != null && Statement.CategoryDetails.Any())
+{
+    <div class="card mb-3">
+        <div class="card-header">Из чего складывается поток — по категориям транзакций</div>
+        <div class="card-body" style="padding:0">
+            @foreach (var block in Statement.ActivityDetails.Where(a => a.Categories.Any()))
+            {
+                <div class="cashflow-activity-block">
+                    <div class="cashflow-activity-block-title">
+                        @CashFlowActivityHelper.GetLabel(block.Activity)
+                        <a class="small ms-2" href="@BuildActivityUrl(block.Activity)">все операции →</a>
+                    </div>
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Категория</th>
+                                <th class="text-end">Поступления</th>
+                                <th class="text-end">Выплаты</th>
+                                <th class="text-end">Нетто</th>
+                                <th class="text-end">Оп.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in block.Categories)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="@BuildCategoryUrl(row.Category)">@row.Category</a>
+                                    </td>
+                                    <td class="text-end text-success">@(row.Income > 0 ? $"{row.Income:N0}" : "—")</td>
+                                    <td class="text-end text-danger">@(row.Expense > 0 ? $"{row.Expense:N0}" : "—")</td>
+                                    <td class="text-end fw-bold @(row.NetFlow >= 0 ? "text-success" : "text-danger")">@row.NetFlow.ToString("N0")</td>
+                                    <td class="text-end text-muted">@row.TransactionCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @if (MonthlyCashflow.Any())
 {
     <div class="card mb-3">
-        <div class="card-header">Помесячный денежный поток</div>
+        <div class="card-header">Помесячная динамика</div>
         <div class="card-body" style="padding:0">
-            <table class="table">
+            <table class="table mb-0">
                 <thead>
                     <tr>
                         <th>Месяц</th>
-                        <th class="text-end">Приход</th>
-                        <th class="text-end">Расход</th>
+                        <th class="text-end">Поступления</th>
+                        <th class="text-end">Выплаты</th>
                         <th class="text-end">Остаток нарастающим</th>
                     </tr>
                 </thead>
@@ -109,4 +149,23 @@
     [Parameter] public List<CashflowEntry> MonthlyCashflow { get; set; } = new();
 
     private static readonly System.Globalization.CultureInfo RuCulture = new("ru-RU");
+
+    private string BuildAllUrl()
+    {
+        if (Statement == null) return "/transactions";
+        return $"/transactions?from={Statement.StartDate:yyyy-MM-dd}&to={Statement.EndDate:yyyy-MM-dd}";
+    }
+
+    private string BuildActivityUrl(CashFlowActivity activity)
+    {
+        if (Statement == null) return "/transactions";
+        return $"/transactions?from={Statement.StartDate:yyyy-MM-dd}&to={Statement.EndDate:yyyy-MM-dd}&activity={CashFlowActivityHelper.GetSlug(activity)}";
+    }
+
+    private string BuildCategoryUrl(string category)
+    {
+        if (Statement == null) return "/transactions";
+        var cat = Uri.EscapeDataString(category);
+        return $"/transactions?from={Statement.StartDate:yyyy-MM-dd}&to={Statement.EndDate:yyyy-MM-dd}&category={cat}";
+    }
 }

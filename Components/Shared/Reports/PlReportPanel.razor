@@ -9,64 +9,71 @@
         }
         else
         {
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;padding:1rem;border-bottom:1px solid var(--border)">
-                <div>
-                    <div class="metric-label">Доходы</div>
-                    <div class="metric-value text-success">@Report.TotalIncome.ToString("N0") <Byn /></div>
-                </div>
-                <div>
-                    <div class="metric-label">Расходы</div>
-                    <div class="metric-value text-danger">@Report.TotalExpense.ToString("N0") <Byn /></div>
-                </div>
-                <div>
-                    <div class="metric-label">Чистая прибыль</div>
-                    <div class="metric-value" style="color:@(Report.NetProfit >= 0 ? "var(--success)" : "var(--danger)")">
-                        @Report.NetProfit.ToString("N0") <Byn />
-                    </div>
-                </div>
-                <div>
-                    <div class="metric-label">Маржинальность</div>
-                    <div class="metric-value" style="color:@(Report.ProfitMargin >= 0 ? "var(--success)" : "var(--danger)")">
-                        @Report.ProfitMargin.ToString("F1")%
-                    </div>
-                </div>
-            </div>
-            @if (Report.ExpenseByCategory.Any())
-            {
-                <div style="padding:1rem">
-                    <h4 style="margin-bottom:0.5rem">Расходы по категориям</h4>
-                    @foreach (var cat in Report.ExpenseByCategory)
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Статья</th>
+                        <th class="text-end">Сумма</th>
+                        <th class="text-end">Доля</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="table-section-row">
+                        <td colspan="3"><strong>Доходы</strong></td>
+                    </tr>
+                    @if (Report.IncomeByCategory.Any())
                     {
-                        <div style="margin-bottom:0.5rem">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                                <span>@cat.Category</span>
-                                <span class="text-danger">@cat.Amount.ToString("N0") <Byn /> (@cat.Percentage.ToString("F0")%)</span>
-                            </div>
-                            <div class="progress-bar-container" style="height:6px">
-                                <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--danger)"></div>
-                            </div>
-                        </div>
+                        @foreach (var cat in Report.IncomeByCategory)
+                        {
+                            <tr>
+                                <td class="ps-3">@cat.Category</td>
+                                <td class="text-end text-success">@cat.Amount.ToString("N0") <Byn /></td>
+                                <td class="text-end text-muted">@cat.Percentage.ToString("F0")%</td>
+                            </tr>
+                        }
                     }
-                </div>
-            }
-            @if (Report.IncomeByCategory.Any())
-            {
-                <div style="padding:1rem;border-top:1px solid var(--border)">
-                    <h4 style="margin-bottom:0.5rem">Доходы по категориям</h4>
-                    @foreach (var cat in Report.IncomeByCategory)
+                    else
                     {
-                        <div style="margin-bottom:0.5rem">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                                <span>@cat.Category</span>
-                                <span class="text-success">@cat.Amount.ToString("N0") <Byn /> (@cat.Percentage.ToString("F0")%)</span>
-                            </div>
-                            <div class="progress-bar-container" style="height:6px">
-                                <div class="progress-bar-fill" style="width:@cat.Percentage%;background:var(--success)"></div>
-                            </div>
-                        </div>
+                        <tr><td class="ps-3 text-muted" colspan="3">Нет доходов</td></tr>
                     }
-                </div>
-            }
+                    <tr class="fw-bold">
+                        <td>Итого доходы</td>
+                        <td class="text-end text-success">@Report.TotalIncome.ToString("N0") <Byn /></td>
+                        <td class="text-end text-muted">100%</td>
+                    </tr>
+
+                    <tr class="table-section-row">
+                        <td colspan="3"><strong>Расходы</strong></td>
+                    </tr>
+                    @if (Report.ExpenseByCategory.Any())
+                    {
+                        @foreach (var cat in Report.ExpenseByCategory)
+                        {
+                            <tr>
+                                <td class="ps-3">@cat.Category</td>
+                                <td class="text-end text-danger">@cat.Amount.ToString("N0") <Byn /></td>
+                                <td class="text-end text-muted">@cat.Percentage.ToString("F0")%</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr><td class="ps-3 text-muted" colspan="3">Нет расходов</td></tr>
+                    }
+                    <tr class="fw-bold">
+                        <td>Итого расходы</td>
+                        <td class="text-end text-danger">@Report.TotalExpense.ToString("N0") <Byn /></td>
+                        <td class="text-end text-muted">100%</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td>Чистая прибыль</td>
+                        <td class="text-end @(Report.NetProfit >= 0 ? "text-success" : "text-danger")">@Report.NetProfit.ToString("N0") <Byn /></td>
+                        <td class="text-end text-muted">@Report.ProfitMargin.ToString("F1")%</td>
+                    </tr>
+                </tfoot>
+            </table>
         }
     </div>
 </div>
@@ -74,5 +81,3 @@
 @code {
     [Parameter] public ProfitLossReport? Report { get; set; }
 }
-
-

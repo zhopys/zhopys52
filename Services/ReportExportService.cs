@@ -20,12 +20,10 @@ public class ReportExportService : IReportExportService
     {
         var f = snapshot.Filters;
         var report = f.ExportReport.ToLowerInvariant();
-        var stem = report is "full" or ""
-            ? $"MiniFinance_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}"
-            : $"MiniFinance_{report}_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}";
+        var stem = $"MiniFinance_{f.Start:yyyyMMdd}_{f.End:yyyyMMdd}";
         return format.ToLowerInvariant() switch
         {
-            "csv" => ("text/csv; charset=utf-8", $"{stem}_transactions.csv", ExportCsv(snapshot, userId)),
+            "csv" => ("text/csv; charset=utf-8", $"{stem}.csv", ExportCsv(snapshot, userId)),
             "xlsx" or "excel" => ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"{stem}.xlsx", ExportXlsx(snapshot, userId)),
             "pdf" => ("application/pdf", $"{stem}.pdf", ExportPdf(snapshot, userId)),
             _ => throw new ArgumentException($"Unknown format: {format}")
@@ -36,17 +34,110 @@ public class ReportExportService : IReportExportService
     {
         var f = snapshot.Filters;
         var sb = new StringBuilder();
-        sb.AppendLine($"# MiniFinance export");
-        sb.AppendLine($"# Period: {f.Start:yyyy-MM-dd} — {f.End:yyyy-MM-dd}");
-        sb.AppendLine($"# Compare: {f.CompareMode}");
+        sb.AppendLine($"# MiniFinance — полный отчёт");
+        sb.AppendLine($"# Период: {f.Start:yyyy-MM-dd} — {f.End:yyyy-MM-dd}");
+        sb.AppendLine($"# Сравнение: {f.CompareMode}");
         if (f.ProjectId.HasValue)
-            sb.AppendLine($"# ProjectId: {f.ProjectId}");
+            sb.AppendLine($"# Проект ID: {f.ProjectId}");
         if (f.Categories.Count > 0)
-            sb.AppendLine($"# Categories: {string.Join(", ", f.Categories)}");
-        sb.AppendLine($"# Generated: {snapshot.GeneratedAt:yyyy-MM-dd HH:mm} UTC");
+            sb.AppendLine($"# Категории: {string.Join(", ", f.Categories)}");
+        sb.AppendLine($"# Сформировано: {snapshot.GeneratedAt:yyyy-MM-dd HH:mm} UTC");
         sb.AppendLine();
-        sb.AppendLine("Date,Amount,Description,Category,Project,Counterparty,PaymentMethod");
 
+        sb.AppendLine("Раздел,Показатель,Значение,Пред. период,Изменение %");
+        foreach (var k in snapshot.Kpi)
+        {
+            sb.AppendLine(string.Join(",",
+                Escape("KPI"),
+                Escape(k.Label),
+                k.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                k.PreviousValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                k.ChangePercent.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        sb.AppendLine(string.Join(",",
+            Escape("KPI"),
+            Escape("Налоговый резерв"),
+            snapshot.TaxReserve.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "",
+            ""));
+        sb.AppendLine(string.Join(",",
+            Escape("KPI"),
+            Escape("Свободные деньги"),
+            snapshot.FreeCash.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "",
+            ""));
+
+        var pl = snapshot.ProfitLoss;
+        if (pl != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Раздел,Статья,Сумма,Доля %");
+            foreach (var c in pl.IncomeByCategory)
+            {
+                sb.AppendLine(string.Join(",",
+                    Escape("P&L доходы"),
+                    Escape(c.Category),
+                    c.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    c.Percentage.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            }
+            sb.AppendLine(string.Join(",",
+                Escape("P&L"),
+                Escape("Итого доходы"),
+                pl.TotalIncome.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "100"));
+            foreach (var c in pl.ExpenseByCategory)
+            {
+                sb.AppendLine(string.Join(",",
+                    Escape("P&L расходы"),
+                    Escape(c.Category),
+                    c.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    c.Percentage.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            }
+            sb.AppendLine(string.Join(",",
+                Escape("P&L"),
+                Escape("Итого расходы"),
+                pl.TotalExpense.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "100"));
+            sb.AppendLine(string.Join(",",
+                Escape("P&L"),
+                Escape("Чистая прибыль"),
+                pl.NetProfit.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                pl.ProfitMargin.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        var cf = snapshot.CashFlow;
+        if (cf != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Раздел,Вид деятельности,Поступления,Выплаты,Нетто");
+            sb.AppendLine(string.Join(",",
+                Escape("Денежный поток"),
+                Escape("Операционная"),
+                cf.OperatingIncome.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.OperatingExpenses.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.OperatingCashFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            sb.AppendLine(string.Join(",",
+                Escape("Денежный поток"),
+                Escape("Инвестиционная"),
+                cf.InvestmentIncome.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.InvestmentExpenses.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.InvestmentCashFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            sb.AppendLine(string.Join(",",
+                Escape("Денежный поток"),
+                Escape("Финансовая"),
+                cf.FinancingIncome.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.FinancingExpenses.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                cf.FinancingCashFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            sb.AppendLine(string.Join(",",
+                Escape("Денежный поток"),
+                Escape("Чистый поток"),
+                "",
+                "",
+                cf.NetCashFlow.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Дата,Сумма,Описание,Категория,Проект,Контрагент,Способ оплаты");
         var tx = LoadTransactions(userId, f);
         foreach (var t in tx)
         {
@@ -70,36 +161,15 @@ public class ReportExportService : IReportExportService
 
     public byte[] ExportXlsx(ReportAnalyticsSnapshot snapshot, string userId)
     {
-        var report = snapshot.Filters.ExportReport.ToLowerInvariant();
         using var wb = new XLWorkbook();
-
-        if (report is "full" or "summary")
-        {
-            BuildSummarySheet(wb, snapshot);
-            BuildPlSheet(wb, snapshot);
-            BuildCashFlowSheet(wb, snapshot);
-            BuildTrialBalanceSheet(wb, snapshot);
-            BuildIncomeBookSheet(wb, snapshot);
-            BuildProfitabilitySheet(wb, snapshot);
-            BuildForecastSheet(wb, snapshot);
-            BuildTransactionsSheet(wb, snapshot, userId);
-        }
-        else if (report == "pl")
-            BuildPlSheet(wb, snapshot);
-        else if (report == "cashflow")
-            BuildCashFlowSheet(wb, snapshot);
-        else if (report == "transactions")
-            BuildTransactionsSheet(wb, snapshot, userId);
-        else if (report is "profitability")
-            BuildProfitabilitySheet(wb, snapshot);
-        else if (report is "trial" or "categories")
-            BuildTrialBalanceSheet(wb, snapshot);
-        else if (report is "book")
-            BuildIncomeBookSheet(wb, snapshot);
-        else if (report is "forecast")
-            BuildForecastSheet(wb, snapshot);
-        else
-            BuildSummarySheet(wb, snapshot);
+        BuildSummarySheet(wb, snapshot);
+        BuildPlSheet(wb, snapshot);
+        BuildCashFlowSheet(wb, snapshot);
+        BuildTrialBalanceSheet(wb, snapshot);
+        BuildIncomeBookSheet(wb, snapshot);
+        BuildProfitabilitySheet(wb, snapshot);
+        BuildForecastSheet(wb, snapshot);
+        BuildTransactionsSheet(wb, snapshot, userId);
 
         if (wb.Worksheets.Count == 0)
             BuildSummarySheet(wb, snapshot);
@@ -111,28 +181,9 @@ public class ReportExportService : IReportExportService
 
     public byte[] ExportPdf(ReportAnalyticsSnapshot snapshot, string userId)
     {
-        var report = snapshot.Filters.ExportReport.ToLowerInvariant();
         var f = snapshot.Filters;
         var tx = MapTransactions(LoadTransactions(userId, f));
-
-        return report switch
-        {
-            "pl" when snapshot.ProfitLoss != null =>
-                _pdfService.GenerateProfitLossPdf(snapshot.ProfitLoss, f.Start, f.End),
-            "cashflow" when snapshot.CashFlow != null =>
-                _pdfService.GenerateCashFlowPdf(snapshot.CashFlow, f.Start, f.End),
-            "trial" or "categories" when snapshot.TrialBalance != null =>
-                _pdfService.GenerateTrialBalancePdf(snapshot.TrialBalance, f.Start, f.End),
-            "book" =>
-                _pdfService.GenerateIncomeBookPdf(snapshot.IncomeExpenseBook, f.Start, f.End),
-            "transactions" =>
-                _pdfService.GenerateTransactionsPdf(tx, f.Start, f.End),
-            "profitability" =>
-                _pdfService.GenerateProfitabilityPdf(snapshot.ProfitabilityMatrix, f.Start, f.End),
-            "forecast" =>
-                _pdfService.GenerateForecastPdf(snapshot.Forecast, f.Start, f.End),
-            _ => _pdfService.GenerateFullReportPdf(snapshot, tx)
-        };
+        return _pdfService.GenerateFullReportPdf(snapshot, tx);
     }
 
     private static List<TransactionPdfRow> MapTransactions(List<Data.Models.Transaction> tx) =>

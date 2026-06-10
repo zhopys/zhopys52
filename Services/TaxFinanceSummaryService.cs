@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MiniFinance.Data;
+using MiniFinance.Data.Models;
 
 namespace MiniFinance.Services;
 
@@ -7,31 +8,46 @@ public sealed class TaxFinanceSummaryService : ITaxFinanceSummaryService
 {
     private readonly ApplicationDbContext _db;
     private readonly IDataScopeService _dataScope;
+    private readonly ITransactionTaxService _transactionTax;
 
-    public TaxFinanceSummaryService(ApplicationDbContext db, IDataScopeService dataScope)
+    public TaxFinanceSummaryService(
+        ApplicationDbContext db,
+        IDataScopeService dataScope,
+        ITransactionTaxService transactionTax)
     {
         _db = db;
         _dataScope = dataScope;
+        _transactionTax = transactionTax;
     }
 
     public async Task<TaxPeriodTotalsDto> GetPeriodTotalsAsync(string ownerUserId, DateTime start, DateTime end)
     {
-        ownerUserId = await ServiceDataScope.ResolveAsync(_dataScope, ownerUserId);
-        var amounts = await _db.Transactions
-            .AsNoTracking()
-            .Where(t => t.UserId == ownerUserId && t.IsConfirmed && t.Date >= start && t.Date <= end)
-            .Select(t => t.Amount)
-            .ToListAsync();
+        var settings = await GetOrgSettingsAsync(ownerUserId);
+        var analysis = await _transactionTax.AnalyzePeriodAsync(
+            ownerUserId, start, end,
+            settings?.TaxSystem ?? TaxSystem.USN,
+            settings?.TaxpayerKind ?? TaxpayerKind.LegalEntity);
 
         return new TaxPeriodTotalsDto
         {
             PeriodStart = start,
             PeriodEnd = end,
-            Income = amounts.Where(a => a > 0).Sum(),
-            Expenses = Math.Abs(amounts.Where(a => a < 0).Sum()),
-            OperationCount = amounts.Count
+            Income = analysis.Income,
+            Expenses = analysis.Expenses,
+            OperationCount = analysis.OperationCount,
+            ExcludedCount = analysis.ExcludedCount,
+            AccruedTax = analysis.AccruedTaxTotal
         };
     }
+
+    public Task<TaxPeriodAnalysisDto> GetPeriodAnalysisAsync(
+        string ownerUserId,
+        DateTime start,
+        DateTime end,
+        TaxSystem taxSystem,
+        TaxpayerKind taxpayerKind,
+        bool includeFsznEstimate = false) =>
+        _transactionTax.AnalyzePeriodAsync(ownerUserId, start, end, taxSystem, taxpayerKind, includeFsznEstimate);
 
     public async Task<decimal> GetTaxCategoryPaidYearToDateAsync(string ownerUserId, DateTime yearStart)
     {
@@ -76,5 +92,12 @@ public sealed class TaxFinanceSummaryService : ITaxFinanceSummaryService
                 .OrderByDescending(d => d)
                 .ToList()
         };
+    }
+
+    private async Task<OrganizationSettings?> GetOrgSettingsAsync(string ownerUserId)
+    {
+        ownerUserId = await ServiceDataScope.ResolveAsync(_dataScope, ownerUserId);
+        return await _db.OrganizationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == ownerUserId);
     }
 }

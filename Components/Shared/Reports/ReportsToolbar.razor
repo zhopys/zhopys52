@@ -106,21 +106,15 @@
         @if (!HideExport && OnExport.HasDelegate)
         {
         <div class="reports-toolbar-export-row mt-2">
-            <span class="text-muted small">Экспорт (период и фильтры):</span>
-            <div class="reports-toolbar-export reports-toolbar-export--wide">
-                <button type="button" class="btn btn-primary btn-sm" @onclick='() => Export("pdf", "full")' disabled="@Disabled" title="PDF: KPI, P&L, Cash Flow, ОСВ, книга, транзакции">
-                    PDF — всё
+            <span class="text-muted small">Экспорт за период:</span>
+            <div class="reports-toolbar-export">
+                <button type="button" class="btn btn-primary btn-sm" @onclick='() => Export("pdf")' disabled="@Disabled" title="Все разделы отчёта и транзакции">
+                    PDF
                 </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf", "transactions")' disabled="@Disabled">
-                    PDF — транзакции
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("xlsx")' disabled="@Disabled" title="Все разделы отчёта и транзакции">
+                    Excel
                 </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("pdf")' disabled="@Disabled" title="PDF по активной вкладке">
-                    PDF — вкладка
-                </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("xlsx", "full")' disabled="@Disabled">
-                    Excel — всё
-                </button>
-                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("csv", "transactions")' disabled="@Disabled">
+                <button type="button" class="btn btn-outline btn-sm" @onclick='() => Export("csv")' disabled="@Disabled" title="Все разделы отчёта и транзакции">
                     CSV
                 </button>
             </div>
@@ -209,7 +203,7 @@
     }
 
     private Task ApplyFilters() => OnFiltersChanged.InvokeAsync();
-    private Task Export(string format, string? report = null) => OnExport.InvokeAsync((format, report));
+    private Task Export(string format) => OnExport.InvokeAsync((format, "full"));
     private Task ResetFilters() => OnReset.InvokeAsync();
 
     private Task ClearProject() => ProjectIdChanged.InvokeAsync(null);

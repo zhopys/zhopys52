@@ -28,5 +28,8 @@ namespace MiniFinance.Data.Models
 
         [StringLength(500)]
         public string? ReceiptNote { get; set; }
+
+        /// <summary>Операция, на основе которой создан плановый платёж.</summary>
+        public int? SourceTransactionId { get; set; }
     }
 }

@@ -38,12 +38,10 @@ internal static class TwoFactorLoginEndpoint
         var form = await httpContext.Request.ReadFormAsync();
         var code = (form["twoFactorCode"].ToString() ?? "").Replace(" ", "").Replace("-", "");
         var returnUrl = form["returnUrl"].ToString();
-        var rememberMe = form["rememberMe"].ToString() is "true" or "on";
-        var rememberMachine = form["rememberMachine"].ToString() is "true" or "on";
 
         var codeCheck = AuthFieldValidation.ValidateTwoFactorCode(code);
         if (!codeCheck.Ok)
-            return Results.Redirect(To2faPage(error: "invalid_code", returnUrl: returnUrl, rememberMe: rememberMe));
+            return Results.Redirect(To2faPage(error: "invalid_code", returnUrl: returnUrl));
 
         var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
         if (user is null)
@@ -55,8 +53,8 @@ internal static class TwoFactorLoginEndpoint
         var result = await signInManager.TwoFactorSignInAsync(
             TokenOptions.DefaultEmailProvider,
             code,
-            rememberMe,
-            rememberMachine);
+            isPersistent: false,
+            rememberClient: false);
 
         if (result.Succeeded)
         {
@@ -69,7 +67,7 @@ internal static class TwoFactorLoginEndpoint
             return Results.Redirect("/Account/Lockout");
 
         logger.LogWarning("Invalid 2FA code for user {UserId}", user.Id);
-        return Results.Redirect(To2faPage(error: "invalid_code", returnUrl: returnUrl, rememberMe: rememberMe));
+        return Results.Redirect(To2faPage(error: "invalid_code", returnUrl: returnUrl));
     }
 
     private static async Task<IResult> HandleResendAsync(
@@ -94,7 +92,6 @@ internal static class TwoFactorLoginEndpoint
 
         var form = await httpContext.Request.ReadFormAsync();
         var returnUrl = form["returnUrl"].ToString();
-        var rememberMe = form["rememberMe"].ToString() is "true" or "on";
 
         var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
         if (user is null)
@@ -104,17 +101,16 @@ internal static class TwoFactorLoginEndpoint
         if (!sent)
         {
             logger.LogWarning("2FA resend failed for {UserId}: {Error}", user.Id, sendError);
-            return Results.Redirect(To2faPage(error: "send_failed", returnUrl: returnUrl, rememberMe: rememberMe));
+            return Results.Redirect(To2faPage(error: "send_failed", returnUrl: returnUrl));
         }
 
-        return Results.Redirect(To2faPage(sent: true, returnUrl: returnUrl, rememberMe: rememberMe));
+        return Results.Redirect(To2faPage(sent: true, returnUrl: returnUrl));
     }
 
     private static string To2faPage(
         string? error = null,
         bool sent = false,
-        string? returnUrl = null,
-        bool rememberMe = false)
+        string? returnUrl = null)
     {
         var q = new Dictionary<string, string?>();
         if (!string.IsNullOrWhiteSpace(error))
@@ -123,8 +119,6 @@ internal static class TwoFactorLoginEndpoint
             q["sent"] = "1";
         if (!string.IsNullOrWhiteSpace(returnUrl))
             q["returnUrl"] = returnUrl;
-        if (rememberMe)
-            q["rememberMe"] = "true";
         return QueryHelpers.AddQueryString("/Account/LoginWith2fa", q);
     }
 }

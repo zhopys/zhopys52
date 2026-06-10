@@ -46,9 +46,8 @@ internal static class LoginEndpoint
         var form = await httpContext.Request.ReadFormAsync();
         var email = AuthFieldValidation.NormalizeEmail(form["email"].ToString());
         var password = form["password"].ToString() ?? "";
-        var rememberMe = form["rememberMe"].ToString();
         var returnUrl = form["returnUrl"].ToString();
-        var persist = rememberMe is "true" or "on";
+        const bool persist = false;
 
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
             return Results.Redirect(AccountUrls.Login(error: "empty", email: email));
@@ -103,11 +102,7 @@ internal static class LoginEndpoint
             }
 
             return Results.Redirect(QueryHelpers.AddQueryString("/Account/LoginWith2fa",
-                new Dictionary<string, string?>
-                {
-                    ["returnUrl"] = returnUrl,
-                    ["rememberMe"] = persist.ToString().ToLowerInvariant()
-                }));
+                new Dictionary<string, string?> { ["returnUrl"] = returnUrl }));
         }
 
         logger.LogWarning("Login failed for {Email}: {Result}", email, result.ToString());

@@ -193,4 +193,14 @@ public class TaxService : ITaxService
         _db.TaxPayments.Remove(tax);
         await _db.SaveChangesAsync();
     }
+
+    public async Task<TaxPayment?> GetBySourceTransactionAsync(string userId, int transactionId)
+    {
+        userId = await ServiceDataScope.ResolveAsync(_dataScope, userId);
+        return await _db.TaxPayments
+            .AsNoTracking()
+            .Where(t => t.UserId == userId && t.SourceTransactionId == transactionId)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefaultAsync();
+    }
 }

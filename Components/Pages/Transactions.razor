@@ -42,6 +42,14 @@
             </div>
         }
 
+        @if (CashFlowActivityHelper.TryParseSlug(_filterActivity, out var activityFilter))
+        {
+            <div class="alert alert-info mb-3 small">
+                Фильтр из отчёта «Денежный поток»: <strong>@CashFlowActivityHelper.GetLabel(activityFilter)</strong> деятельность.
+                <a href="@BuildClearActivityUrl()" class="ms-2">Сбросить</a>
+            </div>
+        }
+
         @if (showAddModal)
         {
             <div class="card mb-3">
@@ -416,6 +424,11 @@
     [SupplyParameterFromQuery(Name = "to")]
     public string? QueryTo { get; set; }
 
+    [SupplyParameterFromQuery(Name = "activity")]
+    public string? QueryActivity { get; set; }
+
+    private string _filterActivity = "";
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -435,6 +448,9 @@
             _filterDateFrom = from.Date;
         if (DateTime.TryParse(QueryTo, out var to))
             _filterDateTo = to.Date;
+
+        if (!string.IsNullOrWhiteSpace(QueryActivity))
+            _filterActivity = QueryActivity.Trim();
 
         _userId = user.Id;
         _authorName = user.Email;
@@ -491,6 +507,8 @@
         if (int.TryParse(_filterProjectId, out var pid)) q = q.Where(t => t.ProjectId == pid);
         if (_filterDateFrom.HasValue) q = q.Where(t => t.Date >= _filterDateFrom.Value);
         if (_filterDateTo.HasValue) q = q.Where(t => t.Date <= _filterDateTo.Value);
+        if (CashFlowActivityHelper.TryParseSlug(_filterActivity, out var activity))
+            q = q.Where(t => CashFlowActivityHelper.Classify(t) == activity);
         return q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id);
     }
 
@@ -672,9 +690,22 @@
         _filterType = "all";
         _filterApprovalStatus = "all";
         _filterProjectId = string.Empty;
+        _filterActivity = string.Empty;
         _filterDateFrom = null;
         _filterDateTo = null;
         RefreshFilteredList();
+    }
+
+    private string BuildClearActivityUrl()
+    {
+        var parts = new List<string>();
+        if (_filterDateFrom.HasValue)
+            parts.Add($"from={_filterDateFrom.Value:yyyy-MM-dd}");
+        if (_filterDateTo.HasValue)
+            parts.Add($"to={_filterDateTo.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(_filterCategory))
+            parts.Add($"category={Uri.EscapeDataString(_filterCategory)}");
+        return parts.Count == 0 ? "/transactions" : $"/transactions?{string.Join("&", parts)}";
     }
 
     private void ShowSuccess(string msg)
