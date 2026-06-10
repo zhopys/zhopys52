@@ -71,6 +71,8 @@ public static class DiplomaDemoSeedService
         if (!roles.Contains(AppRoles.Administrator))
             await userManager.AddToRoleAsync(user, AppRoles.Administrator);
 
+        await userManager.SetTwoFactorEnabledAsync(user, false);
+
         await SeedTeamMembersAsync(userManager, user.Id);
         await DeleteOtherUsersAsync(userManager, user.Id);
         await SeedDemoDataAsync(db, user.Id);
@@ -115,6 +117,7 @@ public static class DiplomaDemoSeedService
                 await userManager.RemoveFromRolesAsync(existing, roles);
                 await userManager.AddToRoleAsync(existing, role);
             }
+            await userManager.SetTwoFactorEnabledAsync(existing, false);
             Console.WriteLine($"  Команда: {email} (уже есть)");
             return;
         }
@@ -135,6 +138,7 @@ public static class DiplomaDemoSeedService
         if (!created.Succeeded)
             throw new InvalidOperationException($"Не удалось создать {email}: " + string.Join("; ", created.Errors.Select(e => e.Description)));
         await userManager.AddToRoleAsync(member, role);
+        await userManager.SetTwoFactorEnabledAsync(member, false);
         Console.WriteLine($"  Команда: {email} / {TeamDemoPassword}");
     }
 

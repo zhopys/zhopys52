@@ -1,0 +1,47 @@
+{
+  "paragraphs": [
+    "Веб-приложение MiniFinance реализовано как интерфейс с боковым меню и функциональными разделами.",
+    "Форма авторизации (рис. 2.1) содержит поля email и пароля, кнопку входа и ссылки на регистрацию.",
+    "Форма регистрации (рис. 2.2) позволяет создать учётную запись.",
+    "Главная страница (рис. 2.3) отображает баланс, KPI и ближайшие обязательства.",
+    "Раздел транзакций (рис. 2.4) предназначен для учёта операций.",
+    "Раздел отчётов (рис. 2.5) формирует P and L, cash flow, ОСВ, книгу учёта, налоги и баланс.",
+    "Раздел аналитики (рис. 2.6) содержит структуру расходов и сравнение периодов.",
+    "Раздел импорта (рис. 2.7) загружает CSV и PDF-выписки.",
+    "Раздел категорий (рис. 2.8) управляет статьями доходов и расходов.",
+    "Раздел налогов (рис. 2.9) ведёт плановые платежи.",
+    "Прогноз кассы (рис. 2.10) строит график остатка на счёте.",
+    "Напоминания (рис. 2.11) хранят регулярные платежи."
+  ],
+  "headings": [
+    "2.5. Описание логической структуры программы",
+    "2.6. Описание физической структуры программы"
+  ],
+  "logic": "Серверная часть построена по слоистой архитектуре: Components (UI), Services (логика), Data (модели и EF Core). Основные методы: CreateAsync, UpdateAsync, DeleteAsync, ListAsync (TransactionService); ImportManyAsync (импорт); GetProfitLossReport, GetCashFlowStatement (ReportService); ExportFullReportAsync (экспорт); GetForecastAsync (прогноз); EnsureDefaultCategoriesAsync (автокатегоризация); HandleLoginAsync (аутентификация Identity).",
+  "physical": "Корень проекта: Program.cs, Components/, Services/, Data/, wwwroot/, MiniFinance.Tests/. База SQLite — app.db. Запуск: dotnet run, адрес http://localhost:5210.",
+  "images": [
+    { "after": null, "file": "2-01-login.png", "caption": "Рис. 2.1. Форма авторизации" },
+    { "file": "2-01b-register.png", "caption": "Рис. 2.2. Форма регистрации" },
+    { "file": "2-02-home.png", "caption": "Рис. 2.3. Главная страница" },
+    { "file": "2-03-transactions.png", "caption": "Рис. 2.4. Раздел транзакций" },
+    { "file": "2-04-reports.png", "caption": "Рис. 2.5. Финансовые отчёты" },
+    { "file": "2-05-analytics.png", "caption": "Рис. 2.6. Аналитика" },
+    { "file": "2-06-import.png", "caption": "Рис. 2.7. Импорт данных" },
+    { "file": "2-07-categories.png", "caption": "Рис. 2.8. Категории" },
+    { "file": "2-08-taxes.png", "caption": "Рис. 2.9. Налоги" },
+    { "file": "2-09-cashforecast.png", "caption": "Рис. 2.10. Прогноз кассы" },
+    { "file": "2-10-reminders.png", "caption": "Рис. 2.11. Напоминания" }
+  ],
+  "inlineImages": {
+    "Рис. 3.1.": "3-01-login.png",
+    "Рис. 3.4.": "3-04-home.png",
+    "Рис. 3.5.": "3-05-transactions.png",
+    "Рис. 3.13.": "3-13-import.png",
+    "Рис. 3.16.": "3-16-categories.png",
+    "Рис. 3.25.": "3-25-reports-export.png",
+    "Рис. 3.27.": "3-27-analytics.png",
+    "Рис. 4.1.": "4-01-login.png",
+    "Рис. 4.2.": "4-02-home.png",
+    "Рис. 4.3.": "4-03-transactions.png"
+  }
+}
